@@ -22,7 +22,6 @@ import com.forcusflow.lifestream.data.TemplateEntity
 import com.forcusflow.lifestream.ui.theme.LifeStreamTheme
 import java.time.LocalDateTime
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,8 +45,9 @@ fun AddItemBottomSheet(
     var isDone by remember { mutableStateOf(true) }
     var selectedTemplate by remember { mutableStateOf<TemplateEntity?>(null) }
 
-    // Time offset preset (0: now, -30: 30 min ago, -60: 1 hour ago, -720: last night)
-    var selectedTimePreset by remember { mutableStateOf("今") }
+    // Presets for Done vs ToDo
+    var selectedDonePreset by remember { mutableStateOf("今") }
+    var selectedTodoPreset by remember { mutableStateOf("今日中") }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -62,12 +62,12 @@ fun AddItemBottomSheet(
                 .verticalScroll(rememberScrollState())
         ) {
             Text(
-                text = "新規記録 / ToDo追加",
+                text = if (isDone) "やったことを記録（事実ログ）" else "これからやるToDoを追加",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 color = colors.textPrimary
             )
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // ToDo vs Done Toggle
             Row(
@@ -75,6 +75,7 @@ fun AddItemBottomSheet(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
                     .background(colors.background)
+                    .border(1.dp, colors.border, RoundedCornerShape(12.dp))
                     .padding(4.dp)
             ) {
                 Box(
@@ -83,13 +84,13 @@ fun AddItemBottomSheet(
                         .clip(RoundedCornerShape(8.dp))
                         .background(if (isDone) colors.primary else Color.Transparent)
                         .clickable { isDone = true }
-                        .padding(vertical = 8.dp),
+                        .padding(vertical = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "Done (完了ログ)",
+                        text = "✅ やったこと記録 (Done)",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
+                        fontSize = 13.sp,
                         color = if (isDone) colors.onPrimary else colors.textSecondary
                     )
                 }
@@ -99,13 +100,13 @@ fun AddItemBottomSheet(
                         .clip(RoundedCornerShape(8.dp))
                         .background(if (!isDone) colors.primary else Color.Transparent)
                         .clickable { isDone = false }
-                        .padding(vertical = 8.dp),
+                        .padding(vertical = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "ToDo (予定)",
+                        text = "📋 これからToDo (予定)",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
+                        fontSize = 13.sp,
                         color = if (!isDone) colors.onPrimary else colors.textSecondary
                     )
                 }
@@ -113,59 +114,11 @@ fun AddItemBottomSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Template Quick Picker
-            if (templates.isNotEmpty()) {
-                Text(
-                    text = "テンプレート連携 (任意)",
-                    fontSize = 12.sp,
-                    color = colors.textSecondary
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    templates.take(4).forEach { t ->
-                        val isPicked = selectedTemplate?.id == t.id
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .border(
-                                    1.dp,
-                                    if (isPicked) colors.primary else colors.border,
-                                    RoundedCornerShape(8.dp)
-                                )
-                                .background(if (isPicked) colors.primary.copy(alpha = 0.1f) else colors.card)
-                                .clickable {
-                                    if (isPicked) {
-                                        selectedTemplate = null
-                                    } else {
-                                        selectedTemplate = t
-                                        if (title.isBlank()) title = t.title
-                                        if (t.defaultAmount != null && amountText.isBlank()) {
-                                            amountText = t.defaultAmount.toString()
-                                        }
-                                    }
-                                }
-                                .padding(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Text(
-                                text = " ",
-                                fontSize = 12.sp,
-                                fontWeight = if (isPicked) FontWeight.Bold else FontWeight.Normal,
-                                color = colors.textPrimary
-                            )
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
             // Title input
             OutlinedTextField(
                 value = title,
                 onValueChange = { title = it },
-                label = { Text("タイトル (例: 定食ランチ, 洗濯)") },
+                label = { Text(if (isDone) "やったこと（例: 定食ランチ、シーツ洗濯）" else "やること（例: 洗濯用洗剤をポチる）") },
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = colors.primary,
@@ -183,7 +136,7 @@ fun AddItemBottomSheet(
             OutlinedTextField(
                 value = note,
                 onValueChange = { note = it },
-                label = { Text("一行メモ・言い訳 (例: 罪悪感ゼロ)") },
+                label = { Text("一行メモ・言い訳（例: 罪悪感ゼロ、チキン南蛮定食）") },
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = colors.primary,
@@ -201,7 +154,7 @@ fun AddItemBottomSheet(
             OutlinedTextField(
                 value = amountText,
                 onValueChange = { if (it.all { char -> char.isDigit() }) amountText = it },
-                label = { Text("支出金額 (¥)") },
+                label = { Text("支出金額 (¥) ※任意") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -216,40 +169,81 @@ fun AddItemBottomSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Retroactive Time Presets
-            Text(
-                text = if (isDone) "実績時刻のプリセット" else "予定時刻のプリセット",
-                fontSize = 12.sp,
-                color = colors.textSecondary
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            val presets = listOf("今", "30分前", "1時間前", "昨晩")
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                presets.forEach { preset ->
-                    val isSelected = selectedTimePreset == preset
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(
-                                1.dp,
-                                if (isSelected) colors.primary else colors.border,
-                                RoundedCornerShape(8.dp)
+            // Time Presets
+            if (isDone) {
+                Text(
+                    text = "いつやりましたか？",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.textSecondary
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                val donePresets = listOf("今", "15分前", "1時間前", "昨晩")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    donePresets.forEach { preset ->
+                        val isSelected = selectedDonePreset == preset
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(
+                                    1.dp,
+                                    if (isSelected) colors.primary else colors.border,
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.card)
+                                .clickable { selectedDonePreset = preset }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = preset,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) colors.primary else colors.textPrimary
                             )
-                            .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.card)
-                            .clickable { selectedTimePreset = preset }
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = preset,
-                            fontSize = 12.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) colors.primary else colors.textPrimary
-                        )
+                        }
+                    }
+                }
+            } else {
+                Text(
+                    text = "予定の時期・タイミング",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.textSecondary
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                val todoPresets = listOf("今日中", "1時間後", "今晩", "明日")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    todoPresets.forEach { preset ->
+                        val isSelected = selectedTodoPreset == preset
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(
+                                    1.dp,
+                                    if (isSelected) colors.primary else colors.border,
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.card)
+                                .clickable { selectedTodoPreset = preset }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = preset,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) colors.primary else colors.textPrimary
+                            )
+                        }
                     }
                 }
             }
@@ -262,19 +256,26 @@ fun AddItemBottomSheet(
                     if (title.isNotBlank()) {
                         val zone = ZoneId.systemDefault()
                         val now = LocalDateTime.now()
-                        val targetDateTime = when (selectedTimePreset) {
-                            "30分前" -> now.minusMinutes(30)
-                            "1時間前" -> now.minusHours(1)
-                            "昨晩" -> now.minusDays(1).withHour(23).withMinute(0)
-                            else -> now
-                        }
-                        val millis = targetDateTime.atZone(zone).toInstant().toEpochMilli()
                         val amt = amountText.toLongOrNull()
 
                         if (isDone) {
+                            val doneTime = when (selectedDonePreset) {
+                                "15分前" -> now.minusMinutes(15)
+                                "1時間前" -> now.minusHours(1)
+                                "昨晩" -> now.minusDays(1).withHour(23).withMinute(0)
+                                else -> now
+                            }
+                            val millis = doneTime.atZone(zone).toInstant().toEpochMilli()
                             onSave(title, true, null, millis, amt, note.ifBlank { null }, selectedTemplate?.id)
                         } else {
-                            onSave(title, false, millis, null, amt, note.ifBlank { null }, selectedTemplate?.id)
+                            val (scheduledMillis, finalTitle) = when (selectedTodoPreset) {
+                                "今日中" -> Pair(null, if (!title.startsWith("今日中:")) "今日中: " else title)
+                                "1時間後" -> Pair(now.plusHours(1).atZone(zone).toInstant().toEpochMilli(), title)
+                                "今晩" -> Pair(now.withHour(20).withMinute(0).atZone(zone).toInstant().toEpochMilli(), title)
+                                "明日" -> Pair(now.plusDays(1).withHour(10).withMinute(0).atZone(zone).toInstant().toEpochMilli(), title)
+                                else -> Pair(null, title)
+                            }
+                            onSave(finalTitle, false, scheduledMillis, null, amt, note.ifBlank { null }, selectedTemplate?.id)
                         }
                         onDismiss()
                     }
@@ -290,7 +291,7 @@ fun AddItemBottomSheet(
                 enabled = title.isNotBlank()
             ) {
                 Text(
-                    text = if (isDone) "完了ログとして記録" else "予定ToDoを追加",
+                    text = if (isDone) "完了ログとして記録する" else "ToDoとして追加する",
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold
                 )

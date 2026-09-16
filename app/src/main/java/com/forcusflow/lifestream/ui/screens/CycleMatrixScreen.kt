@@ -23,7 +23,13 @@ import com.forcusflow.lifestream.data.TemplateEntity
 import com.forcusflow.lifestream.ui.components.AppHeader
 import com.forcusflow.lifestream.ui.theme.LifeStreamTheme
 import com.forcusflow.lifestream.viewmodel.MainViewModel
+import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 
 enum class MatrixCellStatus {
     DONE, OVERDUE, WARNING, TARGET, EMPTY
@@ -49,20 +55,28 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
     val colors = LifeStreamTheme.colors
     val templates by viewModel.templates.collectAsState()
     val allItems by viewModel.allItems.collectAsState()
-    var selectedSegment by remember { mutableStateOf(0) } // 0: 周期マトリクス, 1: 毎日習慣・出費
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+    val zone = ZoneId.systemDefault()
+    val today = LocalDate.now()
+
+    var selectedSegment by remember { mutableStateOf(0) } // 0: 周期タスク・一覧, 1: 週マトリクス表
 
     // Calculate water count for today
-    val waterItemsToday = remember(allItems) {
-        val today = LocalDate.now()
-        val (start, end) = viewModel.getDayRange(today)
+    val (todayStart, todayEnd) = remember(today) { viewModel.getDayRange(today) }
+    val waterItemsToday = remember(allItems, todayStart, todayEnd) {
         allItems.filter { item ->
             val t = item.completedAt ?: item.scheduledAt
-            t != null && t in start..end && (item.templateId == 1L || item.title.contains("水"))
+            t != null && t in todayStart..todayEnd && (item.templateId == 1L || item.title.contains("水"))
         }
     }
     val waterCount = waterItemsToday.size
 
-    // User tapped overrides to support instant cell-tap completion
+    val periodicTemplates = remember(templates) {
+        templates.filter { it.type == "INTERVAL" }
+    }
+
+    // Interactive overrides for Matrix Grid
     val cellOverrides = remember { mutableStateMapOf<String, MatrixCellData>() }
 
     val baseRows = remember {
@@ -118,310 +132,418 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
         )
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(colors.background)
-    ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            AppHeader(
-                title = "3. 周期マトリクス & 習慣",
-                subtitle = "家事・セルフケア周期グリッド + 毎日習慣"
-            )
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = colors.background
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                AppHeader(
+                    title = "周期管理 ＆ 習慣",
+                    subtitle = "「いつやったかわかる」家事・セルフケア周期トラッカー"
+                )
 
-            // Segmented Control
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 6.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(colors.card)
-                    .border(1.dp, colors.border, RoundedCornerShape(12.dp))
-                    .padding(4.dp)
-            ) {
-                Box(
+                // Segment Control
+                Row(
                     modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (selectedSegment == 0) colors.primary else Color.Transparent)
-                        .clickable { selectedSegment = 0 }
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 6.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(colors.card)
+                        .border(1.dp, colors.border, RoundedCornerShape(12.dp))
+                        .padding(4.dp)
                 ) {
-                    Text(
-                        text = "周期マトリクス",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = if (selectedSegment == 0) colors.onPrimary else colors.textSecondary
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (selectedSegment == 1) colors.primary else Color.Transparent)
-                        .clickable { selectedSegment = 1 }
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "毎日習慣・出費",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = if (selectedSegment == 1) colors.onPrimary else colors.textSecondary
-                    )
-                }
-            }
-
-            if (selectedSegment == 0) {
-                // Matrix Screen
-                val scrollState = rememberScrollState()
-
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 20.dp)
-                        .horizontalScroll(scrollState)
-                ) {
-                    // Header Row
-                    Row(
+                    Box(
                         modifier = Modifier
-                            .padding(vertical = 12.dp)
-                            .width(540.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (selectedSegment == 0) colors.primary else Color.Transparent)
+                            .clickable { selectedSegment = 0 }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "タスク名 (推奨周期)",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = colors.textSecondary,
-                            modifier = Modifier.width(190.dp)
+                            text = "周期タスク一覧 (いつやったか)",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = if (selectedSegment == 0) colors.onPrimary else colors.textSecondary
                         )
-                        Box(modifier = Modifier.width(110.dp), contentAlignment = Alignment.Center) {
-                            Text(
-                                text = "9/5 (土)",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.textSecondary
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (selectedSegment == 1) colors.primary else Color.Transparent)
+                            .clickable { selectedSegment = 1 }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "週マトリクス表",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = if (selectedSegment == 1) colors.onPrimary else colors.textSecondary
+                        )
+                    }
+                }
+
+                if (selectedSegment == 0) {
+                    // Periodic Cards View: 「いつやったかわかる」
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .padding(horizontal = 20.dp, vertical = 8.dp),
+                        contentPadding = PaddingValues(bottom = 120.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(periodicTemplates, key = { it.id }) { template ->
+                            PeriodicTaskCard(
+                                template = template,
+                                onCompletedNow = {
+                                    viewModel.recordCycleTask(template, LocalDate.now())
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar("「」の完了を記録しました！")
+                                    }
+                                }
                             )
                         }
-                        Box(modifier = Modifier.width(120.dp), contentAlignment = Alignment.Center) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(colors.primary)
-                                    .padding(horizontal = 12.dp, vertical = 4.dp)
-                            ) {
+                    }
+                } else {
+                    // Weekly Matrix Grid View
+                    val scrollState = rememberScrollState()
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 20.dp)
+                            .horizontalScroll(scrollState)
+                    ) {
+                        // Header Row
+                        Row(
+                            modifier = Modifier
+                                .padding(vertical = 12.dp)
+                                .width(540.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "タスク名 (推奨周期)",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.textSecondary,
+                                modifier = Modifier.width(190.dp)
+                            )
+                            Box(modifier = Modifier.width(110.dp), contentAlignment = Alignment.Center) {
                                 Text(
-                                    text = "9/12 (土)",
+                                    text = "9/5 (土)",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = colors.onPrimary
+                                    color = colors.textSecondary
+                                )
+                            }
+                            Box(modifier = Modifier.width(120.dp), contentAlignment = Alignment.Center) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(colors.primary)
+                                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "9/12 (土)",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.onPrimary
+                                    )
+                                }
+                            }
+                            Box(modifier = Modifier.width(110.dp), contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = "9/19 (土)",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.textSecondary
                                 )
                             }
                         }
-                        Box(modifier = Modifier.width(110.dp), contentAlignment = Alignment.Center) {
-                            Text(
-                                text = "9/19 (土)",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.textSecondary
-                            )
-                        }
-                    }
 
-                    Divider(color = colors.border, thickness = 0.5.dp)
+                        HorizontalDivider(color = colors.border, thickness = 0.5.dp)
 
-                    // Data Rows
-                    LazyColumn(
-                        modifier = Modifier
-                            .width(540.dp)
-                            .weight(1f),
-                        contentPadding = PaddingValues(bottom = 120.dp)
-                    ) {
-                        items(baseRows, key = { it.templateId }) { row ->
-                            val cell1 = cellOverrides["_1"] ?: row.week1
-                            val cell2 = cellOverrides["_2"] ?: row.week2
-                            val cell3 = cellOverrides["_3"] ?: row.week3
-
-                            Row(
-                                modifier = Modifier
-                                    .padding(vertical = 10.dp)
-                                    .width(540.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                // Task Title & Interval
-                                Column(modifier = Modifier.width(190.dp)) {
-                                    Text(
-                                        text = row.title,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.textPrimary
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = row.intervalText,
-                                        fontSize = 11.sp,
-                                        color = colors.textSecondary
-                                    )
-                                }
-
-                                // Col 1 (9/5)
-                                Box(
-                                    modifier = Modifier.width(110.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    MatrixCellBadge(cell = cell1) {
-                                        val updated = MatrixCellData(MatrixCellStatus.DONE, "9/5 済", true)
-                                        cellOverrides["_1"] = updated
-                                        val tmpl = templates.find { it.id == row.templateId }
-                                        if (tmpl != null) {
-                                            viewModel.recordCycleTask(tmpl, LocalDate.of(2026, 9, 5))
-                                        }
-                                    }
-                                }
-
-                                // Col 2 (9/12)
-                                Box(
-                                    modifier = Modifier.width(120.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    MatrixCellBadge(cell = cell2) {
-                                        val updated = MatrixCellData(MatrixCellStatus.DONE, "9/12 済", true)
-                                        cellOverrides["_2"] = updated
-                                        val tmpl = templates.find { it.id == row.templateId }
-                                        if (tmpl != null) {
-                                            viewModel.recordCycleTask(tmpl, LocalDate.of(2026, 9, 12))
-                                        }
-                                    }
-                                }
-
-                                // Col 3 (9/19)
-                                Box(
-                                    modifier = Modifier.width(110.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    MatrixCellBadge(cell = cell3) {
-                                        val updated = MatrixCellData(MatrixCellStatus.DONE, "9/19 済", true)
-                                        cellOverrides["_3"] = updated
-                                        val tmpl = templates.find { it.id == row.templateId }
-                                        if (tmpl != null) {
-                                            viewModel.recordCycleTask(tmpl, LocalDate.of(2026, 9, 19))
-                                        }
-                                    }
-                                }
-                            }
-                            Divider(color = colors.divider, thickness = 0.5.dp)
-                        }
-                    }
-                }
-            } else {
-                // Segment 2: 毎日習慣・出費
-                LazyColumn(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
-                    contentPadding = PaddingValues(bottom = 120.dp)
-                ) {
-                    item {
-                        Text(
-                            text = "デイリー習慣トラッキング",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.textPrimary
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                    }
-                    items(templates.filter { it.type == "DAILY_COUNT" || it.type == "SIMPLE" }) { t ->
-                        Box(
+                        // Matrix Rows
+                        LazyColumn(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .border(1.dp, colors.border, RoundedCornerShape(12.dp))
-                                .background(colors.card)
-                                .padding(16.dp)
+                                .width(540.dp)
+                                .weight(1f),
+                            contentPadding = PaddingValues(bottom = 120.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(text = t.iconKey ?: "📌", fontSize = 20.sp)
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column {
+                            items(baseRows, key = { it.templateId }) { row ->
+                                val cell1 = cellOverrides["_1"] ?: row.week1
+                                val cell2 = cellOverrides["_2"] ?: row.week2
+                                val cell3 = cellOverrides["_3"] ?: row.week3
+
+                                Row(
+                                    modifier = Modifier
+                                        .padding(vertical = 10.dp)
+                                        .width(540.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Task Title & Interval
+                                    Column(modifier = Modifier.width(190.dp)) {
                                         Text(
-                                            text = t.title,
-                                            fontSize = 15.sp,
+                                            text = row.title,
+                                            fontSize = 14.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = colors.textPrimary
                                         )
+                                        Spacer(modifier = Modifier.height(2.dp))
                                         Text(
-                                            text = "累計記録: 回",
-                                            fontSize = 12.sp,
+                                            text = row.intervalText,
+                                            fontSize = 11.sp,
                                             color = colors.textSecondary
                                         )
                                     }
+
+                                    // Col 1 (9/5)
+                                    Box(
+                                        modifier = Modifier.width(110.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        MatrixCellBadge(cell = cell1) {
+                                            val updated = MatrixCellData(MatrixCellStatus.DONE, "9/5 済", true)
+                                            cellOverrides["_1"] = updated
+                                            val tmpl = templates.find { it.id == row.templateId }
+                                            if (tmpl != null) {
+                                                viewModel.recordCycleTask(tmpl, LocalDate.of(2026, 9, 5))
+                                                coroutineScope.launch {
+                                                    snackbarHostState.showSnackbar("9/5 完了を記録しました")
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Col 2 (9/12)
+                                    Box(
+                                        modifier = Modifier.width(120.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        MatrixCellBadge(cell = cell2) {
+                                            val updated = MatrixCellData(MatrixCellStatus.DONE, "9/12 済", true)
+                                            cellOverrides["_2"] = updated
+                                            val tmpl = templates.find { it.id == row.templateId }
+                                            if (tmpl != null) {
+                                                viewModel.recordCycleTask(tmpl, LocalDate.of(2026, 9, 12))
+                                                coroutineScope.launch {
+                                                    snackbarHostState.showSnackbar("9/12 完了を記録しました")
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Col 3 (9/19)
+                                    Box(
+                                        modifier = Modifier.width(110.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        MatrixCellBadge(cell = cell3) {
+                                            val updated = MatrixCellData(MatrixCellStatus.DONE, "9/19 済", true)
+                                            cellOverrides["_3"] = updated
+                                            val tmpl = templates.find { it.id == row.templateId }
+                                            if (tmpl != null) {
+                                                viewModel.recordCycleTask(tmpl, LocalDate.of(2026, 9, 19))
+                                                coroutineScope.launch {
+                                                    snackbarHostState.showSnackbar("9/19 完了を記録しました")
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
-                                if (t.defaultAmount != null) {
-                                    Text(
-                                        text = "基準: ¥${t.defaultAmount}",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.primary
-                                    )
-                                }
+                                HorizontalDivider(color = colors.divider, thickness = 0.5.dp)
                             }
                         }
+                    }
+                }
+            }
+
+            // Sticky Bottom Water Tracker Widget
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 10.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .border(1.dp, colors.border, RoundedCornerShape(16.dp))
+                    .background(colors.card)
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "💧 水を飲む: 今日${waterCount}杯達成 (目標: 6杯)",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "週平均 4.8杯 / 日 | タイムラインに直結",
+                            fontSize = 11.sp,
+                            color = colors.textSecondary
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            viewModel.recordWaterIntake()
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("水を1杯記録しました！")
+                            }
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF0284C7),
+                            contentColor = Color.White
+                        ),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "+1杯 記録",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
         }
+    }
+}
 
-        // Sticky Bottom Water Tracker Widget
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 10.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .border(1.dp, colors.border, RoundedCornerShape(16.dp))
-                .background(colors.card)
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-        ) {
+@Composable
+fun PeriodicTaskCard(
+    template: TemplateEntity,
+    onCompletedNow: () -> Unit
+) {
+    val colors = LifeStreamTheme.colors
+    val zone = ZoneId.systemDefault()
+    val today = LocalDate.now()
+
+    // Calculate elapsed days
+    val lastDoneDate = template.lastCompletedAt?.let {
+        LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
+    }
+    val elapsedDays = lastDoneDate?.let { ChronoUnit.DAYS.between(it, today) }
+    val interval = template.intervalDays ?: 7
+    val isOverdue = elapsedDays != null && elapsedDays >= interval
+
+    val lastDoneText = if (lastDoneDate != null && elapsedDays != null) {
+        "前回: 月日 (日前)"
+    } else {
+        "未実施 (記録なし)"
+    }
+
+    val statusBadgeColor = when {
+        isOverdue -> colors.statusOverdue
+        elapsedDays != null && elapsedDays >= (interval - 1) -> colors.statusWarning
+        else -> colors.statusDone
+    }
+
+    val statusBadgeText = when {
+        isOverdue -> "❗ 期限超過 (日遅れ)"
+        elapsedDays != null && elapsedDays >= (interval - 1) -> "⚠ 本日推奨"
+        lastDoneDate != null -> "✓ 順調"
+        else -> "未着手"
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .border(1.dp, colors.border, RoundedCornerShape(14.dp))
+            .background(colors.card)
+            .padding(16.dp)
+    ) {
+        Column {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = template.iconKey ?: "🧹", fontSize = 22.sp)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = template.title,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary
+                        )
+                        Text(
+                            text = "推奨周期: 日ごと",
+                            fontSize = 12.sp,
+                            color = colors.textSecondary
+                        )
+                    }
+                }
+
+                // Status Badge
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(statusBadgeColor.copy(alpha = 0.12f))
+                        .border(1.dp, statusBadgeColor, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
                     Text(
-                        text = "💧 水を飲む: 今日${waterCount}杯達成 (目標: 6杯)",
-                        fontSize = 13.sp,
+                        text = statusBadgeText,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = colors.textPrimary
+                        color = statusBadgeColor
                     )
-                    Spacer(modifier = Modifier.height(2.dp))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(color = colors.divider, thickness = 0.5.dp)
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
                     Text(
-                        text = "週平均 4.8杯 / 日 | タイムラインに直結",
+                        text = "いつやったか:",
                         fontSize = 11.sp,
                         color = colors.textSecondary
                     )
+                    Text(
+                        text = lastDoneText,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.textPrimary
+                    )
                 }
-                Spacer(modifier = Modifier.width(8.dp))
+
                 Button(
-                    onClick = { viewModel.recordWaterIntake() },
+                    onClick = onCompletedNow,
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF0284C7),
-                        contentColor = Color.White
+                        containerColor = colors.primary,
+                        contentColor = colors.onPrimary
                     ),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
                 ) {
                     Text(
-                        text = "+1杯 記録",
-                        fontSize = 13.sp,
+                        text = "今やった！",
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }

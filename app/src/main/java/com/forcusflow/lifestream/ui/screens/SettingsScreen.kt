@@ -1,4 +1,4 @@
-﻿package com.forcusflow.lifestream.ui.screens
+package com.forcusflow.lifestream.ui.screens
 
 import android.content.Intent
 import androidx.compose.foundation.background
@@ -50,8 +50,8 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 .verticalScroll(rememberScrollState())
         ) {
             AppHeader(
-                title = "4. 設定とカスタマイズ",
-                subtitle = "テーマ切替・デイカットオフ・テンプレート管理"
+                title = "設定とカスタマイズ",
+                subtitle = "テーマ切替 ＋ デイカットオフ ＋ テンプレート管理"
             )
 
             // Section: デザインテーマの選択
@@ -225,13 +225,13 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Column {
                                     Text(text = t.title, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                    val interval = if (t.intervalDays != null) "日周期" else t.type
+                                    val interval = if (t.intervalDays != null) "${t.intervalDays}日周期" else t.type
                                     Text(text = interval, fontSize = 11.sp, color = colors.textSecondary)
                                 }
                             }
-                            Text(text = "回", fontSize = 12.sp, color = colors.primary)
+                            Text(text = "${t.usageCount}回", fontSize = 12.sp, color = colors.primary)
                         }
-                        Divider(color = colors.divider, thickness = 0.5.dp)
+                        HorizontalDivider(color = colors.divider, thickness = 0.5.dp)
                     }
                 }
             },

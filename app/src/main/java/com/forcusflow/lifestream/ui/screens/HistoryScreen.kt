@@ -75,8 +75,8 @@ fun HistoryScreen(viewModel: MainViewModel) {
             .background(colors.background)
     ) {
         AppHeader(
-            title = "2. 履歴とカレンダー",
-            subtitle = "日別タイムライン再現 + 事実ログ集計検索"
+            title = "履歴とカレンダー",
+            subtitle = "日別タイムライン再現 ＋ 事実ログ検索"
         )
 
         // Search Bar
