@@ -250,9 +250,12 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                 Text(text = t.iconKey ?: "📌", fontSize = 18.sp)
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Column {
-                                    Text(text = t.title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
-                                    val interval = if (t.intervalDays != null) "${t.intervalDays}日周期" else t.type
-                                    Text(text = "$interval • 累計${t.usageCount}回", fontSize = 11.sp, color = colors.textSecondary)
+                                    val actionInfo = when (t.actionType) {
+                                        "COUNT" -> "加算カウント (${t.unit})"
+                                        "TIMER" -> "タイマー計測 (${t.unit})"
+                                        else -> if (t.intervalDays != null) "${t.intervalDays}日周期" else t.type
+                                    }
+                                    Text(text = "$actionInfo • 累計${t.usageCount}回", fontSize = 11.sp, color = colors.textSecondary)
                                 }
                             }
                             IconButton(

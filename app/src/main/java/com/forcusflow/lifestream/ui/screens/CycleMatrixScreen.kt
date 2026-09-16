@@ -57,7 +57,6 @@ data class MatrixRowData(
 fun CycleMatrixScreen(viewModel: MainViewModel) {
     val colors = LifeStreamTheme.colors
     val templates by viewModel.templates.collectAsState()
-    val allItems by viewModel.allItems.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     val zone = ZoneId.systemDefault()
@@ -65,18 +64,6 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
 
     var selectedSegment by remember { mutableStateOf(0) } // 0: 周期タスク一覧, 1: 週マトリクス表
     var showAddPeriodicDialog by remember { mutableStateOf(false) }
-
-    // Calculate water count for today
-    val (todayStart, todayEnd) = remember(today, viewModel.dayCutoffHour.collectAsState().value) {
-        viewModel.getDayRange(today)
-    }
-    val waterItemsToday = remember(allItems, todayStart, todayEnd) {
-        allItems.filter { item ->
-            val t = item.completedAt ?: item.scheduledAt
-            t != null && t in todayStart..todayEnd && (item.templateId == 1L || item.title.contains("水"))
-        }
-    }
-    val waterCount = waterItemsToday.size
 
     // Sort periodic tasks by urgency: Overdue first, then Due Soon, then On Track
     val periodicTemplates = remember(templates, today) {
@@ -163,16 +150,15 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
         },
         containerColor = colors.background
     ) { padding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                AppHeader(
-                    title = "周期管理 ＆ 習慣",
-                    subtitle = "「いつやったかわかる」家事・セルフケア周期トラッカー"
-                )
+            AppHeader(
+                title = "周期管理 ＆ 習慣",
+                subtitle = "「いつやったかわかる」家事・セルフケア周期トラッカー"
+            )
 
                 // Segment Control
                 Row(
@@ -225,7 +211,7 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                             .fillMaxWidth()
                             .weight(1f)
                             .padding(horizontal = 20.dp, vertical = 8.dp),
-                        contentPadding = PaddingValues(bottom = 120.dp),
+                        contentPadding = PaddingValues(bottom = 80.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         items(periodicTemplates, key = { it.id }) { template ->
@@ -304,7 +290,7 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                             modifier = Modifier
                                 .width(540.dp)
                                 .weight(1f),
-                            contentPadding = PaddingValues(bottom = 120.dp)
+                            contentPadding = PaddingValues(bottom = 80.dp)
                         ) {
                             items(baseRows, key = { it.templateId }) { row ->
                                 val cell1 = cellOverrides["${row.templateId}_1"] ?: row.week1
@@ -393,62 +379,7 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                     }
                 }
             }
-
-            // Sticky Bottom Water Tracker Widget
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 10.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .border(1.dp, colors.border, RoundedCornerShape(16.dp))
-                    .background(colors.card)
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "💧 水を飲む: 今日${waterCount}杯達成 (目標: 6杯)",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.textPrimary
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "週平均 4.8杯 / 日 | タイムラインに直結",
-                            fontSize = 11.sp,
-                            color = colors.textSecondary
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
-                        onClick = {
-                            viewModel.recordWaterIntake()
-                            coroutineScope.launch {
-                                snackbarHostState.showSnackbar("水を1杯記録しました！")
-                            }
-                        },
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF0284C7),
-                            contentColor = Color.White
-                        ),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = "+1杯 記録",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
         }
-    }
 
     // Dialog to add custom periodic task
     if (showAddPeriodicDialog) {

@@ -1,4 +1,4 @@
-﻿package com.forcusflow.lifestream.viewmodel
+package com.forcusflow.lifestream.viewmodel
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
@@ -63,6 +63,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Last deleted / added item for Undo snackbar
     val undoItem = MutableStateFlow<TimelineItemEntity?>(null)
 
+    // Active Timer state for actionType = "TIMER"
+    val activeTimerTemplate = MutableStateFlow<TemplateEntity?>(null)
+    val timerElapsedSeconds = MutableStateFlow(0L)
+    private var timerJob: kotlinx.coroutines.Job? = null
+
     init {
         viewModelScope.launch(Dispatchers.IO) {
             DatabaseSeeder.seed(templateDao, itemDao)
@@ -116,16 +121,108 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun quickRecordTemplate(template: TemplateEntity, onRecorded: (TimelineItemEntity) -> Unit) {
+    fun getTodayTemplateCount(template: TemplateEntity): Int {
+        val today = LocalDate.now()
+        val (start, end) = getDayRange(today)
+        return allItems.value.count { item ->
+            val t = item.completedAt ?: item.scheduledAt
+            t != null && t in start..end && (item.templateId == template.id || item.title.startsWith(template.title))
+        }
+    }
+
+    fun startTimer(template: TemplateEntity) {
+        if (activeTimerTemplate.value?.id == template.id) {
+            stopAndSaveTimer {}
+            return
+        }
+        timerJob?.cancel()
+        activeTimerTemplate.value = template
+        timerElapsedSeconds.value = 0L
+        timerJob = viewModelScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(1000)
+                timerElapsedSeconds.value += 1
+            }
+        }
+    }
+
+    fun stopAndSaveTimer(onRecorded: (TimelineItemEntity) -> Unit = {}) {
+        val template = activeTimerTemplate.value ?: return
+        val seconds = timerElapsedSeconds.value
+        timerJob?.cancel()
+        timerJob = null
+        activeTimerTemplate.value = null
+        timerElapsedSeconds.value = 0L
+
+        val durationText = if (seconds >= 60) {
+            val mins = kotlin.math.max(1L, (seconds + 30) / 60)
+            "${mins}分"
+        } else {
+            "${seconds}秒"
+        }
+
+        val now = System.currentTimeMillis()
         viewModelScope.launch(Dispatchers.IO) {
-            val now = System.currentTimeMillis()
             val newItem = TimelineItemEntity(
-                title = if (template.type == "DAILY_COUNT") " (杯目)" else template.title,
+                title = "${template.title} ($durationText)",
                 isDone = true,
                 scheduledAt = null,
                 completedAt = now,
                 amount = template.defaultAmount,
-                note = if (template.type == "DAILY_COUNT") "デイリー水分補給" else "クイック記録完了",
+                note = "時間計測完了 ($durationText)",
+                templateId = template.id
+            )
+            val id = itemDao.insert(newItem)
+            val savedItem = newItem.copy(id = id)
+            templateDao.recordCompletion(template.id, now)
+            undoItem.value = savedItem
+            onRecorded(savedItem)
+        }
+    }
+
+    fun cancelTimer() {
+        timerJob?.cancel()
+        timerJob = null
+        activeTimerTemplate.value = null
+        timerElapsedSeconds.value = 0L
+    }
+
+    fun quickRecordTemplate(template: TemplateEntity, onRecorded: (TimelineItemEntity) -> Unit) {
+        if (template.actionType == "TIMER") {
+            if (activeTimerTemplate.value?.id == template.id) {
+                stopAndSaveTimer(onRecorded)
+            } else {
+                startTimer(template)
+            }
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            val (title, note) = when (template.actionType) {
+                "COUNT" -> {
+                    val today = LocalDate.now()
+                    val (start, end) = getDayRange(today)
+                    val currentCount = allItems.value.count { item ->
+                        val t = item.completedAt ?: item.scheduledAt
+                        t != null && t in start..end && (item.templateId == template.id || item.title.startsWith(template.title))
+                    }
+                    val nextCount = currentCount + template.stepValue
+                    val unitStr = if (template.unit.isNotBlank()) template.unit else "杯"
+                    Pair("${template.title} (${nextCount}${unitStr}目)", "デイリー習慣カウント")
+                }
+                else -> {
+                    Pair(template.title, "クイック記録完了")
+                }
+            }
+
+            val newItem = TimelineItemEntity(
+                title = title,
+                isDone = true,
+                scheduledAt = null,
+                completedAt = now,
+                amount = template.defaultAmount,
+                note = note,
                 templateId = template.id
             )
             val id = itemDao.insert(newItem)
@@ -145,7 +242,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch(Dispatchers.IO) {
                 itemDao.insert(
                     TimelineItemEntity(
-                        title = "水を飲む (追加)",
+                        title = "水を飲む (1杯目)",
                         isDone = true,
                         completedAt = now,
                         note = "デイリー水分補給"
@@ -206,11 +303,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             val time = LocalTime.now()
             val millis = LocalDateTime.of(targetDate, time).atZone(zone).toInstant().toEpochMilli()
+            val interval = template.intervalDays ?: 7
             val item = TimelineItemEntity(
-                title = " 実施",
+                title = "${template.title} 実施",
                 isDone = true,
                 completedAt = millis,
-                note = "日周期ルーティン完了",
+                note = "${interval}日周期ルーティン完了",
                 templateId = template.id
             )
             itemDao.insert(item)
@@ -224,7 +322,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         intervalDays: Int?,
         defaultAmount: Long?,
         iconKey: String?,
-        colorHex: String?
+        colorHex: String?,
+        actionType: String = "CHECK",
+        unit: String = "",
+        stepValue: Int = 1
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             val template = TemplateEntity(
@@ -235,7 +336,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 iconKey = iconKey,
                 colorHex = colorHex,
                 usageCount = 0,
-                lastCompletedAt = null
+                lastCompletedAt = null,
+                actionType = actionType,
+                unit = unit,
+                stepValue = stepValue
             )
             templateDao.insert(template)
         }

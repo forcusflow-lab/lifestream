@@ -20,14 +20,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.forcusflow.lifestream.data.TemplateEntity
 import com.forcusflow.lifestream.data.TimelineItemEntity
 import com.forcusflow.lifestream.ui.components.AddItemBottomSheet
-import com.forcusflow.lifestream.ui.components.AppHeader
 import com.forcusflow.lifestream.ui.theme.LifeStreamTheme
 import com.forcusflow.lifestream.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
@@ -36,10 +37,15 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
+import java.util.Locale
 
-sealed class TimelineEntry {
-    data class Item(val entity: TimelineItemEntity) : TimelineEntry()
-    data class NowLine(val timeStr: String) : TimelineEntry()
+sealed class TimelineRowItem {
+    data class LogItem(val entity: TimelineItemEntity) : TimelineRowItem()
+    data class NowMarker(val timeStr: String) : TimelineRowItem()
+    data class ActiveTimer(val template: TemplateEntity, val elapsedSeconds: Long) : TimelineRowItem()
+    data class AnytimeToDo(val entity: TimelineItemEntity) : TimelineRowItem()
+    data class PeriodicSurfaced(val template: TemplateEntity, val isOverdue: Boolean, val elapsedDays: Long) : TimelineRowItem()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -52,6 +58,8 @@ fun TimelineScreen(viewModel: MainViewModel) {
     val templates by viewModel.templates.collectAsState()
     val allItems by viewModel.allItems.collectAsState()
     val anytimePending by viewModel.anytimePendingItems.collectAsState()
+    val activeTimerTemplate by viewModel.activeTimerTemplate.collectAsState()
+    val timerSeconds by viewModel.timerElapsedSeconds.collectAsState()
 
     var showAddSheet by remember { mutableStateOf(false) }
     var itemToEdit by remember { mutableStateOf<TimelineItemEntity?>(null) }
@@ -62,11 +70,15 @@ fun TimelineScreen(viewModel: MainViewModel) {
     val nowTimeStr = now.format(DateTimeFormatter.ofPattern("HH:mm"))
 
     val today = LocalDate.now()
+    val todayDateFormatted = remember(today) {
+        today.format(DateTimeFormatter.ofPattern("M月d日 (E)", Locale.JAPANESE))
+    }
+
     val (todayStart, todayEnd) = remember(today, viewModel.dayCutoffHour.collectAsState().value) {
         viewModel.getDayRange(today)
     }
 
-    // Collect today's items sorted chronologically
+    // Today's scheduled or completed items
     val todayItems = remember(allItems, todayStart, todayEnd) {
         allItems.filter { item ->
             val t = item.completedAt ?: item.scheduledAt
@@ -74,22 +86,57 @@ fun TimelineScreen(viewModel: MainViewModel) {
         }.sortedBy { it.completedAt ?: it.scheduledAt ?: 0L }
     }
 
-    // Build interleaved entries with NOW line
-    val timelineEntries = remember(todayItems, nowMillis, nowTimeStr) {
-        val list = mutableListOf<TimelineEntry>()
+    // Periodic tasks due today or overdue
+    val dueOrOverduePeriodic = remember(templates, today) {
+        templates.filter { it.type == "INTERVAL" }.mapNotNull { tmpl ->
+            val lastDoneDate = tmpl.lastCompletedAt?.let {
+                LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
+            }
+            val elapsed = if (lastDoneDate != null) ChronoUnit.DAYS.between(lastDoneDate, today) else 999L
+            val interval = tmpl.intervalDays ?: 7
+            if (elapsed >= (interval - 1)) {
+                Triple(tmpl, elapsed >= interval, elapsed)
+            } else null
+        }
+    }
+
+    // Build timeline entries with NOW line, Stopwatch, Anytime ToDos, and Surfaced periodic tasks
+    val timelineRowItems = remember(todayItems, nowMillis, nowTimeStr, anytimePending, activeTimerTemplate, timerSeconds, dueOrOverduePeriodic) {
+        val list = mutableListOf<TimelineRowItem>()
         var nowInserted = false
 
         todayItems.forEach { item ->
             val itemTime = item.completedAt ?: item.scheduledAt ?: 0L
             if (!nowInserted && itemTime > nowMillis) {
-                list.add(TimelineEntry.NowLine(nowTimeStr))
+                list.add(TimelineRowItem.NowMarker(nowTimeStr))
+                // Active Stopwatch
+                activeTimerTemplate?.let {
+                    list.add(TimelineRowItem.ActiveTimer(it, timerSeconds))
+                }
+                // Anytime ToDos placed directly below NOW line
+                anytimePending.forEach {
+                    list.add(TimelineRowItem.AnytimeToDo(it))
+                }
+                // Periodic tasks surfaced right below NOW line
+                dueOrOverduePeriodic.forEach { (tmpl, isOverdue, elapsed) ->
+                    list.add(TimelineRowItem.PeriodicSurfaced(tmpl, isOverdue, elapsed))
+                }
                 nowInserted = true
             }
-            list.add(TimelineEntry.Item(item))
+            list.add(TimelineRowItem.LogItem(item))
         }
 
         if (!nowInserted) {
-            list.add(TimelineEntry.NowLine(nowTimeStr))
+            list.add(TimelineRowItem.NowMarker(nowTimeStr))
+            activeTimerTemplate?.let {
+                list.add(TimelineRowItem.ActiveTimer(it, timerSeconds))
+            }
+            anytimePending.forEach {
+                list.add(TimelineRowItem.AnytimeToDo(it))
+            }
+            dueOrOverduePeriodic.forEach { (tmpl, isOverdue, elapsed) ->
+                list.add(TimelineRowItem.PeriodicSurfaced(tmpl, isOverdue, elapsed))
+            }
         }
 
         list
@@ -115,116 +162,101 @@ fun TimelineScreen(viewModel: MainViewModel) {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            AppHeader(
-                title = "今日のタイムライン",
-                subtitle = "やったこと事実ログ ＋ これからToDo ＋ 周期推奨"
-            )
-
-            // Anytime ToDo Section (Scrollable row if multiple, or elegant card)
-            if (anytimePending.isNotEmpty()) {
-                Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
-                    Text(
-                        text = "今日中のToDo (件)",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.textSecondary
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        anytimePending.forEach { anytimeItem ->
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .border(1.dp, colors.border, RoundedCornerShape(12.dp))
-                                    .background(colors.card)
-                                    .clickable { viewModel.toggleItemDone(anytimeItem) }
-                                    .padding(horizontal = 14.dp, vertical = 10.dp)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(20.dp)
-                                            .border(1.5.dp, colors.primary, RoundedCornerShape(5.dp)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (anytimeItem.isDone) {
-                                            Icon(
-                                                Icons.Default.Check,
-                                                contentDescription = null,
-                                                tint = colors.statusDone,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                    }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text(
-                                        text = anytimeItem.title,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = colors.textPrimary,
-                                        textDecoration = if (anytimeItem.isDone) TextDecoration.LineThrough else null
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+            // Simplified Header: Only date in elegant font
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 10.dp)
+            ) {
+                Text(
+                    text = todayDateFormatted,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary,
+                    letterSpacing = (-0.5).sp
+                )
             }
 
-            // Quick Record Bar (1-tap fact logging)
+            // Quick Record Bar (ActionTypes: COUNT, TIMER, CHECK)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                    .padding(horizontal = 20.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val quickConfigs = listOf(
-                    Triple("💧 水", "水", Color(0xFF0284C7)),
-                    Triple("🧖 パック", "パック", Color(0xFF8B5CF6)),
-                    Triple("🍜 夜食", "夜食", Color(0xFFEF4444)),
-                    Triple("🧹 排水口", "排水", Color(0xFF8C5A3C))
-                )
+                // Determine quick action items
+                val waterTmpl = templates.find { it.title.contains("水") }
+                val timerTmpl = templates.find { it.actionType == "TIMER" || it.title.contains("勉強") }
+                val packTmpl = templates.find { it.title.contains("パック") }
+                val nightMealTmpl = templates.find { it.title.contains("夜食") }
+                val drainTmpl = templates.find { it.title.contains("排水") }
 
-                quickConfigs.forEach { (label, keyword, chipColor) ->
-                    val t = templates.find { it.title.contains(keyword) }
-                    val displayLabel = if (keyword == "水" && t != null) {
-                        "💧 水 (杯)"
-                    } else label
+                val quickList = listOfNotNull(waterTmpl, timerTmpl, packTmpl, nightMealTmpl, drainTmpl)
+
+                quickList.forEach { t ->
+                    val isTimer = t.actionType == "TIMER"
+                    val isTimerActive = isTimer && activeTimerTemplate?.id == t.id
+                    val isCount = t.actionType == "COUNT"
+
+                    val chipLabel = when {
+                        isTimerActive -> {
+                            val mins = timerSeconds / 60
+                            val secs = timerSeconds % 60
+                            "${t.iconKey ?: "⏱️"} %02d:%02d 計測中".format(mins, secs)
+                        }
+                        isTimer -> "${t.iconKey ?: "⏱️"} ${t.title}"
+                        isCount -> {
+                            val count = todayItems.count { it.templateId == t.id || it.title.startsWith(t.title) }
+                            val unitStr = if (t.unit.isNotBlank()) t.unit else "杯"
+                            "${t.iconKey ?: "💧"} ${t.title} (${count}${unitStr})"
+                        }
+                        else -> "${t.iconKey ?: "📌"} ${t.title}"
+                    }
+
+                    val chipBorderColor = when {
+                        isTimerActive -> Color(0xFFEF4444)
+                        isCount -> Color(0xFF0284C7)
+                        t.colorHex != null -> Color(android.graphics.Color.parseColor(t.colorHex))
+                        else -> colors.primary
+                    }
+
+                    val chipBgColor = when {
+                        isTimerActive -> Color(0xFFEF4444).copy(alpha = 0.15f)
+                        isCount -> Color(0xFF0284C7).copy(alpha = 0.08f)
+                        else -> chipBorderColor.copy(alpha = 0.08f)
+                    }
 
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(10.dp))
-                            .border(1.dp, chipColor.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
-                            .background(chipColor.copy(alpha = 0.08f))
+                            .border(
+                                width = if (isTimerActive) 1.5.dp else 1.dp,
+                                color = chipBorderColor.copy(alpha = if (isTimerActive) 1f else 0.6f),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            .background(chipBgColor)
                             .clickable {
-                                if (t != null) {
-                                    viewModel.quickRecordTemplate(t) { savedItem ->
-                                        coroutineScope.launch {
-                                            val result = snackbarHostState.showSnackbar(
-                                                message = "${savedItem.title} を記録しました",
-                                                actionLabel = "元に戻す",
-                                                duration = SnackbarDuration.Short
-                                            )
-                                            if (result == SnackbarResult.ActionPerformed) {
-                                                viewModel.undoLastItem()
-                                            }
+                                viewModel.quickRecordTemplate(t) { savedItem ->
+                                    coroutineScope.launch {
+                                        val result = snackbarHostState.showSnackbar(
+                                            message = "${savedItem.title} を記録しました",
+                                            actionLabel = "元に戻す",
+                                            duration = SnackbarDuration.Short
+                                        )
+                                        if (result == SnackbarResult.ActionPerformed) {
+                                            viewModel.undoLastItem()
                                         }
                                     }
                                 }
                             }
-                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                            .padding(horizontal = 13.dp, vertical = 7.dp)
                     ) {
                         Text(
-                            text = displayLabel,
+                            text = chipLabel,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = chipColor
+                            color = chipBorderColor
                         )
                     }
                 }
@@ -238,59 +270,79 @@ fun TimelineScreen(viewModel: MainViewModel) {
                     .fillMaxWidth()
                     .weight(1f)
                     .padding(horizontal = 20.dp),
-                contentPadding = PaddingValues(bottom = 80.dp)
+                contentPadding = PaddingValues(top = 4.dp, bottom = 80.dp)
             ) {
-                if (todayItems.isEmpty()) {
-                    // Encouraging Empty State
+                if (timelineRowItems.isEmpty()) {
                     item {
                         TaskitoNowLineRow(
                             timeStr = nowTimeStr,
                             isFirst = true,
-                            isLast = false
+                            isLast = true
                         )
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 24.dp, horizontal = 12.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .border(1.dp, colors.border, RoundedCornerShape(14.dp))
-                                .background(colors.card)
-                                .padding(20.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = "📝 今日のタイムラインはまだ空です",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.textPrimary
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = "上のクイックバーや右下の ＋ ボタンから、\n水・食事・予定などを気軽に記録してみましょう！",
-                                    fontSize = 12.sp,
-                                    color = colors.textSecondary,
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                    lineHeight = 18.sp
-                                )
-                            }
-                        }
                     }
                 } else {
-                    itemsIndexed(timelineEntries) { index, entry ->
+                    itemsIndexed(timelineRowItems) { index, rowItem ->
                         val isFirst = index == 0
-                        val isLast = index == timelineEntries.size - 1
+                        val isLast = index == timelineRowItems.size - 1
 
-                        when (entry) {
-                            is TimelineEntry.NowLine -> {
+                        when (rowItem) {
+                            is TimelineRowItem.NowMarker -> {
                                 TaskitoNowLineRow(
-                                    timeStr = entry.timeStr,
+                                    timeStr = rowItem.timeStr,
                                     isFirst = isFirst,
                                     isLast = isLast
                                 )
                             }
-                            is TimelineEntry.Item -> {
-                                val item = entry.entity
+                            is TimelineRowItem.ActiveTimer -> {
+                                TaskitoActiveTimerRow(
+                                    template = rowItem.template,
+                                    elapsedSeconds = rowItem.elapsedSeconds,
+                                    isFirst = isFirst,
+                                    isLast = isLast,
+                                    onStop = {
+                                        viewModel.stopAndSaveTimer { saved ->
+                                            coroutineScope.launch {
+                                                val res = snackbarHostState.showSnackbar(
+                                                    message = "${saved.title} を記録しました",
+                                                    actionLabel = "元に戻す",
+                                                    duration = SnackbarDuration.Short
+                                                )
+                                                if (res == SnackbarResult.ActionPerformed) {
+                                                    viewModel.undoLastItem()
+                                                }
+                                            }
+                                        }
+                                    },
+                                    onCancel = { viewModel.cancelTimer() }
+                                )
+                            }
+                            is TimelineRowItem.AnytimeToDo -> {
+                                val item = rowItem.entity
+                                TaskitoAnytimeItemRow(
+                                    item = item,
+                                    isFirst = isFirst,
+                                    isLast = isLast,
+                                    onToggle = { viewModel.toggleItemDone(item) },
+                                    onClick = { itemToEdit = item }
+                                )
+                            }
+                            is TimelineRowItem.PeriodicSurfaced -> {
+                                TaskitoPeriodicSurfacedRow(
+                                    template = rowItem.template,
+                                    isOverdue = rowItem.isOverdue,
+                                    elapsedDays = rowItem.elapsedDays,
+                                    isFirst = isFirst,
+                                    isLast = isLast,
+                                    onCompletedNow = {
+                                        viewModel.recordCycleTask(rowItem.template, today)
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar("「${rowItem.template.title}」の完了を記録しました！")
+                                        }
+                                    }
+                                )
+                            }
+                            is TimelineRowItem.LogItem -> {
+                                val item = rowItem.entity
                                 TaskitoTimelineItemRow(
                                     item = item,
                                     isFirst = isFirst,
@@ -301,7 +353,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                         viewModel.deleteItem(item)
                                         coroutineScope.launch {
                                             val res = snackbarHostState.showSnackbar(
-                                                message = " を削除しました",
+                                                message = "${item.title} を削除しました",
                                                 actionLabel = "元に戻す",
                                                 duration = SnackbarDuration.Short
                                             )
@@ -344,7 +396,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
                 itemToEdit = null
                 coroutineScope.launch {
                     val res = snackbarHostState.showSnackbar(
-                        message = " を削除しました",
+                        message = "${item.title} を削除しました",
                         actionLabel = "元に戻す",
                         duration = SnackbarDuration.Short
                     )
@@ -371,14 +423,13 @@ fun TaskitoNowLineRow(
             .height(IntrinsicSize.Min),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Vertical track with continuous stem line
+        // Continuous stem line
         Box(
             modifier = Modifier
                 .width(32.dp)
                 .fillMaxHeight(),
             contentAlignment = Alignment.Center
         ) {
-            // Continuous stem line
             Column(modifier = Modifier.fillMaxHeight()) {
                 Box(
                     modifier = Modifier
@@ -410,7 +461,7 @@ fun TaskitoNowLineRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 12.dp),
+                .padding(vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
@@ -437,6 +488,377 @@ fun TaskitoNowLineRow(
     }
 }
 
+@Composable
+fun TaskitoActiveTimerRow(
+    template: TemplateEntity,
+    elapsedSeconds: Long,
+    isFirst: Boolean,
+    isLast: Boolean,
+    onStop: () -> Unit,
+    onCancel: () -> Unit
+) {
+    val colors = LifeStreamTheme.colors
+    val mins = elapsedSeconds / 60
+    val secs = elapsedSeconds % 60
+    val timerStr = "%02d:%02d".format(mins, secs)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Continuous stem line with pulsing timer dot
+        Box(
+            modifier = Modifier
+                .width(32.dp)
+                .fillMaxHeight(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(modifier = Modifier.fillMaxHeight()) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .width(2.dp)
+                        .background(if (isFirst) Color.Transparent else colors.border)
+                        .align(Alignment.CenterHorizontally)
+                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .width(2.dp)
+                        .background(if (isLast) Color.Transparent else colors.border)
+                        .align(Alignment.CenterHorizontally)
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(14.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFEF4444)),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(Color.White)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Timer Card
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(12.dp))
+                .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                .background(Color(0xFFEF4444).copy(alpha = 0.08f))
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = template.iconKey ?: "⏱️", fontSize = 16.sp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "${template.title} (計測中)",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = timerStr,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        color = Color(0xFFEF4444)
+                    )
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(
+                        onClick = onCancel,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text("破棄", fontSize = 12.sp, color = colors.textSecondary)
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Button(
+                        onClick = onStop,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFEF4444),
+                            contentColor = Color.White
+                        ),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text("完了・保存", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TaskitoAnytimeItemRow(
+    item: TimelineItemEntity,
+    isFirst: Boolean,
+    isLast: Boolean,
+    onToggle: () -> Unit,
+    onClick: () -> Unit
+) {
+    val colors = LifeStreamTheme.colors
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+            .clickable { onClick() }
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Continuous stem line
+        Box(
+            modifier = Modifier
+                .width(32.dp)
+                .fillMaxHeight(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(modifier = Modifier.fillMaxHeight()) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .width(2.dp)
+                        .background(if (isFirst) Color.Transparent else colors.border)
+                        .align(Alignment.CenterHorizontally)
+                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .width(2.dp)
+                        .background(if (isLast) Color.Transparent else colors.border)
+                        .align(Alignment.CenterHorizontally)
+                )
+            }
+
+            // Hollow ToDo node
+            Box(
+                modifier = Modifier
+                    .size(18.dp)
+                    .clip(CircleShape)
+                    .border(2.dp, colors.primary, CircleShape)
+                    .background(colors.card)
+                    .clickable { onToggle() },
+                contentAlignment = Alignment.Center
+            ) {
+                if (item.isDone) {
+                    Icon(
+                        Icons.Default.Check,
+                        contentDescription = "完了",
+                        tint = colors.statusDone,
+                        modifier = Modifier.size(12.dp)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Title & Anytime indicator
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(10.dp))
+                .border(1.dp, colors.border, RoundedCornerShape(10.dp))
+                .background(colors.card)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(colors.primary.copy(alpha = 0.12f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "今日中",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.primary
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = item.title,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.textPrimary,
+                        textDecoration = if (item.isDone) TextDecoration.LineThrough else null
+                    )
+                }
+                if (!item.note.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = item.note,
+                        fontSize = 11.sp,
+                        color = colors.textSecondary
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TaskitoPeriodicSurfacedRow(
+    template: TemplateEntity,
+    isOverdue: Boolean,
+    elapsedDays: Long,
+    isFirst: Boolean,
+    isLast: Boolean,
+    onCompletedNow: () -> Unit
+) {
+    val colors = LifeStreamTheme.colors
+    val badgeColor = if (isOverdue) colors.statusOverdue else colors.statusTarget
+    val badgeText = if (isOverdue) {
+        val daysLate = elapsedDays - (template.intervalDays ?: 7)
+        "❗ 期限超過 (${daysLate}日遅れ)"
+    } else {
+        "◎ 本日推奨"
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Continuous stem line
+        Box(
+            modifier = Modifier
+                .width(32.dp)
+                .fillMaxHeight(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(modifier = Modifier.fillMaxHeight()) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .width(2.dp)
+                        .background(if (isFirst) Color.Transparent else colors.border)
+                        .align(Alignment.CenterHorizontally)
+                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .width(2.dp)
+                        .background(if (isLast) Color.Transparent else colors.border)
+                        .align(Alignment.CenterHorizontally)
+                )
+            }
+
+            // Node
+            Box(
+                modifier = Modifier
+                    .size(18.dp)
+                    .clip(CircleShape)
+                    .border(2.dp, badgeColor, CircleShape)
+                    .background(badgeColor.copy(alpha = 0.2f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(badgeColor)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Card
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(12.dp))
+                .border(1.dp, badgeColor.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                .background(badgeColor.copy(alpha = 0.05f))
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(badgeColor.copy(alpha = 0.15f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = badgeText,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = badgeColor
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "${template.iconKey ?: "🧹"} ${template.title}",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "推奨周期: ${template.intervalDays ?: 7}日ごと • 前回から${elapsedDays}日経過",
+                        fontSize = 11.sp,
+                        color = colors.textSecondary
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Button(
+                    onClick = onCompletedNow,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.primary,
+                        contentColor = colors.onPrimary
+                    ),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp)
+                ) {
+                    Text(
+                        text = "今やった！",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TaskitoTimelineItemRow(
@@ -453,20 +875,9 @@ fun TaskitoTimelineItemRow(
     val timeStr = LocalDateTime.ofInstant(Instant.ofEpochMilli(timestamp), zone)
         .format(DateTimeFormatter.ofPattern("HH:mm"))
 
-    val isPeriodic = item.templateId != null && item.templateId in listOf(2L, 4L, 5L, 6L, 7L, 8L)
-
-    val nodeColor = when {
-        item.isDone -> colors.statusDone
-        isPeriodic && item.templateId == 4L -> colors.statusOverdue // 排水ネット交換
-        isPeriodic && item.templateId == 2L -> colors.statusTarget  // フェイスパック
-        else -> colors.card
-    }
-    val nodeBorderColor = when {
-        item.isDone -> colors.statusDone
-        isPeriodic && item.templateId == 4L -> colors.statusOverdue
-        isPeriodic && item.templateId == 2L -> colors.statusTarget
-        else -> colors.textSecondary
-    }
+    val isDone = item.isDone
+    val nodeColor = if (isDone) colors.statusDone else colors.card
+    val nodeBorderColor = if (isDone) colors.statusDone else colors.textSecondary
 
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
@@ -535,7 +946,7 @@ fun TaskitoTimelineItemRow(
                         .clickable { onToggle() },
                     contentAlignment = Alignment.Center
                 ) {
-                    if (item.isDone) {
+                    if (isDone) {
                         Icon(
                             Icons.Default.Check,
                             contentDescription = "完了",
@@ -548,7 +959,7 @@ fun TaskitoTimelineItemRow(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Time & Details
+            // Time & Title & Notes (Decluttered: no redundant "完了" / "予定" badges)
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -577,105 +988,22 @@ fun TaskitoTimelineItemRow(
                 }
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Status Badges
-            when {
-                item.amount != null -> {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(1.dp, colors.primary, RoundedCornerShape(8.dp))
-                            .background(colors.card)
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = "¥",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.primary
-                        )
-                    }
-                }
-                item.templateId == 1L -> {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(1.dp, colors.waterBlue, RoundedCornerShape(8.dp))
-                            .background(colors.waterBlue.copy(alpha = 0.08f))
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = "習慣",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.waterBlue
-                        )
-                    }
-                }
-                item.templateId == 4L && !item.isDone -> {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(1.dp, colors.statusOverdue, RoundedCornerShape(8.dp))
-                            .background(colors.statusOverdue.copy(alpha = 0.08f))
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = "7日周期",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.statusOverdue
-                        )
-                    }
-                }
-                item.templateId == 2L && !item.isDone -> {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(1.dp, colors.statusTarget, RoundedCornerShape(8.dp))
-                            .background(colors.statusTarget.copy(alpha = 0.08f))
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = "3日周期",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.statusTarget
-                        )
-                    }
-                }
-                item.isDone -> {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(1.dp, colors.statusDone, RoundedCornerShape(8.dp))
-                            .background(colors.statusDone.copy(alpha = 0.08f))
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = "完了",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.statusDone
-                        )
-                    }
-                }
-                else -> {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(1.dp, colors.border, RoundedCornerShape(8.dp))
-                            .background(colors.card)
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = "予定",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = colors.textSecondary
-                        )
-                    }
+            // Only show useful Amount badge (if present)
+            if (item.amount != null) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .border(1.dp, colors.primary, RoundedCornerShape(8.dp))
+                        .background(colors.card)
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "¥${item.amount}",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.primary
+                    )
                 }
             }
         }

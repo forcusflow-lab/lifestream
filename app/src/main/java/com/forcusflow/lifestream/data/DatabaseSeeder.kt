@@ -1,4 +1,4 @@
-﻿package com.forcusflow.lifestream.data
+package com.forcusflow.lifestream.data
 
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -21,7 +21,7 @@ object DatabaseSeeder {
             return LocalDateTime.of(date, LocalTime.of(hour, minute)).atZone(zone).toInstant().toEpochMilli()
         }
 
-        // 1. Templates (8 core templates matching visual reference)
+        // 1. Templates (core templates with ActionTypes: CHECK, COUNT, TIMER)
         val templates = listOf(
             TemplateEntity(
                 id = 1,
@@ -32,7 +32,10 @@ object DatabaseSeeder {
                 iconKey = "💧",
                 colorHex = "#38BDF8",
                 usageCount = 10,
-                lastCompletedAt = millis(today, 14, 10)
+                lastCompletedAt = millis(today, 14, 10),
+                actionType = "COUNT",
+                unit = "杯",
+                stepValue = 1
             ),
             TemplateEntity(
                 id = 2,
@@ -43,7 +46,10 @@ object DatabaseSeeder {
                 iconKey = "🧖",
                 colorHex = "#A855F7",
                 usageCount = 8,
-                lastCompletedAt = millis(sep12, 20, 0)
+                lastCompletedAt = millis(sep12, 20, 0),
+                actionType = "CHECK",
+                unit = "回",
+                stepValue = 1
             ),
             TemplateEntity(
                 id = 3,
@@ -54,7 +60,10 @@ object DatabaseSeeder {
                 iconKey = "🍜",
                 colorHex = "#EF4444",
                 usageCount = 5,
-                lastCompletedAt = millis(sep12, 23, 15)
+                lastCompletedAt = millis(sep12, 23, 15),
+                actionType = "CHECK",
+                unit = "回",
+                stepValue = 1
             ),
             TemplateEntity(
                 id = 4,
@@ -65,7 +74,10 @@ object DatabaseSeeder {
                 iconKey = "🧹",
                 colorHex = "#8C5A3C",
                 usageCount = 6,
-                lastCompletedAt = millis(sep5, 10, 0)
+                lastCompletedAt = millis(sep5, 10, 0),
+                actionType = "CHECK",
+                unit = "回",
+                stepValue = 1
             ),
             TemplateEntity(
                 id = 5,
@@ -76,7 +88,10 @@ object DatabaseSeeder {
                 iconKey = "🛏️",
                 colorHex = "#10B981",
                 usageCount = 4,
-                lastCompletedAt = millis(sep13, 9, 0)
+                lastCompletedAt = millis(sep13, 9, 0),
+                actionType = "CHECK",
+                unit = "回",
+                stepValue = 1
             ),
             TemplateEntity(
                 id = 6,
@@ -87,7 +102,10 @@ object DatabaseSeeder {
                 iconKey = "🧼",
                 colorHex = "#F59E0B",
                 usageCount = 2,
-                lastCompletedAt = millis(aug15, 11, 0)
+                lastCompletedAt = millis(aug15, 11, 0),
+                actionType = "CHECK",
+                unit = "回",
+                stepValue = 1
             ),
             TemplateEntity(
                 id = 7,
@@ -98,7 +116,10 @@ object DatabaseSeeder {
                 iconKey = "🌀",
                 colorHex = "#6366F1",
                 usageCount = 2,
-                lastCompletedAt = millis(sep5, 14, 0)
+                lastCompletedAt = millis(sep5, 14, 0),
+                actionType = "CHECK",
+                unit = "回",
+                stepValue = 1
             ),
             TemplateEntity(
                 id = 8,
@@ -109,7 +130,24 @@ object DatabaseSeeder {
                 iconKey = "💨",
                 colorHex = "#8B5CF6",
                 usageCount = 1,
-                lastCompletedAt = millis(sep5, 15, 0)
+                lastCompletedAt = millis(sep5, 15, 0),
+                actionType = "CHECK",
+                unit = "回",
+                stepValue = 1
+            ),
+            TemplateEntity(
+                id = 9,
+                title = "勉強・読書",
+                type = "SIMPLE",
+                intervalDays = null,
+                defaultAmount = null,
+                iconKey = "⏱️",
+                colorHex = "#3B82F6",
+                usageCount = 3,
+                lastCompletedAt = null,
+                actionType = "TIMER",
+                unit = "分",
+                stepValue = 1
             )
         )
         templateDao.insertAll(templates)

@@ -1,4 +1,4 @@
-﻿package com.forcusflow.lifestream.data
+package com.forcusflow.lifestream.data
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
@@ -16,5 +16,8 @@ data class TemplateEntity(
     val iconKey: String? = null,
     val colorHex: String? = null,
     val usageCount: Int = 0,
-    val lastCompletedAt: Long? = null
+    val lastCompletedAt: Long? = null,
+    val actionType: String = "CHECK", // "CHECK", "COUNT", "TIMER"
+    val unit: String = "", // "杯", "回", "分"
+    val stepValue: Int = 1 // 1タップあたりの増分 (デフォルト: 1)
 )

@@ -1,4 +1,4 @@
-﻿package com.forcusflow.lifestream.data
+package com.forcusflow.lifestream.data
 
 import android.content.Context
 import androidx.room.Database
@@ -11,7 +11,7 @@ import kotlinx.coroutines.launch
 
 @Database(
     entities = [TimelineItemEntity::class, TemplateEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -28,7 +28,8 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "lifestream.db"
-                ).addCallback(object : Callback() {
+                ).fallbackToDestructiveMigration()
+                .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)
                         CoroutineScope(Dispatchers.IO).launch {
