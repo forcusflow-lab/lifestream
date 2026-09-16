@@ -9,6 +9,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -36,15 +38,15 @@ import java.util.Locale
 fun HistoryScreen(viewModel: MainViewModel) {
     val colors = LifeStreamTheme.colors
     val zone = ZoneId.systemDefault()
+    val today = LocalDate.now()
 
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
     val allItems by viewModel.allItems.collectAsState()
     val selectedDate by viewModel.selectedCalendarDate.collectAsState()
+    val currentYearMonth by viewModel.calendarYearMonth.collectAsState()
 
-    val currentMonthYear = remember(selectedDate) {
-        "年 月"
-    }
+    val currentMonthYearText = "${currentYearMonth.year}年 ${currentYearMonth.monthValue}月"
 
     // Determine days that have logged items
     val activeDays = remember(allItems) {
@@ -57,7 +59,7 @@ fun HistoryScreen(viewModel: MainViewModel) {
     }
 
     // Items for selected date
-    val selectedDateItems = remember(allItems, selectedDate) {
+    val selectedDateItems = remember(allItems, selectedDate, viewModel.dayCutoffHour.collectAsState().value) {
         val (start, end) = viewModel.getDayRange(selectedDate)
         allItems.filter { item ->
             val timestamp = item.completedAt ?: item.scheduledAt
@@ -139,7 +141,7 @@ fun HistoryScreen(viewModel: MainViewModel) {
                     Spacer(modifier = Modifier.height(8.dp))
                 }
             } else {
-                // Calendar Card
+                // Dynamic Calendar Card
                 item {
                     Box(
                         modifier = Modifier
@@ -150,29 +152,49 @@ fun HistoryScreen(viewModel: MainViewModel) {
                             .padding(16.dp)
                     ) {
                         Column {
-                            // Month row
+                            // Month Header with Prev/Next Controls & Today Jump
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = currentMonthYear,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.textPrimary
-                                )
-                                Text(
-                                    text = "< 今月 >",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = colors.textSecondary
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(
+                                        onClick = { viewModel.previousMonth() },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Default.ChevronLeft, contentDescription = "前月", tint = colors.textPrimary)
+                                    }
+                                    Text(
+                                        text = currentMonthYearText,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.textPrimary
+                                    )
+                                    IconButton(
+                                        onClick = { viewModel.nextMonth() },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Default.ChevronRight, contentDescription = "次月", tint = colors.textPrimary)
+                                    }
+                                }
+
+                                TextButton(
+                                    onClick = { viewModel.goToToday() },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "今月・今日",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.primary
+                                    )
+                                }
                             }
 
-                            Spacer(modifier = Modifier.height(14.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
 
-                            // Days of week header
+                            // Days of week header (Mon - Sun)
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
@@ -201,74 +223,83 @@ fun HistoryScreen(viewModel: MainViewModel) {
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(10.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
 
-                            // Grid of 3 weeks (matching image dates 01 to 21 for Sep 2026)
-                            val dayNumbers = (1..21).toList()
-                            val rows = dayNumbers.chunked(7)
+                            // Dynamic Grid calculation
+                            val firstDayOfMonth = currentYearMonth.atDay(1)
+                            val firstDayOfWeek = firstDayOfMonth.dayOfWeek.value // 1 = Mon, 7 = Sun
+                            val daysInMonth = currentYearMonth.lengthOfMonth()
 
-                            rows.forEach { week ->
+                            // Leading empty cells
+                            val leadingBlanks = firstDayOfWeek - 1
+                            val totalSlots = leadingBlanks + daysInMonth
+                            val totalWeeks = (totalSlots + 6) / 7
+
+                            for (weekIndex in 0 until totalWeeks) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(vertical = 6.dp),
+                                        .padding(vertical = 4.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    week.forEach { dayNum ->
-                                        val dayDate = LocalDate.of(2026, 9, dayNum)
-                                        val isSelected = selectedDate == dayDate
-                                        val isToday = dayNum == 15
-                                        val hasLogs = activeDays.contains(dayDate)
+                                    for (dayOfWeekIndex in 0 until 7) {
+                                        val slotIndex = weekIndex * 7 + dayOfWeekIndex
+                                        val dayNumber = slotIndex - leadingBlanks + 1
 
-                                        Column(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(
-                                                    if (isSelected) colors.primary else Color.Transparent
+                                        if (dayNumber in 1..daysInMonth) {
+                                            val dayDate = currentYearMonth.atDay(dayNumber)
+                                            val isSelected = selectedDate == dayDate
+                                            val isCurrentToday = dayDate == today
+                                            val hasLogs = activeDays.contains(dayDate)
+
+                                            Column(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(
+                                                        if (isSelected) colors.primary else Color.Transparent
+                                                    )
+                                                    .border(
+                                                        if (isCurrentToday && !isSelected) 1.dp else 0.dp,
+                                                        if (isCurrentToday && !isSelected) colors.primary else Color.Transparent,
+                                                        RoundedCornerShape(8.dp)
+                                                    )
+                                                    .clickable { viewModel.selectedCalendarDate.value = dayDate }
+                                                    .padding(vertical = 4.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                Text(
+                                                    text = String.format("%02d", dayNumber),
+                                                    fontSize = 13.sp,
+                                                    fontWeight = if (isSelected || isCurrentToday) FontWeight.Bold else FontWeight.Medium,
+                                                    color = when {
+                                                        isSelected -> colors.onPrimary
+                                                        else -> colors.textPrimary
+                                                    }
                                                 )
-                                                .border(
-                                                    if (isToday && !isSelected) 1.dp else 0.dp,
-                                                    if (isToday && !isSelected) colors.primary else Color.Transparent,
-                                                    RoundedCornerShape(8.dp)
-                                                )
-                                                .clickable { viewModel.selectedCalendarDate.value = dayDate }
-                                                .padding(vertical = 4.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally
-                                        ) {
-                                            Text(
-                                                text = String.format("%02d", dayNum),
-                                                fontSize = 13.sp,
-                                                fontWeight = if (isSelected || isToday) FontWeight.Bold else FontWeight.Medium,
-                                                color = when {
-                                                    isSelected -> colors.onPrimary
-                                                    else -> colors.textPrimary
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                // Dot indicator
+                                                if (hasLogs) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(4.dp)
+                                                            .clip(CircleShape)
+                                                            .background(if (isSelected) colors.onPrimary else colors.statusDone)
+                                                    )
+                                                } else {
+                                                    Spacer(modifier = Modifier.size(4.dp))
                                                 }
-                                            )
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            // Dot indicator
-                                            if (hasLogs) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(4.dp)
-                                                        .clip(CircleShape)
-                                                        .background(if (isSelected) colors.onPrimary else colors.statusDone)
-                                                )
-                                            } else {
-                                                Spacer(modifier = Modifier.size(4.dp))
                                             }
+                                        } else {
+                                            Spacer(modifier = Modifier.weight(1f))
                                         }
-                                    }
-                                    // Fill empty slots if last week has fewer than 7
-                                    for (i in 0 until (7 - week.size)) {
-                                        Spacer(modifier = Modifier.weight(1f))
                                     }
                                 }
                             }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(18.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     // Selected date summary row
                     val dayOfWeekStr = selectedDate.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.JAPANESE)
@@ -294,10 +325,29 @@ fun HistoryScreen(viewModel: MainViewModel) {
                     }
                 }
 
-                // List of items for selected date
-                items(selectedDateItems, key = { it.id }) { item ->
-                    HistoryItemCard(item = item)
-                    Spacer(modifier = Modifier.height(8.dp))
+                if (selectedDateItems.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 16.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(colors.card)
+                                .padding(20.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "この日の記録はありません",
+                                fontSize = 13.sp,
+                                color = colors.textSecondary
+                            )
+                        }
+                    }
+                } else {
+                    items(selectedDateItems, key = { it.id }) { item ->
+                        HistoryItemCard(item = item)
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
                 }
             }
         }
@@ -360,7 +410,7 @@ fun HistoryItemCard(item: TimelineItemEntity) {
                             .padding(horizontal = 10.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            text = "¥",
+                            text = "¥${item.amount}",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = colors.primary

@@ -17,6 +17,7 @@ import kotlinx.serialization.json.Json
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.time.YearMonth
 import java.time.ZoneId
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -30,7 +31,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val dayCutoffHour = MutableStateFlow(4) // 04:00 AM
 
     // Navigation state
-    val currentTab = MutableStateFlow(0) // 0: 今日, 1: 履歴, 2: 分析(周期マトリクス), 3: 設定
+    val currentTab = MutableStateFlow(0) // 0: 今日, 1: 履歴, 2: 周期管理, 3: 設定
 
     // Data streams
     val templates: StateFlow<List<TemplateEntity>> = templateDao.getAllFlow()
@@ -52,10 +53,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Calendar selected date (default to 2026-09-12 for demo consistency, or today)
+    // Calendar state (support dynamic browsing across months)
+    val calendarYearMonth = MutableStateFlow(YearMonth.of(2026, 9))
     val selectedCalendarDate = MutableStateFlow(LocalDate.of(2026, 9, 12))
 
-    // Segment in Tab 3 (0: 周期マトリクス, 1: 毎日習慣・出費)
+    // Segment in Tab 3 (0: 周期タスク一覧, 1: 週マトリクス表)
     val cycleMatrixSegment = MutableStateFlow(0)
 
     // Last deleted / added item for Undo snackbar
@@ -76,21 +78,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return Pair(startMillis, endMillis)
     }
 
-    fun getItemsForDate(date: LocalDate): List<TimelineItemEntity> {
-        val (start, end) = getDayRange(date)
-        return allItems.value.filter { item ->
-            val timestamp = item.completedAt ?: item.scheduledAt
-            timestamp != null && timestamp in start..end
-        }
+    fun previousMonth() {
+        val prev = calendarYearMonth.value.minusMonths(1)
+        calendarYearMonth.value = prev
+        selectedCalendarDate.value = prev.atDay(1)
     }
 
-    fun getTodayItems(): List<TimelineItemEntity> {
+    fun nextMonth() {
+        val next = calendarYearMonth.value.plusMonths(1)
+        calendarYearMonth.value = next
+        selectedCalendarDate.value = next.atDay(1)
+    }
+
+    fun goToToday() {
         val today = LocalDate.now()
-        val (start, end) = getDayRange(today)
-        return allItems.value.filter { item ->
-            val timestamp = item.completedAt ?: item.scheduledAt
-            timestamp != null && timestamp in start..end
-        }
+        calendarYearMonth.value = YearMonth.from(today)
+        selectedCalendarDate.value = today
     }
 
     fun toggleItemDone(item: TimelineItemEntity) {
@@ -104,6 +107,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (updated.isDone && updated.templateId != null) {
                 templateDao.recordCompletion(updated.templateId, now)
             }
+        }
+    }
+
+    fun updateTimelineItem(item: TimelineItemEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            itemDao.update(item)
         }
     }
 
@@ -206,6 +215,45 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
             itemDao.insert(item)
             templateDao.recordCompletion(template.id, millis)
+        }
+    }
+
+    fun addTemplate(
+        title: String,
+        type: String,
+        intervalDays: Int?,
+        defaultAmount: Long?,
+        iconKey: String?,
+        colorHex: String?
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val template = TemplateEntity(
+                title = title,
+                type = type,
+                intervalDays = intervalDays,
+                defaultAmount = defaultAmount,
+                iconKey = iconKey,
+                colorHex = colorHex,
+                usageCount = 0,
+                lastCompletedAt = null
+            )
+            templateDao.insert(template)
+        }
+    }
+
+    fun deleteTemplate(template: TemplateEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            templateDao.delete(template)
+        }
+    }
+
+    fun reloadSampleData() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val all = itemDao.getAll()
+            all.forEach { itemDao.delete(it) }
+            val tList = templateDao.getAll()
+            tList.forEach { templateDao.delete(it) }
+            DatabaseSeeder.seed(templateDao, itemDao)
         }
     }
 

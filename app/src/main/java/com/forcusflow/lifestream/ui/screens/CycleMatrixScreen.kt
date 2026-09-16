@@ -10,6 +10,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.forcusflow.lifestream.data.TemplateEntity
@@ -28,7 +32,6 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
 enum class MatrixCellStatus {
@@ -60,10 +63,13 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
     val zone = ZoneId.systemDefault()
     val today = LocalDate.now()
 
-    var selectedSegment by remember { mutableStateOf(0) } // 0: 周期タスク・一覧, 1: 週マトリクス表
+    var selectedSegment by remember { mutableStateOf(0) } // 0: 周期タスク一覧, 1: 週マトリクス表
+    var showAddPeriodicDialog by remember { mutableStateOf(false) }
 
     // Calculate water count for today
-    val (todayStart, todayEnd) = remember(today) { viewModel.getDayRange(today) }
+    val (todayStart, todayEnd) = remember(today, viewModel.dayCutoffHour.collectAsState().value) {
+        viewModel.getDayRange(today)
+    }
     val waterItemsToday = remember(allItems, todayStart, todayEnd) {
         allItems.filter { item ->
             val t = item.completedAt ?: item.scheduledAt
@@ -72,8 +78,16 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
     }
     val waterCount = waterItemsToday.size
 
-    val periodicTemplates = remember(templates) {
-        templates.filter { it.type == "INTERVAL" }
+    // Sort periodic tasks by urgency: Overdue first, then Due Soon, then On Track
+    val periodicTemplates = remember(templates, today) {
+        templates.filter { it.type == "INTERVAL" }.sortedByDescending { template ->
+            val lastDoneDate = template.lastCompletedAt?.let {
+                LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
+            }
+            val elapsed = if (lastDoneDate != null) ChronoUnit.DAYS.between(lastDoneDate, today) else 999L
+            val interval = template.intervalDays ?: 7
+            elapsed - interval
+        }
     }
 
     // Interactive overrides for Matrix Grid
@@ -134,6 +148,19 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        floatingActionButton = {
+            if (selectedSegment == 0) {
+                FloatingActionButton(
+                    onClick = { showAddPeriodicDialog = true },
+                    containerColor = colors.primary,
+                    contentColor = colors.onPrimary,
+                    shape = CircleShape,
+                    modifier = Modifier.size(52.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "周期タスク追加", modifier = Modifier.size(26.dp))
+                }
+            }
+        },
         containerColor = colors.background
     ) { padding ->
         Box(
@@ -207,7 +234,7 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                                 onCompletedNow = {
                                     viewModel.recordCycleTask(template, LocalDate.now())
                                     coroutineScope.launch {
-                                        snackbarHostState.showSnackbar("「」の完了を記録しました！")
+                                        snackbarHostState.showSnackbar("「${template.title}」の完了を記録しました！")
                                     }
                                 }
                             )
@@ -280,9 +307,9 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                             contentPadding = PaddingValues(bottom = 120.dp)
                         ) {
                             items(baseRows, key = { it.templateId }) { row ->
-                                val cell1 = cellOverrides["_1"] ?: row.week1
-                                val cell2 = cellOverrides["_2"] ?: row.week2
-                                val cell3 = cellOverrides["_3"] ?: row.week3
+                                val cell1 = cellOverrides["${row.templateId}_1"] ?: row.week1
+                                val cell2 = cellOverrides["${row.templateId}_2"] ?: row.week2
+                                val cell3 = cellOverrides["${row.templateId}_3"] ?: row.week3
 
                                 Row(
                                     modifier = Modifier
@@ -313,7 +340,7 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                                     ) {
                                         MatrixCellBadge(cell = cell1) {
                                             val updated = MatrixCellData(MatrixCellStatus.DONE, "9/5 済", true)
-                                            cellOverrides["_1"] = updated
+                                            cellOverrides["${row.templateId}_1"] = updated
                                             val tmpl = templates.find { it.id == row.templateId }
                                             if (tmpl != null) {
                                                 viewModel.recordCycleTask(tmpl, LocalDate.of(2026, 9, 5))
@@ -331,7 +358,7 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                                     ) {
                                         MatrixCellBadge(cell = cell2) {
                                             val updated = MatrixCellData(MatrixCellStatus.DONE, "9/12 済", true)
-                                            cellOverrides["_2"] = updated
+                                            cellOverrides["${row.templateId}_2"] = updated
                                             val tmpl = templates.find { it.id == row.templateId }
                                             if (tmpl != null) {
                                                 viewModel.recordCycleTask(tmpl, LocalDate.of(2026, 9, 12))
@@ -349,7 +376,7 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                                     ) {
                                         MatrixCellBadge(cell = cell3) {
                                             val updated = MatrixCellData(MatrixCellStatus.DONE, "9/19 済", true)
-                                            cellOverrides["_3"] = updated
+                                            cellOverrides["${row.templateId}_3"] = updated
                                             val tmpl = templates.find { it.id == row.templateId }
                                             if (tmpl != null) {
                                                 viewModel.recordCycleTask(tmpl, LocalDate.of(2026, 9, 19))
@@ -422,6 +449,27 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
             }
         }
     }
+
+    // Dialog to add custom periodic task
+    if (showAddPeriodicDialog) {
+        AddPeriodicTaskDialog(
+            onDismiss = { showAddPeriodicDialog = false },
+            onAdd = { title, intervalDays, iconKey ->
+                viewModel.addTemplate(
+                    title = title,
+                    type = "INTERVAL",
+                    intervalDays = intervalDays,
+                    defaultAmount = null,
+                    iconKey = iconKey,
+                    colorHex = "#8C5A3C"
+                )
+                showAddPeriodicDialog = false
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("「$title」を追加しました！")
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -442,19 +490,27 @@ fun PeriodicTaskCard(
     val isOverdue = elapsedDays != null && elapsedDays >= interval
 
     val lastDoneText = if (lastDoneDate != null && elapsedDays != null) {
-        "前回: 月日 (日前)"
+        "前回: ${lastDoneDate.monthValue}月${lastDoneDate.dayOfMonth}日 (${elapsedDays}日前)"
     } else {
         "未実施 (記録なし)"
+    }
+
+    val nextTargetDate = lastDoneDate?.plusDays(interval.toLong())
+    val nextTargetText = if (nextTargetDate != null) {
+        "次回予定: ${nextTargetDate.monthValue}月${nextTargetDate.dayOfMonth}日"
+    } else {
+        "次回予定: いつでも"
     }
 
     val statusBadgeColor = when {
         isOverdue -> colors.statusOverdue
         elapsedDays != null && elapsedDays >= (interval - 1) -> colors.statusWarning
-        else -> colors.statusDone
+        lastDoneDate != null -> colors.statusDone
+        else -> colors.textSecondary
     }
 
     val statusBadgeText = when {
-        isOverdue -> "❗ 期限超過 (日遅れ)"
+        isOverdue -> "❗ 期限超過 (${elapsedDays!! - interval}日遅れ)"
         elapsedDays != null && elapsedDays >= (interval - 1) -> "⚠ 本日推奨"
         lastDoneDate != null -> "✓ 順調"
         else -> "未着手"
@@ -485,8 +541,8 @@ fun PeriodicTaskCard(
                             color = colors.textPrimary
                         )
                         Text(
-                            text = "推奨周期: 日ごと",
-                            fontSize = 12.sp,
+                            text = "推奨周期: ${template.intervalDays ?: 7}日ごと | $nextTargetText",
+                            fontSize = 11.sp,
                             color = colors.textSecondary
                         )
                     }
@@ -550,6 +606,109 @@ fun PeriodicTaskCard(
             }
         }
     }
+}
+
+@Composable
+fun AddPeriodicTaskDialog(
+    onDismiss: () -> Unit,
+    onAdd: (title: String, intervalDays: Int, iconKey: String) -> Unit
+) {
+    val colors = LifeStreamTheme.colors
+    var title by remember { mutableStateOf("") }
+    var intervalText by remember { mutableStateOf("7") }
+    var iconKey by remember { mutableStateOf("🧹") }
+
+    val iconOptions = listOf("🧹", "🧖", "🛏️", "🧼", "🌀", "💨", "🌿", "💊", "🚗", "🪴")
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = colors.card,
+        title = {
+            Text(
+                text = "新しい周期タスクを追加",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = colors.textPrimary
+            )
+        },
+        text = {
+            Column {
+                Text(
+                    text = "アイコンを選択:",
+                    fontSize = 12.sp,
+                    color = colors.textSecondary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    iconOptions.forEach { ic ->
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(
+                                    1.dp,
+                                    if (iconKey == ic) colors.primary else colors.border,
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .background(if (iconKey == ic) colors.primary.copy(alpha = 0.15f) else colors.card)
+                                .clickable { iconKey = ic },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(text = ic, fontSize = 18.sp)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("タスク名 (例: エアコン清掃)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedTextField(
+                    value = intervalText,
+                    onValueChange = { if (it.all { c -> c.isDigit() }) intervalText = it },
+                    label = { Text("実施周期の日数 (例: 7, 14, 30)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val days = intervalText.toIntOrNull() ?: 7
+                    if (title.isNotBlank()) {
+                        onAdd(title, days, iconKey)
+                    }
+                },
+                enabled = title.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colors.primary,
+                    contentColor = colors.onPrimary
+                )
+            ) {
+                Text("追加")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("キャンセル")
+            }
+        }
+    )
 }
 
 @Composable

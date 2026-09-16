@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -20,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,6 +54,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
     val anytimePending by viewModel.anytimePendingItems.collectAsState()
 
     var showAddSheet by remember { mutableStateOf(false) }
+    var itemToEdit by remember { mutableStateOf<TimelineItemEntity?>(null) }
 
     val zone = ZoneId.systemDefault()
     val now = LocalDateTime.now()
@@ -59,7 +62,9 @@ fun TimelineScreen(viewModel: MainViewModel) {
     val nowTimeStr = now.format(DateTimeFormatter.ofPattern("HH:mm"))
 
     val today = LocalDate.now()
-    val (todayStart, todayEnd) = remember(today) { viewModel.getDayRange(today) }
+    val (todayStart, todayEnd) = remember(today, viewModel.dayCutoffHour.collectAsState().value) {
+        viewModel.getDayRange(today)
+    }
 
     // Collect today's items sorted chronologically
     val todayItems = remember(allItems, todayStart, todayEnd) {
@@ -115,49 +120,57 @@ fun TimelineScreen(viewModel: MainViewModel) {
                 subtitle = "やったこと事実ログ ＋ これからToDo ＋ 周期推奨"
             )
 
-            // Anytime ToDo Carousel (Top card)
+            // Anytime ToDo Section (Scrollable row if multiple, or elegant card)
             if (anytimePending.isNotEmpty()) {
-                val anytimeItem = anytimePending.first()
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 4.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .border(1.dp, colors.border, RoundedCornerShape(12.dp))
-                        .background(colors.card)
-                        .clickable { viewModel.toggleItemDone(anytimeItem) }
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(20.dp)
-                                .border(1.5.dp, colors.primary, RoundedCornerShape(5.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (anytimeItem.isDone) {
-                                Icon(
-                                    Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = colors.statusDone,
-                                    modifier = Modifier.size(16.dp)
-                                )
+                Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
+                    Text(
+                        text = "今日中のToDo (件)",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.textSecondary
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        anytimePending.forEach { anytimeItem ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .border(1.dp, colors.border, RoundedCornerShape(12.dp))
+                                    .background(colors.card)
+                                    .clickable { viewModel.toggleItemDone(anytimeItem) }
+                                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(20.dp)
+                                            .border(1.5.dp, colors.primary, RoundedCornerShape(5.dp)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (anytimeItem.isDone) {
+                                            Icon(
+                                                Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = colors.statusDone,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = anytimeItem.title,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = colors.textPrimary,
+                                        textDecoration = if (anytimeItem.isDone) TextDecoration.LineThrough else null
+                                    )
+                                }
                             }
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = anytimeItem.title,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = colors.textPrimary,
-                                textDecoration = if (anytimeItem.isDone) TextDecoration.LineThrough else null
-                            )
-                            Text(
-                                text = "時間指定なしToDo（タップで完了）",
-                                fontSize = 11.sp,
-                                color = colors.textSecondary
-                            )
                         }
                     }
                 }
@@ -227,39 +240,78 @@ fun TimelineScreen(viewModel: MainViewModel) {
                     .padding(horizontal = 20.dp),
                 contentPadding = PaddingValues(bottom = 80.dp)
             ) {
-                itemsIndexed(timelineEntries) { index, entry ->
-                    val isFirst = index == 0
-                    val isLast = index == timelineEntries.size - 1
-
-                    when (entry) {
-                        is TimelineEntry.NowLine -> {
-                            TaskitoNowLineRow(
-                                timeStr = entry.timeStr,
-                                isFirst = isFirst,
-                                isLast = isLast
-                            )
+                if (todayItems.isEmpty()) {
+                    // Encouraging Empty State
+                    item {
+                        TaskitoNowLineRow(
+                            timeStr = nowTimeStr,
+                            isFirst = true,
+                            isLast = false
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 24.dp, horizontal = 12.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .border(1.dp, colors.border, RoundedCornerShape(14.dp))
+                                .background(colors.card)
+                                .padding(20.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "📝 今日のタイムラインはまだ空です",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.textPrimary
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "上のクイックバーや右下の ＋ ボタンから、\n水・食事・予定などを気軽に記録してみましょう！",
+                                    fontSize = 12.sp,
+                                    color = colors.textSecondary,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    lineHeight = 18.sp
+                                )
+                            }
                         }
-                        is TimelineEntry.Item -> {
-                            val item = entry.entity
-                            TaskitoTimelineItemRow(
-                                item = item,
-                                isFirst = isFirst,
-                                isLast = isLast,
-                                onToggle = { viewModel.toggleItemDone(item) },
-                                onDelete = {
-                                    viewModel.deleteItem(item)
-                                    coroutineScope.launch {
-                                        val res = snackbarHostState.showSnackbar(
-                                            message = " を削除しました",
-                                            actionLabel = "元に戻す",
-                                            duration = SnackbarDuration.Short
-                                        )
-                                        if (res == SnackbarResult.ActionPerformed) {
-                                            viewModel.restoreItem(item)
+                    }
+                } else {
+                    itemsIndexed(timelineEntries) { index, entry ->
+                        val isFirst = index == 0
+                        val isLast = index == timelineEntries.size - 1
+
+                        when (entry) {
+                            is TimelineEntry.NowLine -> {
+                                TaskitoNowLineRow(
+                                    timeStr = entry.timeStr,
+                                    isFirst = isFirst,
+                                    isLast = isLast
+                                )
+                            }
+                            is TimelineEntry.Item -> {
+                                val item = entry.entity
+                                TaskitoTimelineItemRow(
+                                    item = item,
+                                    isFirst = isFirst,
+                                    isLast = isLast,
+                                    onToggle = { viewModel.toggleItemDone(item) },
+                                    onClick = { itemToEdit = item },
+                                    onDelete = {
+                                        viewModel.deleteItem(item)
+                                        coroutineScope.launch {
+                                            val res = snackbarHostState.showSnackbar(
+                                                message = " を削除しました",
+                                                actionLabel = "元に戻す",
+                                                duration = SnackbarDuration.Short
+                                            )
+                                            if (res == SnackbarResult.ActionPerformed) {
+                                                viewModel.restoreItem(item)
+                                            }
                                         }
                                     }
-                                }
-                            )
+                                )
+                            }
                         }
                     }
                 }
@@ -267,12 +319,39 @@ fun TimelineScreen(viewModel: MainViewModel) {
         }
     }
 
+    // Add Sheet
     if (showAddSheet) {
         AddItemBottomSheet(
             templates = templates,
             onDismiss = { showAddSheet = false },
             onSave = { title, isDone, scheduledAt, completedAt, amount, note, templateId ->
                 viewModel.addTimelineItem(title, isDone, scheduledAt, completedAt, amount, note, templateId)
+            }
+        )
+    }
+
+    // Edit Item Dialog
+    itemToEdit?.let { item ->
+        EditItemDialog(
+            item = item,
+            onDismiss = { itemToEdit = null },
+            onSave = { updated ->
+                viewModel.updateTimelineItem(updated)
+                itemToEdit = null
+            },
+            onDelete = {
+                viewModel.deleteItem(item)
+                itemToEdit = null
+                coroutineScope.launch {
+                    val res = snackbarHostState.showSnackbar(
+                        message = " を削除しました",
+                        actionLabel = "元に戻す",
+                        duration = SnackbarDuration.Short
+                    )
+                    if (res == SnackbarResult.ActionPerformed) {
+                        viewModel.restoreItem(item)
+                    }
+                }
             }
         )
     }
@@ -365,6 +444,7 @@ fun TaskitoTimelineItemRow(
     isFirst: Boolean,
     isLast: Boolean,
     onToggle: () -> Unit,
+    onClick: () -> Unit,
     onDelete: () -> Unit
 ) {
     val colors = LifeStreamTheme.colors
@@ -416,7 +496,7 @@ fun TaskitoTimelineItemRow(
                 .fillMaxWidth()
                 .height(IntrinsicSize.Min)
                 .background(colors.background)
-                .clickable { onToggle() }
+                .clickable { onClick() }
                 .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -445,21 +525,22 @@ fun TaskitoTimelineItemRow(
                     )
                 }
 
-                // Node Circle (Interactive)
+                // Node Circle (Interactive - tap to toggle done)
                 Box(
                     modifier = Modifier
-                        .size(16.dp)
+                        .size(18.dp)
                         .clip(CircleShape)
                         .border(2.dp, nodeBorderColor, CircleShape)
-                        .background(nodeColor),
+                        .background(nodeColor)
+                        .clickable { onToggle() },
                     contentAlignment = Alignment.Center
                 ) {
                     if (item.isDone) {
                         Icon(
                             Icons.Default.Check,
-                            contentDescription = null,
+                            contentDescription = "完了",
                             tint = Color.White,
-                            modifier = Modifier.size(11.dp)
+                            modifier = Modifier.size(12.dp)
                         )
                     }
                 }
@@ -599,4 +680,117 @@ fun TaskitoTimelineItemRow(
             }
         }
     }
+}
+
+@Composable
+fun EditItemDialog(
+    item: TimelineItemEntity,
+    onDismiss: () -> Unit,
+    onSave: (TimelineItemEntity) -> Unit,
+    onDelete: () -> Unit
+) {
+    val colors = LifeStreamTheme.colors
+    var title by remember { mutableStateOf(item.title) }
+    var note by remember { mutableStateOf(item.note ?: "") }
+    var amountText by remember { mutableStateOf(item.amount?.toString() ?: "") }
+    var isDone by remember { mutableStateOf(item.isDone) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = colors.card,
+        title = {
+            Text(
+                text = "記録の編集",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = colors.textPrimary
+            )
+        },
+        text = {
+            Column {
+                // Done toggle
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { isDone = !isDone }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = isDone,
+                        onCheckedChange = { isDone = it }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (isDone) "完了済み (Done)" else "予定 (ToDo)",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.textPrimary
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("タイトル") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    label = { Text("メモ・言い訳") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = { if (it.all { char -> char.isDigit() }) amountText = it },
+                    label = { Text("支出金額 (¥)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val updated = item.copy(
+                        title = title,
+                        note = note.ifBlank { null },
+                        amount = amountText.toLongOrNull(),
+                        isDone = isDone,
+                        completedAt = if (isDone && item.completedAt == null) System.currentTimeMillis() else item.completedAt
+                    )
+                    onSave(updated)
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colors.primary,
+                    contentColor = colors.onPrimary
+                )
+            ) {
+                Text("保存")
+            }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onDelete) {
+                    Text("削除", color = colors.statusOverdue)
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+                TextButton(onClick = onDismiss) {
+                    Text("キャンセル")
+                }
+            }
+        }
+    )
 }

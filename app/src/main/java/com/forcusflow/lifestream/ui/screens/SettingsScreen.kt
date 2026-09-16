@@ -1,5 +1,8 @@
 package com.forcusflow.lifestream.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -9,6 +12,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,6 +43,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
 
     var showCutoffDialog by remember { mutableStateOf(false) }
     var showTemplatesDialog by remember { mutableStateOf(false) }
+    var showResetConfirmDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -121,7 +127,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 // Item 2: Templates
                 SettingActionCard(
                     title = "テンプレート一覧管理",
-                    subtitle = "水, パック, シーツ, 夜食など 件登録中",
+                    subtitle = "水, パック, シーツ, 夜食など ${templates.size}件登録中",
                     actionLabel = "編集 >",
                     onClick = { showTemplatesDialog = true }
                 )
@@ -130,18 +136,27 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 // Item 3: Data Export
                 SettingActionCard(
                     title = "データ書き出し & バックアップ",
-                    subtitle = "SQLite DB / JSON 形式でエクスポート",
+                    subtitle = "SQLite DB / JSON 形式でエクスポート (クリップボードコピー可)",
                     actionLabel = "実行 >",
                     onClick = {
                         val json = viewModel.exportJson()
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = ClipData.newPlainText("LifeStream Backup", json)
+                        clipboard.setPrimaryClip(clip)
+
                         val sendIntent = Intent().apply {
                             action = Intent.ACTION_SEND
                             putExtra(Intent.EXTRA_TEXT, json)
                             type = "application/json"
                         }
-                        context.startActivity(Intent.createChooser(sendIntent, "LifeStream Backup JSON"))
+                        try {
+                            context.startActivity(Intent.createChooser(sendIntent, "LifeStream Backup JSON"))
+                        } catch (e: Exception) {
+                            // ignore if no share targets
+                        }
+
                         coroutineScope.launch {
-                            snackbarHostState.showSnackbar("JSONデータを書き出しました")
+                            snackbarHostState.showSnackbar("JSONデータをクリップボードにコピーしました")
                         }
                     }
                 )
@@ -158,6 +173,15 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         }
                     }
                 )
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Item 5: Reset / Sample Data
+                SettingActionCard(
+                    title = "サンプルデータの復元・再投入",
+                    subtitle = "初期モックデータ（周期6種、水、夜食ログ）へリセット",
+                    actionLabel = "復元 >",
+                    onClick = { showResetConfirmDialog = true }
+                )
             }
 
             Spacer(modifier = Modifier.height(80.dp))
@@ -168,10 +192,11 @@ fun SettingsScreen(viewModel: MainViewModel) {
     if (showCutoffDialog) {
         AlertDialog(
             onDismissRequest = { showCutoffDialog = false },
-            title = { Text("日付リセット境界時刻") },
+            containerColor = colors.card,
+            title = { Text("日付リセット境界時刻", fontWeight = FontWeight.Bold, color = colors.textPrimary) },
             text = {
                 Column {
-                    Text("深夜何時までを「今日」として集計するか選択してください：", fontSize = 13.sp)
+                    Text("深夜何時までを「今日」として集計するか選択してください：", fontSize = 13.sp, color = colors.textSecondary)
                     Spacer(modifier = Modifier.height(10.dp))
                     listOf(0, 3, 4, 5, 6).forEach { hour ->
                         Row(
@@ -192,7 +217,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                 }
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("午前 %02d:00".format(hour), fontSize = 14.sp)
+                            Text("午前 %02d:00".format(hour), fontSize = 14.sp, color = colors.textPrimary)
                         }
                     }
                 }
@@ -209,27 +234,35 @@ fun SettingsScreen(viewModel: MainViewModel) {
     if (showTemplatesDialog) {
         AlertDialog(
             onDismissRequest = { showTemplatesDialog = false },
-            title = { Text("テンプレート一覧 (件)") },
+            containerColor = colors.card,
+            title = { Text("テンプレート管理 (${templates.size}件)", fontWeight = FontWeight.Bold, color = colors.textPrimary) },
             text = {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     templates.forEach { t ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 6.dp),
+                                .padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(text = t.iconKey ?: "📌", fontSize = 16.sp)
-                                Spacer(modifier = Modifier.width(8.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                Text(text = t.iconKey ?: "📌", fontSize = 18.sp)
+                                Spacer(modifier = Modifier.width(10.dp))
                                 Column {
-                                    Text(text = t.title, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text(text = t.title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
                                     val interval = if (t.intervalDays != null) "${t.intervalDays}日周期" else t.type
-                                    Text(text = interval, fontSize = 11.sp, color = colors.textSecondary)
+                                    Text(text = "$interval • 累計${t.usageCount}回", fontSize = 11.sp, color = colors.textSecondary)
                                 }
                             }
-                            Text(text = "${t.usageCount}回", fontSize = 12.sp, color = colors.primary)
+                            IconButton(
+                                onClick = {
+                                    viewModel.deleteTemplate(t)
+                                },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = "削除", tint = colors.textSecondary, modifier = Modifier.size(18.dp))
+                            }
                         }
                         HorizontalDivider(color = colors.divider, thickness = 0.5.dp)
                     }
@@ -237,7 +270,38 @@ fun SettingsScreen(viewModel: MainViewModel) {
             },
             confirmButton = {
                 TextButton(onClick = { showTemplatesDialog = false }) {
-                    Text("完了")
+                    Text("閉じる")
+                }
+            }
+        )
+    }
+
+    // Reset Sample Data Confirm Dialog
+    if (showResetConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetConfirmDialog = false },
+            containerColor = colors.card,
+            title = { Text("サンプルデータの復元", fontWeight = FontWeight.Bold, color = colors.textPrimary) },
+            text = {
+                Text("データベースを初期化し、画像仕様通りの初期モックデータを再投入します。よろしいですか？", fontSize = 13.sp, color = colors.textPrimary)
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.reloadSampleData()
+                        showResetConfirmDialog = false
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar("サンプルデータを復元しました")
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
+                ) {
+                    Text("復元する")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetConfirmDialog = false }) {
+                    Text("キャンセル")
                 }
             }
         )
@@ -298,7 +362,7 @@ fun ThemeSelectionCard(
 
                 Column {
                     Text(
-                        text = if (isSelected) " (現在適用中)" else title,
+                        text = if (isSelected) "$title (現在適用中)" else title,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = colors.textPrimary
