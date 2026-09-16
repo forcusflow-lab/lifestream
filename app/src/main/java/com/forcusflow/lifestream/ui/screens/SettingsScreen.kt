@@ -232,50 +232,9 @@ fun SettingsScreen(viewModel: MainViewModel) {
 
     // Templates Dialog
     if (showTemplatesDialog) {
-        AlertDialog(
-            onDismissRequest = { showTemplatesDialog = false },
-            containerColor = colors.card,
-            title = { Text("テンプレート管理 (${templates.size}件)", fontWeight = FontWeight.Bold, color = colors.textPrimary) },
-            text = {
-                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                    templates.forEach { t ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                Text(text = t.iconKey ?: "📌", fontSize = 18.sp)
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    val actionInfo = when (t.actionType) {
-                                        "COUNT" -> "加算カウント (${t.unit})"
-                                        "TIMER" -> "タイマー計測 (${t.unit})"
-                                        else -> if (t.intervalDays != null) "${t.intervalDays}日周期" else t.type
-                                    }
-                                    Text(text = "$actionInfo • 累計${t.usageCount}回", fontSize = 11.sp, color = colors.textSecondary)
-                                }
-                            }
-                            IconButton(
-                                onClick = {
-                                    viewModel.deleteTemplate(t)
-                                },
-                                modifier = Modifier.size(28.dp)
-                            ) {
-                                Icon(Icons.Default.Delete, contentDescription = "削除", tint = colors.textSecondary, modifier = Modifier.size(18.dp))
-                            }
-                        }
-                        HorizontalDivider(color = colors.divider, thickness = 0.5.dp)
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showTemplatesDialog = false }) {
-                    Text("閉じる")
-                }
-            }
+        com.forcusflow.lifestream.ui.components.TemplateManagerDialog(
+            viewModel = viewModel,
+            onDismiss = { showTemplatesDialog = false }
         )
     }
 

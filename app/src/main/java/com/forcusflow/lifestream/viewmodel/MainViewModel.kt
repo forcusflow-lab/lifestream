@@ -169,7 +169,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 scheduledAt = null,
                 completedAt = now,
                 amount = template.defaultAmount,
-                note = "時間計測完了 ($durationText)",
+                note = "計測時間: $durationText",
                 templateId = template.id
             )
             val id = itemDao.insert(newItem)
@@ -209,10 +209,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     val nextCount = currentCount + template.stepValue
                     val unitStr = if (template.unit.isNotBlank()) template.unit else "杯"
-                    Pair("${template.title} (${nextCount}${unitStr}目)", "デイリー習慣カウント")
+                    Pair("${template.title} (${nextCount}${unitStr}目)", null)
                 }
                 else -> {
-                    Pair(template.title, "クイック記録完了")
+                    Pair(template.title, null)
                 }
             }
 

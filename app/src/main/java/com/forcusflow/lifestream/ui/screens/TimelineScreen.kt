@@ -63,6 +63,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
 
     var showAddSheet by remember { mutableStateOf(false) }
     var itemToEdit by remember { mutableStateOf<TimelineItemEntity?>(null) }
+    var showTemplateManagerDialog by remember { mutableStateOf(false) }
 
     val zone = ZoneId.systemDefault()
     val now = LocalDateTime.now()
@@ -260,6 +261,32 @@ fun TimelineScreen(viewModel: MainViewModel) {
                         )
                     }
                 }
+
+                // "+ 管理" Chip
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .border(1.dp, colors.border, RoundedCornerShape(10.dp))
+                        .background(colors.card)
+                        .clickable { showTemplateManagerDialog = true }
+                        .padding(horizontal = 12.dp, vertical = 7.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = null,
+                            tint = colors.textSecondary,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = "管理",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.textSecondary
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(4.dp))
@@ -374,11 +401,18 @@ fun TimelineScreen(viewModel: MainViewModel) {
     // Add Sheet
     if (showAddSheet) {
         AddItemBottomSheet(
-            templates = templates,
             onDismiss = { showAddSheet = false },
             onSave = { title, isDone, scheduledAt, completedAt, amount, note, templateId ->
                 viewModel.addTimelineItem(title, isDone, scheduledAt, completedAt, amount, note, templateId)
             }
+        )
+    }
+
+    // Template Manager Dialog
+    if (showTemplateManagerDialog) {
+        com.forcusflow.lifestream.ui.components.TemplateManagerDialog(
+            viewModel = viewModel,
+            onDismiss = { showTemplateManagerDialog = false }
         )
     }
 
@@ -734,18 +768,14 @@ fun TaskitoPeriodicSurfacedRow(
 ) {
     val colors = LifeStreamTheme.colors
     val badgeColor = if (isOverdue) colors.statusOverdue else colors.statusTarget
-    val badgeText = if (isOverdue) {
-        val daysLate = elapsedDays - (template.intervalDays ?: 7)
-        "❗ 期限超過 (${daysLate}日遅れ)"
-    } else {
-        "◎ 本日推奨"
-    }
+    val badgeText = if (isOverdue) "期限超過" else "本日推奨"
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(IntrinsicSize.Min)
-            .padding(vertical = 4.dp),
+            .clickable { onCompletedNow() }
+            .padding(vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Continuous stem line
@@ -772,88 +802,81 @@ fun TaskitoPeriodicSurfacedRow(
                 )
             }
 
-            // Node
+            // Compact Node Circle (Red or Purple)
             Box(
                 modifier = Modifier
                     .size(18.dp)
                     .clip(CircleShape)
                     .border(2.dp, badgeColor, CircleShape)
-                    .background(badgeColor.copy(alpha = 0.2f)),
+                    .background(badgeColor.copy(alpha = 0.15f))
+                    .clickable { onCompletedNow() },
                 contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(badgeColor)
+                Text(
+                    text = if (isOverdue) "!" else "•",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = badgeColor
                 )
             }
         }
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        // Card
-        Box(
+        // 1-line integrated row matching Taskito style
+        Row(
             modifier = Modifier
                 .weight(1f)
-                .clip(RoundedCornerShape(12.dp))
-                .border(1.dp, badgeColor.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(10.dp))
+                .border(1.dp, badgeColor.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
                 .background(badgeColor.copy(alpha = 0.05f))
-                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(badgeColor.copy(alpha = 0.15f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = badgeText,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = badgeColor
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "${template.iconKey ?: "🧹"} ${template.title}",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.textPrimary
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "推奨周期: ${template.intervalDays ?: 7}日ごと • 前回から${elapsedDays}日経過",
-                        fontSize = 11.sp,
-                        color = colors.textSecondary
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Button(
-                    onClick = onCompletedNow,
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = colors.primary,
-                        contentColor = colors.onPrimary
-                    ),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp)
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(badgeColor.copy(alpha = 0.15f))
+                        .padding(horizontal = 5.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = "今やった！",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
+                        text = badgeText,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = badgeColor
                     )
                 }
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "${template.iconKey ?: "🧹"} ${template.title}",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary,
+                    maxLines = 1
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "(${elapsedDays}日前)",
+                    fontSize = 11.sp,
+                    color = colors.textSecondary
+                )
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
+
+            OutlinedButton(
+                onClick = onCompletedNow,
+                shape = RoundedCornerShape(8.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, badgeColor.copy(alpha = 0.6f)),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                modifier = Modifier.height(28.dp)
+            ) {
+                Text("✓ 記録", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = badgeColor)
             }
         }
     }
@@ -978,9 +1001,20 @@ fun TaskitoTimelineItemRow(
                     color = colors.textPrimary,
                     textDecoration = if (item.isDone && item.scheduledAt != null) TextDecoration.LineThrough else null
                 )
-                if (!item.note.isNullOrBlank()) {
+                val displayNote = remember(item.note) {
+                    when {
+                        item.note.isNullOrBlank() -> null
+                        item.note in listOf("クイック記録完了", "時間計測完了", "デイリー水分補給", "デイリー習慣カウント") -> null
+                        item.note.startsWith("時間計測完了 (") && item.note.endsWith(")") -> {
+                            val inner = item.note.removePrefix("時間計測完了 (").removeSuffix(")")
+                            "計測時間: $inner"
+                        }
+                        else -> item.note
+                    }
+                }
+                if (displayNote != null) {
                     Text(
-                        text = item.note,
+                        text = displayNote,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Normal,
                         color = colors.textSecondary

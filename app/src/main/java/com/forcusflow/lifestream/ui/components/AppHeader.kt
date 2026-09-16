@@ -1,4 +1,4 @@
-﻿package com.forcusflow.lifestream.ui.components
+package com.forcusflow.lifestream.ui.components
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
@@ -12,7 +12,7 @@ import com.forcusflow.lifestream.ui.theme.LifeStreamTheme
 @Composable
 fun AppHeader(
     title: String,
-    subtitle: String,
+    subtitle: String? = null,
     modifier: Modifier = Modifier
 ) {
     val colors = LifeStreamTheme.colors
@@ -29,12 +29,14 @@ fun AppHeader(
             color = colors.textPrimary,
             letterSpacing = (-0.5).sp
         )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = subtitle,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Normal,
-            color = colors.textSecondary
-        )
+        if (!subtitle.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = subtitle,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Normal,
+                color = colors.textSecondary
+            )
+        }
     }
 }

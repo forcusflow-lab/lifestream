@@ -1,5 +1,6 @@
 package com.forcusflow.lifestream.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,6 +22,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.forcusflow.lifestream.data.TemplateEntity
@@ -156,53 +158,52 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                 .padding(padding)
         ) {
             AppHeader(
-                title = "周期管理 ＆ 習慣",
-                subtitle = "「いつやったかわかる」家事・セルフケア周期トラッカー"
+                title = "周期・メンテナンス"
             )
 
-                // Segment Control
-                Row(
+            // Segment Control
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 6.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(colors.card)
+                    .border(1.dp, colors.border, RoundedCornerShape(12.dp))
+                    .padding(3.dp)
+            ) {
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 6.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(colors.card)
-                        .border(1.dp, colors.border, RoundedCornerShape(12.dp))
-                        .padding(4.dp)
+                        .weight(1f)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(if (selectedSegment == 0) colors.primary else Color.Transparent)
+                        .clickable { selectedSegment = 0 }
+                        .padding(vertical = 6.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (selectedSegment == 0) colors.primary else Color.Transparent)
-                            .clickable { selectedSegment = 0 }
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "周期タスク一覧 (いつやったか)",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = if (selectedSegment == 0) colors.onPrimary else colors.textSecondary
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (selectedSegment == 1) colors.primary else Color.Transparent)
-                            .clickable { selectedSegment = 1 }
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "週マトリクス表",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = if (selectedSegment == 1) colors.onPrimary else colors.textSecondary
-                        )
-                    }
+                    Text(
+                        text = "周期タスク一覧",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = if (selectedSegment == 0) colors.onPrimary else colors.textSecondary
+                    )
                 }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(if (selectedSegment == 1) colors.primary else Color.Transparent)
+                        .clickable { selectedSegment = 1 }
+                        .padding(vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "週マトリクス",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = if (selectedSegment == 1) colors.onPrimary else colors.textSecondary
+                    )
+                }
+            }
 
                 if (selectedSegment == 0) {
                     // Periodic Cards View: 「いつやったかわかる」
@@ -227,56 +228,54 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                         }
                     }
                 } else {
-                    // Weekly Matrix Grid View
-                    val scrollState = rememberScrollState()
-
+                    // Weekly Matrix Grid View (Responsive 100% width, no horizontal scroll)
                     Column(
                         modifier = Modifier
                             .weight(1f)
-                            .padding(horizontal = 20.dp)
-                            .horizontalScroll(scrollState)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
                     ) {
                         // Header Row
                         Row(
                             modifier = Modifier
-                                .padding(vertical = 12.dp)
-                                .width(540.dp),
+                                .fillMaxWidth()
+                                .padding(vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "タスク名 (推奨周期)",
+                                text = "タスク / 推奨周期",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = colors.textSecondary,
-                                modifier = Modifier.width(190.dp)
+                                modifier = Modifier.weight(0.45f)
                             )
-                            Box(modifier = Modifier.width(110.dp), contentAlignment = Alignment.Center) {
+                            Box(modifier = Modifier.weight(0.183f), contentAlignment = Alignment.Center) {
                                 Text(
-                                    text = "9/5 (土)",
-                                    fontSize = 12.sp,
+                                    text = "9/5",
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = colors.textSecondary
                                 )
                             }
-                            Box(modifier = Modifier.width(120.dp), contentAlignment = Alignment.Center) {
+                            Box(modifier = Modifier.weight(0.183f), contentAlignment = Alignment.Center) {
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
+                                        .clip(RoundedCornerShape(10.dp))
                                         .background(colors.primary)
-                                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                                        .padding(horizontal = 8.dp, vertical = 3.dp)
                                 ) {
                                     Text(
-                                        text = "9/12 (土)",
-                                        fontSize = 12.sp,
+                                        text = "9/12",
+                                        fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = colors.onPrimary
                                     )
                                 }
                             }
-                            Box(modifier = Modifier.width(110.dp), contentAlignment = Alignment.Center) {
+                            Box(modifier = Modifier.weight(0.183f), contentAlignment = Alignment.Center) {
                                 Text(
-                                    text = "9/19 (土)",
-                                    fontSize = 12.sp,
+                                    text = "9/19",
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = colors.textSecondary
                                 )
@@ -288,7 +287,7 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                         // Matrix Rows
                         LazyColumn(
                             modifier = Modifier
-                                .width(540.dp)
+                                .fillMaxWidth()
                                 .weight(1f),
                             contentPadding = PaddingValues(bottom = 80.dp)
                         ) {
@@ -299,29 +298,37 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
 
                                 Row(
                                     modifier = Modifier
-                                        .padding(vertical = 10.dp)
-                                        .width(540.dp),
+                                        .fillMaxWidth()
+                                        .padding(vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     // Task Title & Interval
-                                    Column(modifier = Modifier.width(190.dp)) {
+                                    Column(
+                                        modifier = Modifier
+                                            .weight(0.45f)
+                                            .padding(end = 4.dp)
+                                    ) {
                                         Text(
                                             text = row.title,
-                                            fontSize = 14.sp,
+                                            fontSize = 13.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = colors.textPrimary
+                                            color = colors.textPrimary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
-                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Spacer(modifier = Modifier.height(1.dp))
                                         Text(
-                                            text = row.intervalText,
-                                            fontSize = 11.sp,
-                                            color = colors.textSecondary
+                                            text = row.intervalText.replace("推奨インターバル: ", ""),
+                                            fontSize = 10.sp,
+                                            color = colors.textSecondary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
 
                                     // Col 1 (9/5)
                                     Box(
-                                        modifier = Modifier.width(110.dp),
+                                        modifier = Modifier.weight(0.183f),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         MatrixCellBadge(cell = cell1) {
@@ -339,7 +346,7 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
 
                                     // Col 2 (9/12)
                                     Box(
-                                        modifier = Modifier.width(120.dp),
+                                        modifier = Modifier.weight(0.183f),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         MatrixCellBadge(cell = cell2) {
@@ -357,7 +364,7 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
 
                                     // Col 3 (9/19)
                                     Box(
-                                        modifier = Modifier.width(110.dp),
+                                        modifier = Modifier.weight(0.183f),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         MatrixCellBadge(cell = cell3) {
@@ -519,17 +526,18 @@ fun PeriodicTaskCard(
                     )
                 }
 
-                Button(
+                OutlinedButton(
                     onClick = onCompletedNow,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = colors.primary,
-                        contentColor = colors.onPrimary
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = colors.primary
                     ),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                    border = BorderStroke(1.dp, colors.primary),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    modifier = Modifier.height(32.dp)
                 ) {
                     Text(
-                        text = "今やった！",
+                        text = "✓ 記録",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -650,7 +658,7 @@ fun MatrixCellBadge(
     val colors = LifeStreamTheme.colors
 
     if (cell.status == MatrixCellStatus.EMPTY) {
-        Text(text = "-", fontSize = 13.sp, color = colors.textSecondary)
+        Text(text = "-", fontSize = 12.sp, color = colors.textSecondary)
         return
     }
 
@@ -666,18 +674,18 @@ fun MatrixCellBadge(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .clickable { onClick() }
-            .padding(vertical = 4.dp)
+            .padding(vertical = 2.dp)
     ) {
         Box(
             modifier = Modifier
-                .size(24.dp)
+                .size(20.dp)
                 .clip(CircleShape)
                 .background(bgColor),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = iconChar,
-                fontSize = 13.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
             )
@@ -685,9 +693,10 @@ fun MatrixCellBadge(
         Spacer(modifier = Modifier.height(2.dp))
         Text(
             text = cell.label,
-            fontSize = 11.sp,
+            fontSize = 10.sp,
             fontWeight = FontWeight.Medium,
-            color = textColor
+            color = textColor,
+            maxLines = 1
         )
     }
 }

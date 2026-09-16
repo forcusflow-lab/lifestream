@@ -1,4 +1,4 @@
-﻿package com.forcusflow.lifestream.ui.components
+package com.forcusflow.lifestream.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -18,7 +18,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.forcusflow.lifestream.data.TemplateEntity
 import com.forcusflow.lifestream.ui.theme.LifeStreamTheme
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -26,7 +25,6 @@ import java.time.ZoneId
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddItemBottomSheet(
-    templates: List<TemplateEntity>,
     onDismiss: () -> Unit,
     onSave: (
         title: String,
@@ -43,7 +41,6 @@ fun AddItemBottomSheet(
     var note by remember { mutableStateOf("") }
     var amountText by remember { mutableStateOf("") }
     var isDone by remember { mutableStateOf(true) }
-    var selectedTemplate by remember { mutableStateOf<TemplateEntity?>(null) }
 
     // Presets for Done vs ToDo
     var selectedDonePreset by remember { mutableStateOf("今") }
@@ -266,7 +263,7 @@ fun AddItemBottomSheet(
                                 else -> now
                             }
                             val millis = doneTime.atZone(zone).toInstant().toEpochMilli()
-                            onSave(title, true, null, millis, amt, note.ifBlank { null }, selectedTemplate?.id)
+                            onSave(title, true, null, millis, amt, note.ifBlank { null }, null)
                         } else {
                             val (scheduledMillis, finalTitle) = when (selectedTodoPreset) {
                                 "今日中" -> Pair(null, if (!title.startsWith("今日中:")) "今日中: " else title)
@@ -275,7 +272,7 @@ fun AddItemBottomSheet(
                                 "明日" -> Pair(now.plusDays(1).withHour(10).withMinute(0).atZone(zone).toInstant().toEpochMilli(), title)
                                 else -> Pair(null, title)
                             }
-                            onSave(finalTitle, false, scheduledMillis, null, amt, note.ifBlank { null }, selectedTemplate?.id)
+                            onSave(finalTitle, false, scheduledMillis, null, amt, note.ifBlank { null }, null)
                         }
                         onDismiss()
                     }
