@@ -37,6 +37,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val templates: StateFlow<List<TemplateEntity>> = templateDao.getAllFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val pinnedTemplates: StateFlow<List<TemplateEntity>> = templates
+        .map { list ->
+            val pinned = list.filter { it.type != "INTERVAL" && it.isPinned }
+            if (pinned.isNotEmpty()) pinned else list.filter { it.type != "INTERVAL" }.take(4)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val allItems: StateFlow<List<TimelineItemEntity>> = itemDao.getAllFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -316,6 +323,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun toggleTemplatePin(template: TemplateEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val updated = template.copy(isPinned = !template.isPinned)
+            templateDao.update(updated)
+        }
+    }
+
     fun addTemplate(
         title: String,
         type: String,
@@ -325,7 +339,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         colorHex: String?,
         actionType: String = "CHECK",
         unit: String = "",
-        stepValue: Int = 1
+        stepValue: Int = 1,
+        isPinned: Boolean = false
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             val template = TemplateEntity(
@@ -339,7 +354,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 lastCompletedAt = null,
                 actionType = actionType,
                 unit = unit,
-                stepValue = stepValue
+                stepValue = stepValue,
+                isPinned = isPinned
             )
             templateDao.insert(template)
         }

@@ -43,7 +43,6 @@ import java.util.Locale
 sealed class TimelineRowItem {
     data class LogItem(val entity: TimelineItemEntity) : TimelineRowItem()
     data class NowMarker(val timeStr: String) : TimelineRowItem()
-    data class ActiveTimer(val template: TemplateEntity, val elapsedSeconds: Long) : TimelineRowItem()
     data class AnytimeToDo(val entity: TimelineItemEntity) : TimelineRowItem()
     data class PeriodicSurfaced(val template: TemplateEntity, val isOverdue: Boolean, val elapsedDays: Long) : TimelineRowItem()
 }
@@ -56,6 +55,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
     val coroutineScope = rememberCoroutineScope()
 
     val templates by viewModel.templates.collectAsState()
+    val pinnedTemplates by viewModel.pinnedTemplates.collectAsState()
     val allItems by viewModel.allItems.collectAsState()
     val anytimePending by viewModel.anytimePendingItems.collectAsState()
     val activeTimerTemplate by viewModel.activeTimerTemplate.collectAsState()
@@ -101,8 +101,8 @@ fun TimelineScreen(viewModel: MainViewModel) {
         }
     }
 
-    // Build timeline entries with NOW line, Stopwatch, Anytime ToDos, and Surfaced periodic tasks
-    val timelineRowItems = remember(todayItems, nowMillis, nowTimeStr, anytimePending, activeTimerTemplate, timerSeconds, dueOrOverduePeriodic) {
+    // Build timeline entries with NOW line, Anytime ToDos, and Surfaced periodic tasks
+    val timelineRowItems = remember(todayItems, nowMillis, nowTimeStr, anytimePending, dueOrOverduePeriodic) {
         val list = mutableListOf<TimelineRowItem>()
         var nowInserted = false
 
@@ -110,10 +110,6 @@ fun TimelineScreen(viewModel: MainViewModel) {
             val itemTime = item.completedAt ?: item.scheduledAt ?: 0L
             if (!nowInserted && itemTime > nowMillis) {
                 list.add(TimelineRowItem.NowMarker(nowTimeStr))
-                // Active Stopwatch
-                activeTimerTemplate?.let {
-                    list.add(TimelineRowItem.ActiveTimer(it, timerSeconds))
-                }
                 // Anytime ToDos placed directly below NOW line
                 anytimePending.forEach {
                     list.add(TimelineRowItem.AnytimeToDo(it))
@@ -129,9 +125,6 @@ fun TimelineScreen(viewModel: MainViewModel) {
 
         if (!nowInserted) {
             list.add(TimelineRowItem.NowMarker(nowTimeStr))
-            activeTimerTemplate?.let {
-                list.add(TimelineRowItem.ActiveTimer(it, timerSeconds))
-            }
             anytimePending.forEach {
                 list.add(TimelineRowItem.AnytimeToDo(it))
             }
@@ -186,16 +179,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
                     .padding(horizontal = 20.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Determine quick action items
-                val waterTmpl = templates.find { it.title.contains("水") }
-                val timerTmpl = templates.find { it.actionType == "TIMER" || it.title.contains("勉強") }
-                val packTmpl = templates.find { it.title.contains("パック") }
-                val nightMealTmpl = templates.find { it.title.contains("夜食") }
-                val drainTmpl = templates.find { it.title.contains("排水") }
-
-                val quickList = listOfNotNull(waterTmpl, timerTmpl, packTmpl, nightMealTmpl, drainTmpl)
-
-                quickList.forEach { t ->
+                pinnedTemplates.forEach { t ->
                     val isTimer = t.actionType == "TIMER"
                     val isTimerActive = isTimer && activeTimerTemplate?.id == t.id
                     val isCount = t.actionType == "COUNT"
@@ -320,29 +304,6 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                     isLast = isLast
                                 )
                             }
-                            is TimelineRowItem.ActiveTimer -> {
-                                TaskitoActiveTimerRow(
-                                    template = rowItem.template,
-                                    elapsedSeconds = rowItem.elapsedSeconds,
-                                    isFirst = isFirst,
-                                    isLast = isLast,
-                                    onStop = {
-                                        viewModel.stopAndSaveTimer { saved ->
-                                            coroutineScope.launch {
-                                                val res = snackbarHostState.showSnackbar(
-                                                    message = "${saved.title} を記録しました",
-                                                    actionLabel = "元に戻す",
-                                                    duration = SnackbarDuration.Short
-                                                )
-                                                if (res == SnackbarResult.ActionPerformed) {
-                                                    viewModel.undoLastItem()
-                                                }
-                                            }
-                                        }
-                                    },
-                                    onCancel = { viewModel.cancelTimer() }
-                                )
-                            }
                             is TimelineRowItem.AnytimeToDo -> {
                                 val item = rowItem.entity
                                 TaskitoAnytimeItemRow(
@@ -395,12 +356,36 @@ fun TimelineScreen(viewModel: MainViewModel) {
                     }
                 }
             }
+
+            // Fixed Active Timer Mini-Player at bottom (does not scroll with timeline)
+            if (activeTimerTemplate != null) {
+                ActiveTimerBottomBar(
+                    template = activeTimerTemplate!!,
+                    elapsedSeconds = timerSeconds,
+                    onStop = {
+                        viewModel.stopAndSaveTimer { saved ->
+                            coroutineScope.launch {
+                                val res = snackbarHostState.showSnackbar(
+                                    message = "${saved.title} を記録しました",
+                                    actionLabel = "元に戻す",
+                                    duration = SnackbarDuration.Short
+                                )
+                                if (res == SnackbarResult.ActionPerformed) {
+                                    viewModel.undoLastItem()
+                                }
+                            }
+                        }
+                    },
+                    onCancel = { viewModel.cancelTimer() }
+                )
+            }
         }
     }
 
     // Add Sheet
     if (showAddSheet) {
         AddItemBottomSheet(
+            templates = templates,
             onDismiss = { showAddSheet = false },
             onSave = { title, isDone, scheduledAt, completedAt, amount, note, templateId ->
                 viewModel.addTimelineItem(title, isDone, scheduledAt, completedAt, amount, note, templateId)
@@ -523,11 +508,9 @@ fun TaskitoNowLineRow(
 }
 
 @Composable
-fun TaskitoActiveTimerRow(
+fun ActiveTimerBottomBar(
     template: TemplateEntity,
     elapsedSeconds: Long,
-    isFirst: Boolean,
-    isLast: Boolean,
     onStop: () -> Unit,
     onCancel: () -> Unit
 ) {
@@ -536,108 +519,69 @@ fun TaskitoActiveTimerRow(
     val secs = elapsedSeconds % 60
     val timerStr = "%02d:%02d".format(mins, secs)
 
-    Row(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .height(IntrinsicSize.Min)
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = colors.card,
+        shadowElevation = 6.dp,
+        border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFFEF4444).copy(alpha = 0.6f))
     ) {
-        // Continuous stem line with pulsing timer dot
-        Box(
+        Row(
             modifier = Modifier
-                .width(32.dp)
-                .fillMaxHeight(),
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column(modifier = Modifier.fillMaxHeight()) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .width(2.dp)
-                        .background(if (isFirst) Color.Transparent else colors.border)
-                        .align(Alignment.CenterHorizontally)
-                )
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .width(2.dp)
-                        .background(if (isLast) Color.Transparent else colors.border)
-                        .align(Alignment.CenterHorizontally)
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .size(14.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFFEF4444)),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(Color.White)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        // Timer Card
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .clip(RoundedCornerShape(12.dp))
-                .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                .background(Color(0xFFEF4444).copy(alpha = 0.08f))
-                .padding(horizontal = 14.dp, vertical = 10.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                Text(text = template.iconKey ?: "⏱️", fontSize = 22.sp)
+                Spacer(modifier = Modifier.width(10.dp))
                 Column {
+                    Text(
+                        text = template.title,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.textPrimary,
+                        maxLines = 1
+                    )
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(text = template.iconKey ?: "⏱️", fontSize = 16.sp)
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFEF4444))
+                        )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "${template.title} (計測中)",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.textPrimary
+                            text = "$timerStr 計測中...",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFEF4444)
                         )
                     }
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = timerStr,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = Color(0xFFEF4444)
-                    )
                 }
+            }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(
-                        onClick = onCancel,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text("破棄", fontSize = 12.sp, color = colors.textSecondary)
-                    }
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Button(
-                        onClick = onStop,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFEF4444),
-                            contentColor = Color.White
-                        ),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Text("完了・保存", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(
+                    onClick = onCancel,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text("破棄", fontSize = 12.sp, color = colors.textSecondary)
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+                Button(
+                    onClick = onStop,
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF16A34A),
+                        contentColor = Color.White
+                    ),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Text("完了・保存", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

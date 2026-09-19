@@ -35,22 +35,65 @@ fun TemplateManagerDialog(
     val colors = LifeStreamTheme.colors
     val templates by viewModel.templates.collectAsState()
     var showCreateDialog by remember { mutableStateOf(false) }
+    var selectedCategoryTab by remember { mutableStateOf(0) } // 0: スタンプ(行動), 1: 周期タスク(メンテ)
+
+    val actionTemplates = remember(templates) { templates.filter { it.type != "INTERVAL" } }
+    val periodicTemplates = remember(templates) { templates.filter { it.type == "INTERVAL" } }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = colors.card,
         title = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
+            Column {
                 Text(
-                    text = "テンプレート管理 (${templates.size}件)",
+                    text = "テンプレート管理",
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
                     color = colors.textPrimary
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+                // Category Switcher Tab
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(colors.background)
+                        .border(1.dp, colors.border, RoundedCornerShape(8.dp))
+                        .padding(2.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (selectedCategoryTab == 0) colors.primary else Color.Transparent)
+                            .clickable { selectedCategoryTab = 0 }
+                            .padding(vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "行動スタンプ (${actionTemplates.size})",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (selectedCategoryTab == 0) colors.onPrimary else colors.textSecondary
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (selectedCategoryTab == 1) colors.primary else Color.Transparent)
+                            .clickable { selectedCategoryTab = 1 }
+                            .padding(vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "周期メンテ (${periodicTemplates.size})",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (selectedCategoryTab == 1) colors.onPrimary else colors.textSecondary
+                        )
+                    }
+                }
             }
         },
         text = {
@@ -68,55 +111,121 @@ fun TemplateManagerDialog(
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("＋ 新規テンプレート追加", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text(
+                        text = if (selectedCategoryTab == 0) "＋ 新しいスタンプを追加" else "＋ 新しい周期タスクを追加",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                    templates.forEach { t ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                Text(text = t.iconKey ?: "📌", fontSize = 20.sp)
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text(
-                                        text = t.title,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.textPrimary
-                                    )
-                                    val actionInfo = when (t.actionType) {
-                                        "COUNT" -> "加算カウント (${t.unit})"
-                                        "TIMER" -> "タイマー計測 (${t.unit})"
-                                        else -> if (t.intervalDays != null) "${t.intervalDays}日周期" else "単発記録"
+                if (selectedCategoryTab == 0) {
+                    Text(
+                        text = "💡 📌ピン留めしたスタンプは今日画面の上部バーに表示されます",
+                        fontSize = 11.sp,
+                        color = colors.textSecondary
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                val currentList = if (selectedCategoryTab == 0) actionTemplates else periodicTemplates
+
+                if (currentList.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (selectedCategoryTab == 0) "登録されたスタンプはありません" else "登録された周期タスクはありません",
+                            fontSize = 13.sp,
+                            color = colors.textSecondary
+                        )
+                    }
+                } else {
+                    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                        currentList.forEach { t ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                    Text(text = t.iconKey ?: "📌", fontSize = 20.sp)
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = t.title,
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.textPrimary
+                                            )
+                                            if (t.isPinned && t.type != "INTERVAL") {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(4.dp))
+                                                        .background(colors.primary.copy(alpha = 0.15f))
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "ピン留め中",
+                                                        fontSize = 10.sp,
+                                                        color = colors.primary,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        val actionInfo = when (t.actionType) {
+                                            "COUNT" -> "加算カウント (${t.unit})"
+                                            "TIMER" -> "タイマー計測 (${t.unit})"
+                                            else -> if (t.intervalDays != null) "${t.intervalDays}日周期" else "単発記録"
+                                        }
+                                        Text(
+                                            text = "$actionInfo • 累計${t.usageCount}回",
+                                            fontSize = 11.sp,
+                                            color = colors.textSecondary
+                                        )
                                     }
-                                    Text(
-                                        text = "$actionInfo • 累計${t.usageCount}回",
-                                        fontSize = 11.sp,
-                                        color = colors.textSecondary
-                                    )
+                                }
+
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    // Pin toggle for Action Stamps
+                                    if (t.type != "INTERVAL") {
+                                        IconButton(
+                                            onClick = { viewModel.toggleTemplatePin(t) },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Text(
+                                                text = if (t.isPinned) "📌" else "📍",
+                                                fontSize = 16.sp
+                                            )
+                                        }
+                                    }
+
+                                    // Delete button
+                                    IconButton(
+                                        onClick = { viewModel.deleteTemplate(t) },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            contentDescription = "削除",
+                                            tint = colors.statusOverdue.copy(alpha = 0.8f),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
                             }
-                            IconButton(
-                                onClick = { viewModel.deleteTemplate(t) },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Delete,
-                                    contentDescription = "削除",
-                                    tint = colors.statusOverdue.copy(alpha = 0.8f),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
+                            HorizontalDivider(color = colors.divider, thickness = 0.5.dp)
                         }
-                        HorizontalDivider(color = colors.divider, thickness = 0.5.dp)
                     }
                 }
             }
@@ -130,8 +239,9 @@ fun TemplateManagerDialog(
 
     if (showCreateDialog) {
         CreateTemplateDialog(
+            initialIsPeriodic = selectedCategoryTab == 1,
             onDismiss = { showCreateDialog = false },
-            onSave = { title, actionType, unit, stepValue, intervalDays, defaultAmount, iconKey, colorHex ->
+            onSave = { title, actionType, unit, stepValue, intervalDays, defaultAmount, iconKey, colorHex, isPinned ->
                 val type = if (intervalDays != null) "INTERVAL" else if (actionType == "COUNT") "DAILY_COUNT" else "SIMPLE"
                 viewModel.addTemplate(
                     title = title,
@@ -142,7 +252,8 @@ fun TemplateManagerDialog(
                     colorHex = colorHex,
                     actionType = actionType,
                     unit = unit,
-                    stepValue = stepValue
+                    stepValue = stepValue,
+                    isPinned = isPinned
                 )
                 showCreateDialog = false
             }
@@ -152,6 +263,7 @@ fun TemplateManagerDialog(
 
 @Composable
 fun CreateTemplateDialog(
+    initialIsPeriodic: Boolean = false,
     onDismiss: () -> Unit,
     onSave: (
         title: String,
@@ -161,7 +273,8 @@ fun CreateTemplateDialog(
         intervalDays: Int?,
         defaultAmount: Long?,
         iconKey: String,
-        colorHex: String
+        colorHex: String,
+        isPinned: Boolean
     ) -> Unit
 ) {
     val colors = LifeStreamTheme.colors
@@ -170,14 +283,15 @@ fun CreateTemplateDialog(
     var selectedActionType by remember { mutableStateOf("CHECK") } // "CHECK", "COUNT", "TIMER"
     var unit by remember { mutableStateOf("") }
     var stepValueText by remember { mutableStateOf("1") }
-    var isPeriodic by remember { mutableStateOf(false) }
+    var isPeriodic by remember { mutableStateOf(initialIsPeriodic) }
     var intervalDaysText by remember { mutableStateOf("7") }
     var amountText by remember { mutableStateOf("") }
+    var isPinned by remember { mutableStateOf(!initialIsPeriodic) }
 
-    val iconList = listOf("💧", "🧖", "🍜", "🧹", "⏱️", "💊", "🏃", "📚", "☕", "🍱", "🛏️", "🧼", "🌀", "💨", "🌿", "🪴", "🚗", "🏋️")
-    var selectedIcon by remember { mutableStateOf("💧") }
+    val iconList = listOf("💧", "☕", "📖", "🚶", "🧖", "🍜", "🧹", "⏱️", "💊", "🍱", "🛏️", "🧼", "🌀", "💨", "🌿", "🪴", "🚗", "🏋️")
+    var selectedIcon by remember { mutableStateOf(if (initialIsPeriodic) "🧹" else "💧") }
 
-    val colorOptions = listOf("#38BDF8", "#A855F7", "#EF4444", "#10B981", "#F59E0B", "#6366F1", "#8C5A3C", "#EC4899")
+    val colorOptions = listOf("#38BDF8", "#8C5A3C", "#3B82F6", "#10B981", "#A855F7", "#EF4444", "#F59E0B", "#6366F1", "#EC4899")
     var selectedColor by remember { mutableStateOf("#38BDF8") }
 
     AlertDialog(
@@ -379,6 +493,27 @@ fun CreateTemplateDialog(
                         )
                     }
                 }
+
+                if (!isPeriodic) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { isPinned = !isPinned },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = isPinned,
+                            onCheckedChange = { isPinned = it }
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "上部クイックバーにピン留めする",
+                            fontSize = 13.sp,
+                            color = colors.textPrimary
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
@@ -388,7 +523,7 @@ fun CreateTemplateDialog(
                         val interval = if (isPeriodic) intervalDaysText.toIntOrNull() ?: 7 else null
                         val step = stepValueText.toIntOrNull() ?: 1
                         val amt = amountText.toLongOrNull()
-                        onSave(title, selectedActionType, unit, step, interval, amt, selectedIcon, selectedColor)
+                        onSave(title, selectedActionType, unit, step, interval, amt, selectedIcon, selectedColor, if (isPeriodic) false else isPinned)
                     }
                 },
                 enabled = title.isNotBlank(),

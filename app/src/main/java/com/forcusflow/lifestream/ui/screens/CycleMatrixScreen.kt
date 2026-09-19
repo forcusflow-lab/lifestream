@@ -46,15 +46,6 @@ data class MatrixCellData(
     val isTapped: Boolean = false
 )
 
-data class MatrixRowData(
-    val templateId: Long,
-    val title: String,
-    val intervalText: String,
-    val week1: MatrixCellData,
-    val week2: MatrixCellData,
-    val week3: MatrixCellData
-)
-
 @Composable
 fun CycleMatrixScreen(viewModel: MainViewModel) {
     val colors = LifeStreamTheme.colors
@@ -79,61 +70,16 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
         }
     }
 
-    // Interactive overrides for Matrix Grid
-    val cellOverrides = remember { mutableStateMapOf<String, MatrixCellData>() }
-
-    val baseRows = remember {
-        listOf(
-            MatrixRowData(
-                templateId = 4L,
-                title = "風呂 排水ネット交換",
-                intervalText = "推奨インターバル: 1週間ごと",
-                week1 = MatrixCellData(MatrixCellStatus.DONE, "9/5 済"),
-                week2 = MatrixCellData(MatrixCellStatus.OVERDUE, "~9/18 期限!"),
-                week3 = MatrixCellData(MatrixCellStatus.OVERDUE, "~9/25")
-            ),
-            MatrixRowData(
-                templateId = 2L,
-                title = "フェイスパック",
-                intervalText = "推奨インターバル: 3日ごと",
-                week1 = MatrixCellData(MatrixCellStatus.DONE, "9/6 済"),
-                week2 = MatrixCellData(MatrixCellStatus.DONE, "9/12 済"),
-                week3 = MatrixCellData(MatrixCellStatus.TARGET, "9/15 目安")
-            ),
-            MatrixRowData(
-                templateId = 5L,
-                title = "シーツ洗濯",
-                intervalText = "推奨インターバル: 1週間ごと",
-                week1 = MatrixCellData(MatrixCellStatus.WARNING, "未実施"),
-                week2 = MatrixCellData(MatrixCellStatus.DONE, "9/13 済"),
-                week3 = MatrixCellData(MatrixCellStatus.TARGET, "9/20 目安")
-            ),
-            MatrixRowData(
-                templateId = 6L,
-                title = "洗濯槽クリーナー",
-                intervalText = "推奨インターバル: 1か月ごと",
-                week1 = MatrixCellData(MatrixCellStatus.DONE, "8/15 済"),
-                week2 = MatrixCellData(MatrixCellStatus.WARNING, "未実施"),
-                week3 = MatrixCellData(MatrixCellStatus.TARGET, "10/1 目安")
-            ),
-            MatrixRowData(
-                templateId = 7L,
-                title = "換気扇フィルター清掃",
-                intervalText = "推奨インターバル: 1か月ごと",
-                week1 = MatrixCellData(MatrixCellStatus.DONE, "9/5 済"),
-                week2 = MatrixCellData(MatrixCellStatus.DONE, "9/5 済"),
-                week3 = MatrixCellData(MatrixCellStatus.TARGET, "10/5 目安")
-            ),
-            MatrixRowData(
-                templateId = 8L,
-                title = "風呂 防カビくん煙剤",
-                intervalText = "推奨インターバル: 2か月ごと",
-                week1 = MatrixCellData(MatrixCellStatus.DONE, "9/5 済"),
-                week2 = MatrixCellData(MatrixCellStatus.EMPTY, "-"),
-                week3 = MatrixCellData(MatrixCellStatus.TARGET, "11/5 目安")
-            )
-        )
+    val weeklyTemplates = remember(periodicTemplates) {
+        periodicTemplates.filter { (it.intervalDays ?: 7) <= 14 }
     }
+    val monthlyTemplates = remember(periodicTemplates) {
+        periodicTemplates.filter { (it.intervalDays ?: 7) > 14 }
+    }
+
+    val colDate2 = remember(today) { today.minusDays(14) }
+    val colDate1 = remember(today) { today.minusDays(7) }
+    val colDate0 = today
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -205,16 +151,33 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                 }
             }
 
-                if (selectedSegment == 0) {
-                    // Periodic Cards View: 「いつやったかわかる」
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .padding(horizontal = 20.dp, vertical = 8.dp),
-                        contentPadding = PaddingValues(bottom = 80.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
+            if (selectedSegment == 0) {
+                // Periodic Cards View: 「いつやったかわかる」
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                    contentPadding = PaddingValues(bottom = 80.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    if (periodicTemplates.isEmpty()) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 40.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "周期タスクがまだありません。\n右下の「＋」ボタンから追加してみましょう！",
+                                    fontSize = 14.sp,
+                                    color = colors.textSecondary,
+                                    lineHeight = 20.sp
+                                )
+                            }
+                        }
+                    } else {
                         items(periodicTemplates, key = { it.id }) { template ->
                             PeriodicTaskCard(
                                 template = template,
@@ -227,74 +190,126 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                             )
                         }
                     }
-                } else {
-                    // Weekly Matrix Grid View (Responsive 100% width, no horizontal scroll)
-                    Column(
+                }
+            } else {
+                // Weekly Matrix Grid View & Monthly Progress Tracker
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                ) {
+                    // Header Row
+                    Row(
                         modifier = Modifier
-                            .weight(1f)
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Header Row
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Text(
+                            text = "タスク / 推奨周期",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.textSecondary,
+                            modifier = Modifier.weight(0.45f)
+                        )
+                        Box(modifier = Modifier.weight(0.183f), contentAlignment = Alignment.Center) {
                             Text(
-                                text = "タスク / 推奨周期",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = colors.textSecondary,
-                                modifier = Modifier.weight(0.45f)
+                                text = "${colDate2.monthValue}/${colDate2.dayOfMonth}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.textSecondary
                             )
-                            Box(modifier = Modifier.weight(0.183f), contentAlignment = Alignment.Center) {
+                        }
+                        Box(modifier = Modifier.weight(0.183f), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = "${colDate1.monthValue}/${colDate1.dayOfMonth}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.textSecondary
+                            )
+                        }
+                        Box(modifier = Modifier.weight(0.183f), contentAlignment = Alignment.Center) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(colors.primary)
+                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                            ) {
                                 Text(
-                                    text = "9/5",
+                                    text = "今週",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = colors.textSecondary
-                                )
-                            }
-                            Box(modifier = Modifier.weight(0.183f), contentAlignment = Alignment.Center) {
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(colors.primary)
-                                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                                ) {
-                                    Text(
-                                        text = "9/12",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.onPrimary
-                                    )
-                                }
-                            }
-                            Box(modifier = Modifier.weight(0.183f), contentAlignment = Alignment.Center) {
-                                Text(
-                                    text = "9/19",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.textSecondary
+                                    color = colors.onPrimary
                                 )
                             }
                         }
+                    }
 
-                        HorizontalDivider(color = colors.border, thickness = 0.5.dp)
+                    HorizontalDivider(color = colors.border, thickness = 0.5.dp)
 
-                        // Matrix Rows
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
-                            contentPadding = PaddingValues(bottom = 80.dp)
-                        ) {
-                            items(baseRows, key = { it.templateId }) { row ->
-                                val cell1 = cellOverrides["${row.templateId}_1"] ?: row.week1
-                                val cell2 = cellOverrides["${row.templateId}_2"] ?: row.week2
-                                val cell3 = cellOverrides["${row.templateId}_3"] ?: row.week3
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentPadding = PaddingValues(bottom = 80.dp)
+                    ) {
+                        if (weeklyTemplates.isEmpty()) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "2週間以内の短期周期タスクはありません。",
+                                        fontSize = 12.sp,
+                                        color = colors.textSecondary
+                                    )
+                                }
+                            }
+                        } else {
+                            items(weeklyTemplates, key = { it.id }) { template ->
+                                val lastDoneDate = template.lastCompletedAt?.let {
+                                    LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
+                                }
+                                val interval = template.intervalDays ?: 7
+
+                                // Col 2 (2 weeks ago)
+                                val cell2 = remember(lastDoneDate) {
+                                    if (lastDoneDate != null && !lastDoneDate.isBefore(colDate2.minusDays(6)) && !lastDoneDate.isAfter(colDate2)) {
+                                        MatrixCellData(MatrixCellStatus.DONE, "${lastDoneDate.monthValue}/${lastDoneDate.dayOfMonth} 済")
+                                    } else {
+                                        MatrixCellData(MatrixCellStatus.EMPTY, "-")
+                                    }
+                                }
+
+                                // Col 1 (1 week ago)
+                                val cell1 = remember(lastDoneDate) {
+                                    if (lastDoneDate != null && !lastDoneDate.isBefore(colDate1.minusDays(6)) && !lastDoneDate.isAfter(colDate1)) {
+                                        MatrixCellData(MatrixCellStatus.DONE, "${lastDoneDate.monthValue}/${lastDoneDate.dayOfMonth} 済")
+                                    } else {
+                                        MatrixCellData(MatrixCellStatus.EMPTY, "-")
+                                    }
+                                }
+
+                                // Col 0 (This week)
+                                val cell0 = remember(lastDoneDate, today) {
+                                    if (lastDoneDate != null && !lastDoneDate.isBefore(colDate0.minusDays(6)) && !lastDoneDate.isAfter(colDate0)) {
+                                        MatrixCellData(MatrixCellStatus.DONE, "${lastDoneDate.monthValue}/${lastDoneDate.dayOfMonth} 済")
+                                    } else if (lastDoneDate == null) {
+                                        MatrixCellData(MatrixCellStatus.WARNING, "未実施")
+                                    } else {
+                                        val elapsed = ChronoUnit.DAYS.between(lastDoneDate, today)
+                                        if (elapsed >= interval) {
+                                            MatrixCellData(MatrixCellStatus.OVERDUE, "${elapsed - interval}日遅延")
+                                        } else {
+                                            val next = lastDoneDate.plusDays(interval.toLong())
+                                            MatrixCellData(MatrixCellStatus.TARGET, "${next.monthValue}/${next.dayOfMonth} 目安")
+                                        }
+                                    }
+                                }
 
                                 Row(
                                     modifier = Modifier
@@ -308,17 +323,21 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                                             .weight(0.45f)
                                             .padding(end = 4.dp)
                                     ) {
-                                        Text(
-                                            text = row.title,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = colors.textPrimary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(text = template.iconKey ?: "🧹", fontSize = 14.sp)
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = template.title,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.textPrimary,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
                                         Spacer(modifier = Modifier.height(1.dp))
                                         Text(
-                                            text = row.intervalText.replace("推奨インターバル: ", ""),
+                                            text = "${interval}日ごと",
                                             fontSize = 10.sp,
                                             color = colors.textSecondary,
                                             maxLines = 1,
@@ -326,56 +345,41 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                                         )
                                     }
 
-                                    // Col 1 (9/5)
-                                    Box(
-                                        modifier = Modifier.weight(0.183f),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        MatrixCellBadge(cell = cell1) {
-                                            val updated = MatrixCellData(MatrixCellStatus.DONE, "9/5 済", true)
-                                            cellOverrides["${row.templateId}_1"] = updated
-                                            val tmpl = templates.find { it.id == row.templateId }
-                                            if (tmpl != null) {
-                                                viewModel.recordCycleTask(tmpl, LocalDate.of(2026, 9, 5))
-                                                coroutineScope.launch {
-                                                    snackbarHostState.showSnackbar("9/5 完了を記録しました")
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    // Col 2 (9/12)
+                                    // Col 2
                                     Box(
                                         modifier = Modifier.weight(0.183f),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         MatrixCellBadge(cell = cell2) {
-                                            val updated = MatrixCellData(MatrixCellStatus.DONE, "9/12 済", true)
-                                            cellOverrides["${row.templateId}_2"] = updated
-                                            val tmpl = templates.find { it.id == row.templateId }
-                                            if (tmpl != null) {
-                                                viewModel.recordCycleTask(tmpl, LocalDate.of(2026, 9, 12))
-                                                coroutineScope.launch {
-                                                    snackbarHostState.showSnackbar("9/12 完了を記録しました")
-                                                }
+                                            viewModel.recordCycleTask(template, colDate2)
+                                            coroutineScope.launch {
+                                                snackbarHostState.showSnackbar("「${template.title}」の完了を記録しました")
                                             }
                                         }
                                     }
 
-                                    // Col 3 (9/19)
+                                    // Col 1
                                     Box(
                                         modifier = Modifier.weight(0.183f),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        MatrixCellBadge(cell = cell3) {
-                                            val updated = MatrixCellData(MatrixCellStatus.DONE, "9/19 済", true)
-                                            cellOverrides["${row.templateId}_3"] = updated
-                                            val tmpl = templates.find { it.id == row.templateId }
-                                            if (tmpl != null) {
-                                                viewModel.recordCycleTask(tmpl, LocalDate.of(2026, 9, 19))
-                                                coroutineScope.launch {
-                                                    snackbarHostState.showSnackbar("9/19 完了を記録しました")
-                                                }
+                                        MatrixCellBadge(cell = cell1) {
+                                            viewModel.recordCycleTask(template, colDate1)
+                                            coroutineScope.launch {
+                                                snackbarHostState.showSnackbar("「${template.title}」の完了を記録しました")
+                                            }
+                                        }
+                                    }
+
+                                    // Col 0 (This week)
+                                    Box(
+                                        modifier = Modifier.weight(0.183f),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        MatrixCellBadge(cell = cell0) {
+                                            viewModel.recordCycleTask(template, colDate0)
+                                            coroutineScope.launch {
+                                                snackbarHostState.showSnackbar("「${template.title}」の完了を記録しました")
                                             }
                                         }
                                     }
@@ -383,9 +387,44 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                                 HorizontalDivider(color = colors.divider, thickness = 0.5.dp)
                             }
                         }
+
+                        // Monthly / Long-Term Progress Tracker Section
+                        if (monthlyTemplates.isNotEmpty()) {
+                            item {
+                                Spacer(modifier = Modifier.height(20.dp))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "月次・長期メンテナンス (進捗メーター)",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.primary
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                            }
+
+                            items(monthlyTemplates, key = { "monthly_${it.id}" }) { template ->
+                                MonthlyTaskProgressCard(
+                                    template = template,
+                                    onCompletedNow = {
+                                        viewModel.recordCycleTask(template, LocalDate.now())
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar("「${template.title}」の完了を記録しました！")
+                                        }
+                                    }
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                            }
+                        }
                     }
                 }
             }
+        }
         }
 
     // Dialog to add custom periodic task
@@ -428,16 +467,16 @@ fun PeriodicTaskCard(
     val isOverdue = elapsedDays != null && elapsedDays >= interval
 
     val lastDoneText = if (lastDoneDate != null && elapsedDays != null) {
-        "前回: ${lastDoneDate.monthValue}月${lastDoneDate.dayOfMonth}日 (${elapsedDays}日前)"
+        "前回: ${lastDoneDate.monthValue}/${lastDoneDate.dayOfMonth} (${elapsedDays}日前)"
     } else {
         "未実施 (記録なし)"
     }
 
     val nextTargetDate = lastDoneDate?.plusDays(interval.toLong())
     val nextTargetText = if (nextTargetDate != null) {
-        "次回予定: ${nextTargetDate.monthValue}月${nextTargetDate.dayOfMonth}日"
+        "次回: ${nextTargetDate.monthValue}/${nextTargetDate.dayOfMonth}"
     } else {
-        "次回予定: いつでも"
+        "次回: いつでも"
     }
 
     val statusBadgeColor = when {
@@ -448,7 +487,7 @@ fun PeriodicTaskCard(
     }
 
     val statusBadgeText = when {
-        isOverdue -> "❗ 期限超過 (${elapsedDays!! - interval}日遅れ)"
+        isOverdue -> "❗ ${elapsedDays!! - interval}日遅れ"
         elapsedDays != null && elapsedDays >= (interval - 1) -> "⚠ 本日推奨"
         lastDoneDate != null -> "✓ 順調"
         else -> "未着手"
@@ -457,10 +496,10 @@ fun PeriodicTaskCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .border(1.dp, colors.border, RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(12.dp))
+            .border(1.dp, colors.border, RoundedCornerShape(12.dp))
             .background(colors.card)
-            .padding(16.dp)
+            .padding(14.dp)
     ) {
         Column {
             Row(
@@ -468,63 +507,64 @@ fun PeriodicTaskCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = template.iconKey ?: "🧹", fontSize = 22.sp)
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 8.dp)
+                ) {
+                    Text(text = template.iconKey ?: "🧹", fontSize = 20.sp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = template.title,
-                            fontSize = 15.sp,
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            color = colors.textPrimary
+                            color = colors.textPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "推奨周期: ${template.intervalDays ?: 7}日ごと | $nextTargetText",
+                            text = "周期: ${interval}日ごと | $nextTargetText",
                             fontSize = 11.sp,
-                            color = colors.textSecondary
+                            color = colors.textSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
 
-                // Status Badge
+                // Compact Status Badge that NEVER wraps
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(6.dp))
                         .background(statusBadgeColor.copy(alpha = 0.12f))
-                        .border(1.dp, statusBadgeColor, RoundedCornerShape(8.dp))
-                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                        .border(1.dp, statusBadgeColor.copy(alpha = 0.8f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
                 ) {
                     Text(
                         text = statusBadgeText,
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = statusBadgeColor
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             HorizontalDivider(color = colors.divider, thickness = 0.5.dp)
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column {
-                    Text(
-                        text = "いつやったか:",
-                        fontSize = 11.sp,
-                        color = colors.textSecondary
-                    )
-                    Text(
-                        text = lastDoneText,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = colors.textPrimary
-                    )
-                }
+                Text(
+                    text = lastDoneText,
+                    fontSize = 12.sp,
+                    color = colors.textSecondary
+                )
 
                 OutlinedButton(
                     onClick = onCompletedNow,
@@ -534,13 +574,143 @@ fun PeriodicTaskCard(
                     ),
                     border = BorderStroke(1.dp, colors.primary),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                    modifier = Modifier.height(32.dp)
+                    modifier = Modifier.height(30.dp)
                 ) {
                     Text(
                         text = "✓ 記録",
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MonthlyTaskProgressCard(
+    template: TemplateEntity,
+    onCompletedNow: () -> Unit
+) {
+    val colors = LifeStreamTheme.colors
+    val zone = ZoneId.systemDefault()
+    val today = LocalDate.now()
+
+    val lastDoneDate = template.lastCompletedAt?.let {
+        LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
+    }
+    val elapsedDays = if (lastDoneDate != null) ChronoUnit.DAYS.between(lastDoneDate, today).toInt() else null
+    val interval = template.intervalDays ?: 30
+    val isOverdue = elapsedDays != null && elapsedDays >= interval
+
+    val progress = if (elapsedDays != null) {
+        (elapsedDays.toFloat() / interval.toFloat()).coerceIn(0f, 1f)
+    } else {
+        1.0f
+    }
+
+    val progressColor = when {
+        isOverdue -> colors.statusOverdue
+        elapsedDays != null && elapsedDays >= (interval * 0.8f) -> colors.statusWarning
+        else -> colors.primary
+    }
+
+    val nextTargetDate = lastDoneDate?.plusDays(interval.toLong())
+    val remainingDays = if (nextTargetDate != null) ChronoUnit.DAYS.between(today, nextTargetDate).toInt() else null
+
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = colors.card),
+        border = BorderStroke(1.dp, colors.border),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Text(text = template.iconKey ?: "🧼", fontSize = 22.sp)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = template.title,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "周期: ${interval}日ごと",
+                            fontSize = 11.sp,
+                            color = colors.textSecondary
+                        )
+                    }
+                }
+
+                val badgeText = when {
+                    isOverdue -> "❗ ${elapsedDays!! - interval}日遅れ"
+                    remainingDays != null && remainingDays <= 3 -> "⚠ あと${remainingDays}日"
+                    lastDoneDate != null -> "あと${remainingDays}日"
+                    else -> "未着手"
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(progressColor.copy(alpha = 0.12f))
+                        .border(1.dp, progressColor.copy(alpha = 0.7f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = badgeText,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = progressColor
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp)),
+                color = progressColor,
+                trackColor = colors.border
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                val datesSummary = if (lastDoneDate != null) {
+                    "前回: ${lastDoneDate.monthValue}/${lastDoneDate.dayOfMonth} → 次回: ${nextTargetDate?.monthValue}/${nextTargetDate?.dayOfMonth}"
+                } else {
+                    "前回: なし → いつでも実施可"
+                }
+                Text(
+                    text = datesSummary,
+                    fontSize = 11.sp,
+                    color = colors.textSecondary
+                )
+
+                OutlinedButton(
+                    onClick = onCompletedNow,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.primary),
+                    border = BorderStroke(1.dp, colors.primary),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    modifier = Modifier.height(30.dp)
+                ) {
+                    Text("✓ 記録", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
