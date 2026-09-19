@@ -1,5 +1,6 @@
 package com.forcusflow.lifestream.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,6 +15,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,6 +26,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.forcusflow.lifestream.data.TemplateEntity
@@ -64,6 +67,9 @@ fun TimelineScreen(viewModel: MainViewModel) {
     var showAddSheet by remember { mutableStateOf(false) }
     var itemToEdit by remember { mutableStateOf<TimelineItemEntity?>(null) }
     var showTemplateManagerDialog by remember { mutableStateOf(false) }
+    var inlineActiveItemId by remember { mutableStateOf<Long?>(null) }
+    var quickAmountItem by remember { mutableStateOf<TimelineItemEntity?>(null) }
+    var quickNoteItem by remember { mutableStateOf<TimelineItemEntity?>(null) }
 
     val zone = ZoneId.systemDefault()
     val now = LocalDateTime.now()
@@ -310,7 +316,10 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                     item = item,
                                     isFirst = isFirst,
                                     isLast = isLast,
-                                    onToggle = { viewModel.toggleItemDone(item) },
+                                    onToggle = {
+                                        viewModel.toggleItemDone(item)
+                                        inlineActiveItemId = item.id
+                                    },
                                     onClick = { itemToEdit = item }
                                 )
                             }
@@ -335,10 +344,19 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                     item = item,
                                     isFirst = isFirst,
                                     isLast = isLast,
-                                    onToggle = { viewModel.toggleItemDone(item) },
+                                    isInlineActive = (inlineActiveItemId == item.id),
+                                    onToggle = {
+                                        val willBeDone = !item.isDone
+                                        viewModel.toggleItemDone(item)
+                                        inlineActiveItemId = if (willBeDone) item.id else null
+                                    },
                                     onClick = { itemToEdit = item },
+                                    onQuickAmount = { quickAmountItem = item },
+                                    onQuickNote = { quickNoteItem = item },
+                                    onDismissInline = { inlineActiveItemId = null },
                                     onDelete = {
                                         viewModel.deleteItem(item)
+                                        if (inlineActiveItemId == item.id) inlineActiveItemId = null
                                         coroutineScope.launch {
                                             val res = snackbarHostState.showSnackbar(
                                                 message = "${item.title} を削除しました",
@@ -423,6 +441,30 @@ fun TimelineScreen(viewModel: MainViewModel) {
                         viewModel.restoreItem(item)
                     }
                 }
+            }
+        )
+    }
+
+    // Quick Amount Dialog
+    quickAmountItem?.let { item ->
+        QuickAmountDialog(
+            item = item,
+            onDismiss = { quickAmountItem = null },
+            onSave = { amt ->
+                viewModel.updateTimelineItem(item.copy(amount = amt))
+                quickAmountItem = null
+            }
+        )
+    }
+
+    // Quick Note Dialog
+    quickNoteItem?.let { item ->
+        QuickNoteDialog(
+            item = item,
+            onDismiss = { quickNoteItem = null },
+            onSave = { note ->
+                viewModel.updateTimelineItem(item.copy(note = note))
+                quickNoteItem = null
             }
         )
     }
@@ -602,7 +644,6 @@ fun TaskitoAnytimeItemRow(
         modifier = Modifier
             .fillMaxWidth()
             .height(IntrinsicSize.Min)
-            .clickable { onClick() }
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -630,36 +671,43 @@ fun TaskitoAnytimeItemRow(
                 )
             }
 
-            // Hollow ToDo node
+            // Hollow ToDo node with generous 36.dp touch target
             Box(
                 modifier = Modifier
-                    .size(18.dp)
-                    .clip(CircleShape)
-                    .border(2.dp, colors.primary, CircleShape)
-                    .background(colors.card)
+                    .size(36.dp)
                     .clickable { onToggle() },
                 contentAlignment = Alignment.Center
             ) {
-                if (item.isDone) {
-                    Icon(
-                        Icons.Default.Check,
-                        contentDescription = "完了",
-                        tint = colors.statusDone,
-                        modifier = Modifier.size(12.dp)
-                    )
+                Box(
+                    modifier = Modifier
+                        .size(20.dp)
+                        .clip(CircleShape)
+                        .border(2.dp, colors.primary, CircleShape)
+                        .background(colors.card),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (item.isDone) {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = "完了",
+                            tint = colors.statusDone,
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
                 }
             }
         }
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        // Title & Anytime indicator
+        // Title & Anytime indicator (Clicking card opens edit modal)
         Row(
             modifier = Modifier
                 .weight(1f)
                 .clip(RoundedCornerShape(10.dp))
                 .border(1.dp, colors.border, RoundedCornerShape(10.dp))
                 .background(colors.card)
+                .clickable { onClick() }
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
@@ -832,8 +880,12 @@ fun TaskitoTimelineItemRow(
     item: TimelineItemEntity,
     isFirst: Boolean,
     isLast: Boolean,
+    isInlineActive: Boolean = false,
     onToggle: () -> Unit,
     onClick: () -> Unit,
+    onQuickAmount: () -> Unit = {},
+    onQuickNote: () -> Unit = {},
+    onDismissInline: () -> Unit = {},
     onDelete: () -> Unit
 ) {
     val colors = LifeStreamTheme.colors
@@ -869,123 +921,305 @@ fun TaskitoTimelineItemRow(
             }
         }
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(IntrinsicSize.Min)
                 .background(colors.background)
-                .clickable { onClick() }
-                .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Taskito Continuous Stem Column
-            Box(
+            Row(
                 modifier = Modifier
-                    .width(32.dp)
-                    .fillMaxHeight(),
-                contentAlignment = Alignment.Center
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min)
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Vertical Continuous Line
-                Column(modifier = Modifier.fillMaxHeight()) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .width(2.dp)
-                            .background(if (isFirst) Color.Transparent else colors.border)
-                            .align(Alignment.CenterHorizontally)
-                    )
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .width(2.dp)
-                            .background(if (isLast) Color.Transparent else colors.border)
-                            .align(Alignment.CenterHorizontally)
-                    )
-                }
-
-                // Node Circle (Interactive - tap to toggle done)
+                // Taskito Continuous Stem Column
                 Box(
                     modifier = Modifier
-                        .size(18.dp)
-                        .clip(CircleShape)
-                        .border(2.dp, nodeBorderColor, CircleShape)
-                        .background(nodeColor)
-                        .clickable { onToggle() },
+                        .width(32.dp)
+                        .fillMaxHeight(),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (isDone) {
+                    // Vertical Continuous Line
+                    Column(modifier = Modifier.fillMaxHeight()) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .width(2.dp)
+                                .background(if (isFirst) Color.Transparent else colors.border)
+                                .align(Alignment.CenterHorizontally)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .width(2.dp)
+                                .background(if (isLast) Color.Transparent else colors.border)
+                                .align(Alignment.CenterHorizontally)
+                        )
+                    }
+
+                    // Node Circle (Interactive - tap to toggle done, 36.dp touch target)
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clickable { onToggle() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(18.dp)
+                                .clip(CircleShape)
+                                .border(2.dp, nodeBorderColor, CircleShape)
+                                .background(nodeColor),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isDone) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = "完了",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Time & Title & Notes (Clicking card opens edit modal)
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onClick() }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = timeStr,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.textSecondary
+                        )
+                        Text(
+                            text = item.title,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary
+                        )
+                        val displayNote = remember(item.note) {
+                            when {
+                                item.note.isNullOrBlank() -> null
+                                item.note in listOf("クイック記録完了", "時間計測完了", "デイリー水分補給", "デイリー習慣カウント") -> null
+                                item.note.startsWith("時間計測完了 (") && item.note.endsWith(")") -> {
+                                    val inner = item.note.removePrefix("時間計測完了 (").removeSuffix(")")
+                                    "計測時間: $inner"
+                                }
+                                else -> item.note
+                            }
+                        }
+                        if (displayNote != null) {
+                            Text(
+                                text = displayNote,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Normal,
+                                color = colors.textSecondary
+                            )
+                        }
+                    }
+
+                    // Only show useful Amount badge (if present)
+                    if (item.amount != null) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(1.dp, colors.primary, RoundedCornerShape(8.dp))
+                                .background(colors.card)
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "¥${item.amount}",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.primary
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Inline Quick-Add Tray for completed item
+            if (isInlineActive) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 40.dp, end = 12.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = colors.primary.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, colors.primary.copy(alpha = 0.5f)),
+                        modifier = Modifier.clickable { onQuickAmount() }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("💰", fontSize = 12.sp)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (item.amount != null) "¥${item.amount}" else "＋ 金額",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.primary
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = colors.card,
+                        border = BorderStroke(1.dp, colors.border),
+                        modifier = Modifier.clickable { onQuickNote() }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("💬", fontSize = 12.sp)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (!item.note.isNullOrBlank()) item.note else "＋ メモ",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.textPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    IconButton(
+                        onClick = onDismissInline,
+                        modifier = Modifier.size(26.dp)
+                    ) {
                         Icon(
-                            Icons.Default.Check,
-                            contentDescription = "完了",
-                            tint = Color.White,
-                            modifier = Modifier.size(12.dp)
+                            Icons.Default.Close,
+                            contentDescription = "閉じる",
+                            modifier = Modifier.size(16.dp),
+                            tint = colors.textSecondary
                         )
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Time & Title & Notes (Decluttered: no redundant "完了" / "予定" badges)
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(vertical = 6.dp)
-            ) {
-                Text(
-                    text = timeStr,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = colors.textSecondary
-                )
-                Text(
-                    text = item.title,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.textPrimary,
-                    textDecoration = if (item.isDone && item.scheduledAt != null) TextDecoration.LineThrough else null
-                )
-                val displayNote = remember(item.note) {
-                    when {
-                        item.note.isNullOrBlank() -> null
-                        item.note in listOf("クイック記録完了", "時間計測完了", "デイリー水分補給", "デイリー習慣カウント") -> null
-                        item.note.startsWith("時間計測完了 (") && item.note.endsWith(")") -> {
-                            val inner = item.note.removePrefix("時間計測完了 (").removeSuffix(")")
-                            "計測時間: $inner"
-                        }
-                        else -> item.note
-                    }
-                }
-                if (displayNote != null) {
-                    Text(
-                        text = displayNote,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Normal,
-                        color = colors.textSecondary
-                    )
-                }
-            }
-
-            // Only show useful Amount badge (if present)
-            if (item.amount != null) {
-                Spacer(modifier = Modifier.width(8.dp))
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .border(1.dp, colors.primary, RoundedCornerShape(8.dp))
-                        .background(colors.card)
-                        .padding(horizontal = 10.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = "¥${item.amount}",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.primary
-                    )
-                }
-            }
         }
     }
+}
+
+@Composable
+fun QuickAmountDialog(
+    item: TimelineItemEntity,
+    onDismiss: () -> Unit,
+    onSave: (Long?) -> Unit
+) {
+    val colors = LifeStreamTheme.colors
+    var text by remember { mutableStateOf(item.amount?.toString() ?: "") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = colors.card,
+        title = {
+            Text(
+                text = "「${item.title}」の金額を記録",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = colors.textPrimary
+            )
+        },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { if (it.all { c -> c.isDigit() }) text = it },
+                label = { Text("支出金額 (¥)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSave(text.toLongOrNull())
+                    onDismiss()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
+            ) {
+                Text("保存")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("キャンセル")
+            }
+        }
+    )
+}
+
+@Composable
+fun QuickNoteDialog(
+    item: TimelineItemEntity,
+    onDismiss: () -> Unit,
+    onSave: (String?) -> Unit
+) {
+    val colors = LifeStreamTheme.colors
+    var text by remember { mutableStateOf(item.note ?: "") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = colors.card,
+        title = {
+            Text(
+                text = "「${item.title}」にメモを追記",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = colors.textPrimary
+            )
+        },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                label = { Text("メモ") },
+                singleLine = false,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSave(text.ifBlank { null })
+                    onDismiss()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
+            ) {
+                Text("保存")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("キャンセル")
+            }
+        }
+    )
 }
 
 @Composable

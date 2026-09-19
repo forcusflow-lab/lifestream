@@ -205,24 +205,27 @@ fun AddItemBottomSheet(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Amount input
-            OutlinedTextField(
-                value = amountText,
-                onValueChange = { if (it.all { char -> char.isDigit() }) amountText = it },
-                label = { Text("支出金額 (¥) ※任意") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = colors.primary,
-                    unfocusedBorderColor = colors.border,
-                    focusedTextColor = colors.textPrimary,
-                    unfocusedTextColor = colors.textPrimary
-                ),
-                shape = RoundedCornerShape(12.dp),
-                singleLine = true
-            )
+            // Amount input (Only for Done items)
+            if (isDone) {
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = { if (it.all { char -> char.isDigit() }) amountText = it },
+                    label = { Text("支出金額 (¥) ※任意") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.primary,
+                        unfocusedBorderColor = colors.border,
+                        focusedTextColor = colors.textPrimary,
+                        unfocusedTextColor = colors.textPrimary
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             // Time Presets
             if (isDone) {
@@ -339,7 +342,6 @@ fun AddItemBottomSheet(
                     if (title.isNotBlank()) {
                         val zone = ZoneId.systemDefault()
                         val now = LocalDateTime.now()
-                        val amt = amountText.toLongOrNull()
 
                         if (isDone) {
                             val doneTime = when (selectedDonePreset) {
@@ -349,21 +351,22 @@ fun AddItemBottomSheet(
                                 else -> now
                             }
                             val millis = doneTime.atZone(zone).toInstant().toEpochMilli()
+                            val amt = amountText.toLongOrNull()
                             onSave(title, true, null, millis, amt, note.ifBlank { null }, selectedTemplateId)
                         } else {
-                            val (scheduledMillis, finalTitle) = when (selectedTodoPreset) {
-                                "今日中" -> Pair(null, if (!title.startsWith("今日中:")) "今日中: $title" else title)
-                                "1時間後" -> Pair(now.plusHours(1).atZone(zone).toInstant().toEpochMilli(), title)
-                                "今晩 (20時)" -> Pair(now.withHour(20).withMinute(0).atZone(zone).toInstant().toEpochMilli(), title)
-                                "明日 (10時)" -> Pair(now.plusDays(1).withHour(10).withMinute(0).atZone(zone).toInstant().toEpochMilli(), title)
+                            val scheduledMillis = when (selectedTodoPreset) {
+                                "今日中" -> null
+                                "1時間後" -> now.plusHours(1).atZone(zone).toInstant().toEpochMilli()
+                                "今晩 (20時)" -> now.withHour(20).withMinute(0).atZone(zone).toInstant().toEpochMilli()
+                                "明日 (10時)" -> now.plusDays(1).withHour(10).withMinute(0).atZone(zone).toInstant().toEpochMilli()
                                 "時刻指定" -> {
                                     val h = (customHourText.toIntOrNull() ?: 12).coerceIn(0, 23)
                                     val m = (customMinuteText.toIntOrNull() ?: 0).coerceIn(0, 59)
-                                    Pair(now.withHour(h).withMinute(m).atZone(zone).toInstant().toEpochMilli(), title)
+                                    now.withHour(h).withMinute(m).atZone(zone).toInstant().toEpochMilli()
                                 }
-                                else -> Pair(null, title)
+                                else -> null
                             }
-                            onSave(finalTitle, false, scheduledMillis, null, amt, note.ifBlank { null }, selectedTemplateId)
+                            onSave(title, false, scheduledMillis, null, null, note.ifBlank { null }, selectedTemplateId)
                         }
                         onDismiss()
                     }

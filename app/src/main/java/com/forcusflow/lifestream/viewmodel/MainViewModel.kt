@@ -39,8 +39,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val pinnedTemplates: StateFlow<List<TemplateEntity>> = templates
         .map { list ->
-            val pinned = list.filter { it.type != "INTERVAL" && it.isPinned }
-            if (pinned.isNotEmpty()) pinned else list.filter { it.type != "INTERVAL" }.take(4)
+            val nonInterval = list.filter { it.type != "INTERVAL" }.sortedBy { it.id }
+            val pinned = nonInterval.filter { it.isPinned }
+            if (pinned.isNotEmpty()) pinned else nonInterval.take(4)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 

@@ -1,11 +1,11 @@
-﻿package com.forcusflow.lifestream.data
+package com.forcusflow.lifestream.data
 
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TemplateDao {
-    @Query("SELECT * FROM templates ORDER BY usageCount DESC, id ASC")
+    @Query("SELECT * FROM templates ORDER BY id ASC")
     fun getAllFlow(): Flow<List<TemplateEntity>>
 
     @Query("SELECT * FROM templates")

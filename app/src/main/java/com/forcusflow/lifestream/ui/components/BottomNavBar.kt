@@ -1,4 +1,4 @@
-﻿package com.forcusflow.lifestream.ui.components
+package com.forcusflow.lifestream.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,7 +26,7 @@ fun BottomNavBar(
     val tabs = listOf(
         NavTabItem("今日", 0),
         NavTabItem("履歴", 1),
-        NavTabItem("分析", 2),
+        NavTabItem("周期", 2),
         NavTabItem("設定", 3)
     )
 
