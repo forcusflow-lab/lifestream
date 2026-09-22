@@ -8,6 +8,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -140,6 +141,19 @@ fun TimelineScreen(viewModel: MainViewModel) {
         }
 
         list
+    }
+
+    val listState = rememberLazyListState()
+    var hasScrolledToNow by remember { mutableStateOf(false) }
+
+    LaunchedEffect(timelineRowItems.size) {
+        if (!hasScrolledToNow && timelineRowItems.isNotEmpty()) {
+            val nowIdx = timelineRowItems.indexOfFirst { it is TimelineRowItem.NowMarker }
+            if (nowIdx >= 0) {
+                listState.scrollToItem((nowIdx - 1).coerceAtLeast(0))
+                hasScrolledToNow = true
+            }
+        }
     }
 
     Scaffold(
@@ -283,6 +297,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
 
             // Taskito-style Vertical Continuous Timeline
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
@@ -334,6 +349,14 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                         viewModel.recordCycleTask(rowItem.template, today)
                                         coroutineScope.launch {
                                             snackbarHostState.showSnackbar("「${rowItem.template.title}」の完了を記録しました！")
+                                        }
+                                    },
+                                    onSkip = {
+                                        viewModel.skipCycleTask(rowItem.template)
+                                        coroutineScope.launch {
+                                            val interval = rowItem.template.intervalDays ?: 7
+                                            val nextDate = today.plusDays(interval.toLong())
+                                            snackbarHostState.showSnackbar("「${rowItem.template.title}」をスキップしました (次回: ${nextDate.monthValue}/${nextDate.dayOfMonth})")
                                         }
                                     }
                                 )
@@ -423,6 +446,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
     itemToEdit?.let { item ->
         EditItemDialog(
             item = item,
+            templates = templates,
             onDismiss = { itemToEdit = null },
             onSave = { updated ->
                 viewModel.updateTimelineItem(updated)
@@ -756,7 +780,8 @@ fun TaskitoPeriodicSurfacedRow(
     elapsedDays: Long,
     isFirst: Boolean,
     isLast: Boolean,
-    onCompletedNow: () -> Unit
+    onCompletedNow: () -> Unit,
+    onSkip: () -> Unit
 ) {
     val colors = LifeStreamTheme.colors
     val badgeColor = if (isOverdue) colors.statusOverdue else colors.statusTarget
@@ -859,16 +884,33 @@ fun TaskitoPeriodicSurfacedRow(
                 )
             }
 
-            Spacer(modifier = Modifier.width(6.dp))
+            Spacer(modifier = Modifier.width(4.dp))
 
-            OutlinedButton(
-                onClick = onCompletedNow,
-                shape = RoundedCornerShape(8.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, badgeColor.copy(alpha = 0.6f)),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                modifier = Modifier.height(28.dp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                Text("✓ 記録", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = badgeColor)
+                IconButton(
+                    onClick = onSkip,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Text(
+                        text = "↷",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.textSecondary
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = onCompletedNow,
+                    shape = RoundedCornerShape(8.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, badgeColor.copy(alpha = 0.6f)),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(28.dp)
+                ) {
+                    Text("✓ 記録", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = badgeColor)
+                }
             }
         }
     }
@@ -1225,6 +1267,7 @@ fun QuickNoteDialog(
 @Composable
 fun EditItemDialog(
     item: TimelineItemEntity,
+    templates: List<TemplateEntity> = emptyList(),
     onDismiss: () -> Unit,
     onSave: (TimelineItemEntity) -> Unit,
     onDelete: () -> Unit
@@ -1234,6 +1277,10 @@ fun EditItemDialog(
     var note by remember { mutableStateOf(item.note ?: "") }
     var amountText by remember { mutableStateOf(item.amount?.toString() ?: "") }
     var isDone by remember { mutableStateOf(item.isDone) }
+
+    val matchedTemplate = remember(templates, item) {
+        templates.find { it.id == item.templateId } ?: templates.find { item.title.startsWith(it.title) }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1279,12 +1326,120 @@ fun EditItemDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                // Template-specific Quick Controls
+                if (matchedTemplate?.actionType == "COUNT") {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    val unitStr = if (matchedTemplate.unit.isNotBlank()) matchedTemplate.unit else "杯"
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(colors.background)
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "カウント数量 (${unitStr}):",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = colors.textSecondary
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedButton(
+                                onClick = {
+                                    val regex = "(\\d+)$unitStr".toRegex()
+                                    val match = regex.find(title)
+                                    val cur = match?.groupValues?.get(1)?.toIntOrNull() ?: 1
+                                    val next = (cur - 1).coerceAtLeast(1)
+                                    title = if (match != null) {
+                                        title.replace(regex, "$next$unitStr")
+                                    } else {
+                                        "${matchedTemplate.title} (${next}${unitStr}目)"
+                                    }
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text("-1", fontSize = 11.sp)
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    val regex = "(\\d+)$unitStr".toRegex()
+                                    val match = regex.find(title)
+                                    val cur = match?.groupValues?.get(1)?.toIntOrNull() ?: 1
+                                    val next = cur + 1
+                                    title = if (match != null) {
+                                        title.replace(regex, "$next$unitStr")
+                                    } else {
+                                        "${matchedTemplate.title} (${next}${unitStr}目)"
+                                    }
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text("+1", fontSize = 11.sp)
+                            }
+                        }
+                    }
+                } else if (matchedTemplate?.actionType == "TIMER") {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(colors.background)
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "タイマー時間微調整:",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = colors.textSecondary
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedButton(
+                                onClick = {
+                                    val regex = "(\\d+)分".toRegex()
+                                    val match = regex.find(title) ?: regex.find(note)
+                                    val cur = match?.groupValues?.get(1)?.toIntOrNull() ?: 15
+                                    val next = (cur - 5).coerceAtLeast(1)
+                                    title = "${matchedTemplate.title} (${next}分)"
+                                    note = "計測時間: ${next}分"
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text("-5分", fontSize = 11.sp)
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    val regex = "(\\d+)分".toRegex()
+                                    val match = regex.find(title) ?: regex.find(note)
+                                    val cur = match?.groupValues?.get(1)?.toIntOrNull() ?: 15
+                                    val next = cur + 5
+                                    title = "${matchedTemplate.title} (${next}分)"
+                                    note = "計測時間: ${next}分"
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text("+5分", fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedTextField(
                     value = note,
                     onValueChange = { note = it },
-                    label = { Text("メモ・言い訳") },
+                    label = { Text("メモ・補足") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )

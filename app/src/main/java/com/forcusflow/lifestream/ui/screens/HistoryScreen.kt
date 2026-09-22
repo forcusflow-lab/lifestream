@@ -46,6 +46,7 @@ fun HistoryScreen(viewModel: MainViewModel) {
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
     val allItems by viewModel.allItems.collectAsState()
+    val templates by viewModel.templates.collectAsState()
     val selectedDate by viewModel.selectedCalendarDate.collectAsState()
     val currentYearMonth by viewModel.calendarYearMonth.collectAsState()
 
@@ -376,6 +377,7 @@ fun HistoryScreen(viewModel: MainViewModel) {
     itemToEdit?.let { item ->
         EditItemDialog(
             item = item,
+            templates = templates,
             onDismiss = { itemToEdit = null },
             onSave = { updated ->
                 viewModel.updateTimelineItem(updated)

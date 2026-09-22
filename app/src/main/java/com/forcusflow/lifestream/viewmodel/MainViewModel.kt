@@ -61,9 +61,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Calendar state (support dynamic browsing across months)
-    val calendarYearMonth = MutableStateFlow(YearMonth.of(2026, 9))
-    val selectedCalendarDate = MutableStateFlow(LocalDate.of(2026, 9, 12))
+    // Calendar state (support dynamic browsing across months, default to today)
+    val calendarYearMonth = MutableStateFlow(YearMonth.from(LocalDate.now()))
+    val selectedCalendarDate = MutableStateFlow(LocalDate.now())
 
     // Segment in Tab 3 (0: 周期タスク一覧, 1: 週マトリクス表)
     val cycleMatrixSegment = MutableStateFlow(0)
@@ -321,6 +321,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
             itemDao.insert(item)
             templateDao.recordCompletion(template.id, millis)
+        }
+    }
+
+    fun skipCycleTask(template: TemplateEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            // 完了ログは作らず、次回予定日を本日起点に繰り延べるため lastCompletedAt のみを更新
+            val updated = template.copy(lastCompletedAt = now)
+            templateDao.update(updated)
         }
     }
 
