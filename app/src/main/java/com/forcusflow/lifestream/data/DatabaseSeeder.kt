@@ -140,7 +140,7 @@ object DatabaseSeeder {
         // 1 Welcome log
         items.add(
             TimelineItemEntity(
-                title = "LifeStreamへようこそ！",
+                title = "byLifeへようこそ！",
                 note = "上のスタンプや右下の＋から今日の行動を記録してみましょう",
                 isDone = true,
                 completedAt = now.minusMinutes(10).atZone(zone).toInstant().toEpochMilli()
@@ -150,7 +150,7 @@ object DatabaseSeeder {
         // 1 Starter ToDo
         items.add(
             TimelineItemEntity(
-                title = "今日中: 洗濯用洗剤をネットでポチる",
+                title = "洗濯用洗剤をネットでポチる",
                 isDone = false,
                 scheduledAt = null,
                 completedAt = null

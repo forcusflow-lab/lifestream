@@ -141,7 +141,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     onClick = {
                         val json = viewModel.exportJson()
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = ClipData.newPlainText("LifeStream Backup", json)
+                        val clip = ClipData.newPlainText("byLife Backup", json)
                         clipboard.setPrimaryClip(clip)
 
                         val sendIntent = Intent().apply {
@@ -150,7 +150,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                             type = "application/json"
                         }
                         try {
-                            context.startActivity(Intent.createChooser(sendIntent, "LifeStream Backup JSON"))
+                            context.startActivity(Intent.createChooser(sendIntent, "byLife Backup JSON"))
                         } catch (e: Exception) {
                             // ignore if no share targets
                         }

@@ -1,13 +1,13 @@
-﻿# LifeStream - Commercial MVP
+# byLife - Commercial MVP
 
-Android向けライフログ＆ToDoアプリ「**LifeStream**」商用決定版MVPの実装リポジトリです。
+Android向けライフログ＆ToDoアプリ「**byLife**」商用決定版MVPの実装リポジトリです。
 
-![LifeStream Preview](lifestream_ui_commercial_v2.png)
+![byLife Preview](lifestream_ui_commercial_v2.png)
 
 ## 概要
 - **説教・反省のないフラットな事実記録**: 水、食事、夜食出費などを感情的な評価なしに淡々とログ化。
 - **Taskito風の縦1本タイムライン**: 過去のDone、現在時刻（NOWライン）、未来のToDo、周期推奨タスクがシームレスに直結。
-- **週マトリクス型周期トラッカー**: 排水口ネット交換、フェイスパック、フィルター清掃など長周期の家事・セルフケアを一元可視化。
+- **周期・ルーティントラッカー**: 排水口ネット交換、フェイスパック、フィルター清掃など長周期の家事・セルフケアを一元可視化。
 
 ## 主な機能
 1. **今日のタイムライン (Tab 1)**:

@@ -1,0 +1,6 @@
+<resources>
+    <!-- byLife Brand Theme Colors -->
+    <color name="ic_launcher_background">#FAF8F5</color>
+    <color name="bylife_spine">#8C5A3C</color>
+    <color name="bylife_ripple_outer">#D9C3B0</color>
+</resources>
