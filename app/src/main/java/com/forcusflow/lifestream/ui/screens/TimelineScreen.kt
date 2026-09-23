@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -68,9 +69,6 @@ fun TimelineScreen(viewModel: MainViewModel) {
     var showAddSheet by remember { mutableStateOf(false) }
     var itemToEdit by remember { mutableStateOf<TimelineItemEntity?>(null) }
     var showTemplateManagerDialog by remember { mutableStateOf(false) }
-    var inlineActiveItemId by remember { mutableStateOf<Long?>(null) }
-    var quickAmountItem by remember { mutableStateOf<TimelineItemEntity?>(null) }
-    var quickNoteItem by remember { mutableStateOf<TimelineItemEntity?>(null) }
 
     val zone = ZoneId.systemDefault()
     val now = LocalDateTime.now()
@@ -176,18 +174,11 @@ fun TimelineScreen(viewModel: MainViewModel) {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Today counts (computed once, shared by both header badge and progress bar)
-            val doneCount = remember(todayItems) { todayItems.count { it.isDone } }
-            val todoCount = remember(anytimePending) { anytimePending.size }
-            val periodicCount = remember(dueOrOverduePeriodic) { dueOrOverduePeriodic.size }
-
-            // Simplified Header: Only date in elegant font
-            Row(
+            // Pure Minimal & Elegant Header: Only date in refined typography
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 6.dp)
             ) {
                 Text(
                     text = todayDateFormatted,
@@ -196,94 +187,6 @@ fun TimelineScreen(viewModel: MainViewModel) {
                     color = colors.textPrimary,
                     letterSpacing = (-0.5).sp
                 )
-                // Done count badge
-                if (doneCount > 0) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(colors.statusDone.copy(alpha = 0.15f))
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = "✅ $doneCount 件完了",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.statusDone
-                        )
-                    }
-                }
-            }
-
-            // Today Progress Summary Bar
-            val totalActionable = doneCount + todoCount + periodicCount
-
-            if (totalActionable > 0) {
-                val doneRatio = if (totalActionable > 0) doneCount.toFloat() / totalActionable else 0f
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 4.dp)
-                ) {
-                    // Stats row
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier.size(7.dp).clip(CircleShape)
-                                    .background(colors.statusDone)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("完了 $doneCount", fontSize = 11.sp, color = colors.textSecondary, fontWeight = FontWeight.SemiBold)
-                        }
-                        if (todoCount > 0) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier.size(7.dp).clip(CircleShape)
-                                        .background(colors.primary)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("ToDo $todoCount", fontSize = 11.sp, color = colors.textSecondary, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-                        if (periodicCount > 0) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier.size(7.dp).clip(CircleShape)
-                                        .background(colors.statusTarget)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("周期 $periodicCount", fontSize = 11.sp, color = colors.textSecondary, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-                        Spacer(modifier = Modifier.weight(1f))
-                        Text(
-                            text = "${(doneRatio * 100).toInt()}%",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (doneRatio >= 1f) colors.statusDone else colors.textSecondary
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(3.dp))
-                    // Progress bar
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(colors.border)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(doneRatio.coerceIn(0f, 1f))
-                                .fillMaxHeight()
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(colors.statusDone)
-                        )
-                    }
-                }
             }
 
 
@@ -428,11 +331,21 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                     item = item,
                                     isFirst = isFirst,
                                     isLast = isLast,
-                                    onToggle = {
-                                        viewModel.toggleItemDone(item)
-                                        inlineActiveItemId = item.id
-                                    },
-                                    onClick = { itemToEdit = item }
+                                    onToggle = { viewModel.toggleItemDone(item) },
+                                    onClick = { itemToEdit = item },
+                                    onDelete = {
+                                        viewModel.deleteItem(item)
+                                        coroutineScope.launch {
+                                            val res = snackbarHostState.showSnackbar(
+                                                message = "${item.title} を削除しました",
+                                                actionLabel = "元に戻す",
+                                                duration = SnackbarDuration.Short
+                                            )
+                                            if (res == SnackbarResult.ActionPerformed) {
+                                                viewModel.restoreItem(item)
+                                            }
+                                        }
+                                    }
                                 )
                             }
                             is TimelineRowItem.PeriodicSurfaced -> {
@@ -464,19 +377,10 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                     item = item,
                                     isFirst = isFirst,
                                     isLast = isLast,
-                                    isInlineActive = (inlineActiveItemId == item.id),
-                                    onToggle = {
-                                        val willBeDone = !item.isDone
-                                        viewModel.toggleItemDone(item)
-                                        inlineActiveItemId = if (willBeDone) item.id else null
-                                    },
+                                    onToggle = { viewModel.toggleItemDone(item) },
                                     onClick = { itemToEdit = item },
-                                    onQuickAmount = { quickAmountItem = item },
-                                    onQuickNote = { quickNoteItem = item },
-                                    onDismissInline = { inlineActiveItemId = null },
                                     onDelete = {
                                         viewModel.deleteItem(item)
-                                        if (inlineActiveItemId == item.id) inlineActiveItemId = null
                                         coroutineScope.launch {
                                             val res = snackbarHostState.showSnackbar(
                                                 message = "${item.title} を削除しました",
@@ -562,30 +466,6 @@ fun TimelineScreen(viewModel: MainViewModel) {
                         viewModel.restoreItem(item)
                     }
                 }
-            }
-        )
-    }
-
-    // Quick Amount Dialog
-    quickAmountItem?.let { item ->
-        QuickAmountDialog(
-            item = item,
-            onDismiss = { quickAmountItem = null },
-            onSave = { amt ->
-                viewModel.updateTimelineItem(item.copy(amount = amt))
-                quickAmountItem = null
-            }
-        )
-    }
-
-    // Quick Note Dialog
-    quickNoteItem?.let { item ->
-        QuickNoteDialog(
-            item = item,
-            onDismiss = { quickNoteItem = null },
-            onSave = { note ->
-                viewModel.updateTimelineItem(item.copy(note = note))
-                quickNoteItem = null
             }
         )
     }
@@ -751,125 +631,153 @@ fun ActiveTimerBottomBar(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TaskitoAnytimeItemRow(
     item: TimelineItemEntity,
     isFirst: Boolean,
     isLast: Boolean,
     onToggle: () -> Unit,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDelete: () -> Unit
 ) {
     val colors = LifeStreamTheme.colors
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(IntrinsicSize.Min)
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Continuous stem line
-        Box(
-            modifier = Modifier
-                .width(32.dp)
-                .fillMaxHeight(),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(modifier = Modifier.fillMaxHeight()) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .width(2.dp)
-                        .background(if (isFirst) Color.Transparent else colors.border)
-                        .align(Alignment.CenterHorizontally)
-                )
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .width(2.dp)
-                        .background(if (isLast) Color.Transparent else colors.border)
-                        .align(Alignment.CenterHorizontally)
-                )
-            }
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart || value == SwipeToDismissBoxValue.StartToEnd) {
+                onDelete()
+                true
+            } else false
+        }
+    )
 
-            // Hollow ToDo node with generous 36.dp touch target
+    SwipeToDismissBox(
+        state = dismissState,
+        backgroundContent = {
             Box(
                 modifier = Modifier
-                    .size(36.dp)
-                    .clickable { onToggle() },
+                    .fillMaxSize()
+                    .background(Color(0xFFEF4444).copy(alpha = 0.85f))
+                    .padding(horizontal = 20.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Text("削除", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            }
+        }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min)
+                .background(colors.background)
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Continuous stem line
+            Box(
+                modifier = Modifier
+                    .width(32.dp)
+                    .fillMaxHeight(),
                 contentAlignment = Alignment.Center
             ) {
+                Column(modifier = Modifier.fillMaxHeight()) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .width(2.dp)
+                            .background(if (isFirst) Color.Transparent else colors.border)
+                            .align(Alignment.CenterHorizontally)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .width(2.dp)
+                            .background(if (isLast) Color.Transparent else colors.border)
+                            .align(Alignment.CenterHorizontally)
+                    )
+                }
+
+                // Hollow ToDo node with generous 36.dp touch target
                 Box(
                     modifier = Modifier
-                        .size(20.dp)
-                        .clip(CircleShape)
-                        .border(2.dp, colors.primary, CircleShape)
-                        .background(colors.card),
+                        .size(36.dp)
+                        .clickable { onToggle() },
                     contentAlignment = Alignment.Center
                 ) {
-                    if (item.isDone) {
-                        Icon(
-                            Icons.Default.Check,
-                            contentDescription = "完了",
-                            tint = colors.statusDone,
-                            modifier = Modifier.size(13.dp)
-                        )
+                    Box(
+                        modifier = Modifier
+                            .size(20.dp)
+                            .clip(CircleShape)
+                            .border(2.dp, colors.primary, CircleShape)
+                            .background(colors.card),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (item.isDone) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = "完了",
+                                tint = colors.statusDone,
+                                modifier = Modifier.size(13.dp)
+                            )
+                        }
                     }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(8.dp))
 
-        // Title & Anytime indicator (Clicking card opens edit modal)
-        Row(
-            modifier = Modifier
-                .weight(1f)
-                .clip(RoundedCornerShape(10.dp))
-                .border(1.dp, colors.border, RoundedCornerShape(10.dp))
-                .background(colors.card)
-                .clickable { onClick() }
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(colors.primary.copy(alpha = 0.12f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
+            // Title & Anytime indicator (Clicking card opens edit modal)
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .border(1.dp, colors.border, RoundedCornerShape(10.dp))
+                    .background(colors.card)
+                    .clickable { onClick() }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(colors.primary.copy(alpha = 0.12f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "今日中",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.primary
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "今日中",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.primary
+                            text = item.title,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.textPrimary,
+                            textDecoration = if (item.isDone) TextDecoration.LineThrough else null
                         )
                     }
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = item.title,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = colors.textPrimary,
-                        textDecoration = if (item.isDone) TextDecoration.LineThrough else null
-                    )
-                }
-                if (!item.note.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = item.note,
-                        fontSize = 11.sp,
-                        color = colors.textSecondary
-                    )
+                    if (!item.note.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = item.note,
+                            fontSize = 11.sp,
+                            color = colors.textSecondary
+                        )
+                    }
                 }
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TaskitoPeriodicSurfacedRow(
     template: TemplateEntity,
@@ -884,129 +792,155 @@ fun TaskitoPeriodicSurfacedRow(
     val badgeColor = if (isOverdue) colors.statusOverdue else colors.statusTarget
     val badgeText = if (isOverdue) "期限超過" else "本日推奨"
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(IntrinsicSize.Min)
-            .clickable { onCompletedNow() }
-            .padding(vertical = 3.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Continuous stem line
-        Box(
-            modifier = Modifier
-                .width(32.dp)
-                .fillMaxHeight(),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(modifier = Modifier.fillMaxHeight()) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .width(2.dp)
-                        .background(if (isFirst) Color.Transparent else colors.border)
-                        .align(Alignment.CenterHorizontally)
-                )
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .width(2.dp)
-                        .background(if (isLast) Color.Transparent else colors.border)
-                        .align(Alignment.CenterHorizontally)
-                )
-            }
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart || value == SwipeToDismissBoxValue.StartToEnd) {
+                onSkip()
+                true
+            } else false
+        }
+    )
 
-            // Compact Node Circle (Red or Purple)
+    SwipeToDismissBox(
+        state = dismissState,
+        backgroundContent = {
             Box(
                 modifier = Modifier
-                    .size(18.dp)
-                    .clip(CircleShape)
-                    .border(2.dp, badgeColor, CircleShape)
-                    .background(badgeColor.copy(alpha = 0.15f))
-                    .clickable { onCompletedNow() },
-                contentAlignment = Alignment.Center
+                    .fillMaxSize()
+                    .background(Color(0xFFF59E0B).copy(alpha = 0.85f))
+                    .padding(horizontal = 20.dp),
+                contentAlignment = Alignment.CenterEnd
             ) {
-                Text(
-                    text = if (isOverdue) "!" else "•",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = badgeColor
-                )
+                Text("↷ スキップ", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
             }
         }
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        // 1-line integrated row matching Taskito style
+    ) {
         Row(
             modifier = Modifier
-                .weight(1f)
-                .clip(RoundedCornerShape(10.dp))
-                .border(1.dp, badgeColor.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
-                .background(badgeColor.copy(alpha = 0.05f))
-                .padding(horizontal = 10.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min)
+                .background(colors.background)
+                .clickable { onCompletedNow() }
+                .padding(vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.weight(1f),
-                verticalAlignment = Alignment.CenterVertically
+            // Continuous stem line
+            Box(
+                modifier = Modifier
+                    .width(32.dp)
+                    .fillMaxHeight(),
+                contentAlignment = Alignment.Center
             ) {
+                Column(modifier = Modifier.fillMaxHeight()) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .width(2.dp)
+                            .background(if (isFirst) Color.Transparent else colors.border)
+                            .align(Alignment.CenterHorizontally)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .width(2.dp)
+                            .background(if (isLast) Color.Transparent else colors.border)
+                            .align(Alignment.CenterHorizontally)
+                    )
+                }
+
+                // Compact Node Circle (Red or Purple)
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .border(2.dp, badgeColor, CircleShape)
                         .background(badgeColor.copy(alpha = 0.15f))
-                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                        .clickable { onCompletedNow() },
+                    contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = badgeText,
-                        fontSize = 10.sp,
+                        text = if (isOverdue) "!" else "•",
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = badgeColor
                     )
                 }
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "${template.iconKey ?: "🧹"} ${template.title}",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.textPrimary,
-                    maxLines = 1
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "(${elapsedDays}日前)",
-                    fontSize = 11.sp,
-                    color = colors.textSecondary
-                )
             }
 
-            Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.width(8.dp))
 
+            // 1-line integrated row matching Taskito style
             Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .border(1.dp, badgeColor.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                    .background(badgeColor.copy(alpha = 0.05f))
+                    .padding(horizontal = 10.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                IconButton(
-                    onClick = onSkip,
-                    modifier = Modifier.size(28.dp)
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(badgeColor.copy(alpha = 0.15f))
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = badgeText,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = badgeColor
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "↷",
-                        fontSize = 15.sp,
+                        text = "${template.iconKey ?: "🧹"} ${template.title}",
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
+                        color = colors.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "(${elapsedDays}日前)",
+                        fontSize = 11.sp,
                         color = colors.textSecondary
                     )
                 }
 
-                OutlinedButton(
-                    onClick = onCompletedNow,
-                    shape = RoundedCornerShape(8.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, badgeColor.copy(alpha = 0.6f)),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                    modifier = Modifier.height(28.dp)
+                Spacer(modifier = Modifier.width(4.dp))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    Text("✓ 記録", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = badgeColor)
+                    IconButton(
+                        onClick = onSkip,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Text(
+                            text = "↷",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textSecondary
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = onCompletedNow,
+                        shape = RoundedCornerShape(8.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, badgeColor.copy(alpha = 0.6f)),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        modifier = Modifier.height(28.dp)
+                    ) {
+                        Text("✓ 記録", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = badgeColor)
+                    }
                 }
             }
         }
@@ -1019,12 +953,8 @@ fun TaskitoTimelineItemRow(
     item: TimelineItemEntity,
     isFirst: Boolean,
     isLast: Boolean,
-    isInlineActive: Boolean = false,
     onToggle: () -> Unit,
     onClick: () -> Unit,
-    onQuickAmount: () -> Unit = {},
-    onQuickNote: () -> Unit = {},
-    onDismissInline: () -> Unit = {},
     onDelete: () -> Unit
 ) {
     val colors = LifeStreamTheme.colors
@@ -1052,11 +982,11 @@ fun TaskitoTimelineItemRow(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xFFEF4444).copy(alpha = 0.8f))
+                    .background(Color(0xFFEF4444).copy(alpha = 0.85f))
                     .padding(horizontal = 20.dp),
                 contentAlignment = Alignment.CenterEnd
             ) {
-                Text("削除", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("削除", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
             }
         }
     ) {
@@ -1130,20 +1060,22 @@ fun TaskitoTimelineItemRow(
                 Row(
                     modifier = Modifier
                         .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(colors.card)
+                        .border(0.5.dp, colors.border, RoundedCornerShape(10.dp))
                         .clickable { onClick() }
-                        .padding(vertical = 4.dp),
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Column(
-                        modifier = Modifier.weight(1f)
-                    ) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = timeStr,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = colors.textSecondary
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = item.title,
                             fontSize = 15.sp,
@@ -1162,6 +1094,7 @@ fun TaskitoTimelineItemRow(
                             }
                         }
                         if (displayNote != null) {
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = displayNote,
                                 fontSize = 12.sp,
@@ -1191,178 +1124,17 @@ fun TaskitoTimelineItemRow(
                     }
                 }
             }
-
-            // Inline Quick-Add Tray for completed item
-            if (isInlineActive) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 40.dp, end = 12.dp, bottom = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = colors.primary.copy(alpha = 0.12f),
-                        border = BorderStroke(1.dp, colors.primary.copy(alpha = 0.5f)),
-                        modifier = Modifier.clickable { onQuickAmount() }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("💰", fontSize = 12.sp)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (item.amount != null) "¥${item.amount}" else "＋ 金額",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.primary
-                            )
-                        }
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = colors.card,
-                        border = BorderStroke(1.dp, colors.border),
-                        modifier = Modifier.clickable { onQuickNote() }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("💬", fontSize = 12.sp)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (!item.note.isNullOrBlank()) item.note else "＋ メモ",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = colors.textPrimary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.weight(1f))
-
-                    IconButton(
-                        onClick = onDismissInline,
-                        modifier = Modifier.size(26.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Close,
-                            contentDescription = "閉じる",
-                            modifier = Modifier.size(16.dp),
-                            tint = colors.textSecondary
-                        )
-                    }
-                }
-            }
         }
     }
 }
 
+/**
+ * 統一された広々とした詳細編集モーダルボトムシート
+ * Done（事実ログ）と ToDo（未完了タスク）の双方を美しく直感的に編集できる商用レベルのUI
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun QuickAmountDialog(
-    item: TimelineItemEntity,
-    onDismiss: () -> Unit,
-    onSave: (Long?) -> Unit
-) {
-    val colors = LifeStreamTheme.colors
-    var text by remember { mutableStateOf(item.amount?.toString() ?: "") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = colors.card,
-        title = {
-            Text(
-                text = "「${item.title}」の金額を記録",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = colors.textPrimary
-            )
-        },
-        text = {
-            OutlinedTextField(
-                value = text,
-                onValueChange = { if (it.all { c -> c.isDigit() }) text = it },
-                label = { Text("支出金額 (¥)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    onSave(text.toLongOrNull())
-                    onDismiss()
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
-            ) {
-                Text("保存")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("キャンセル")
-            }
-        }
-    )
-}
-
-@Composable
-fun QuickNoteDialog(
-    item: TimelineItemEntity,
-    onDismiss: () -> Unit,
-    onSave: (String?) -> Unit
-) {
-    val colors = LifeStreamTheme.colors
-    var text by remember { mutableStateOf(item.note ?: "") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = colors.card,
-        title = {
-            Text(
-                text = "「${item.title}」にメモを追記",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = colors.textPrimary
-            )
-        },
-        text = {
-            OutlinedTextField(
-                value = text,
-                onValueChange = { text = it },
-                label = { Text("メモ") },
-                singleLine = false,
-                modifier = Modifier.fillMaxWidth()
-            )
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    onSave(text.ifBlank { null })
-                    onDismiss()
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
-            ) {
-                Text("保存")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("キャンセル")
-            }
-        }
-    )
-}
-
-@Composable
-fun EditItemDialog(
+fun ItemDetailBottomSheet(
     item: TimelineItemEntity,
     templates: List<TemplateEntity> = emptyList(),
     onDismiss: () -> Unit,
@@ -1374,215 +1146,326 @@ fun EditItemDialog(
     var note by remember { mutableStateOf(item.note ?: "") }
     var amountText by remember { mutableStateOf(item.amount?.toString() ?: "") }
     var isDone by remember { mutableStateOf(item.isDone) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val matchedTemplate = remember(templates, item) {
         templates.find { it.id == item.templateId } ?: templates.find { item.title.startsWith(it.title) }
     }
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = sheetState,
         containerColor = colors.card,
-        title = {
-            Text(
-                text = "記録の編集",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = colors.textPrimary
+        dragHandle = { BottomSheetDefaults.DragHandle() },
+        modifier = Modifier.fillMaxHeight(0.92f)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 24.dp)
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .imePadding()
+        ) {
+            // Header bar: Cancel - Title - Save
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(
+                    onClick = onDismiss,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text("キャンセル", color = colors.textSecondary, fontSize = 15.sp)
+                }
+                Text(
+                    text = if (isDone) "記録の詳細・編集" else "ToDoの詳細・編集",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary
+                )
+                Button(
+                    onClick = {
+                        val parsedAmount = amountText.toLongOrNull()
+                        val updated = item.copy(
+                            title = title.trim(),
+                            note = note.trim().ifBlank { null },
+                            amount = parsedAmount,
+                            isDone = isDone,
+                            completedAt = if (isDone && item.completedAt == null) System.currentTimeMillis() else if (!isDone) null else item.completedAt
+                        )
+                        onSave(updated)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+                ) {
+                    Text("保存", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
+            }
+
+            // 1. Status Toggle Card (Done vs ToDo)
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = colors.background,
+                border = BorderStroke(1.dp, colors.border),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { isDone = !isDone }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .border(2.dp, if (isDone) colors.statusDone else colors.primary, CircleShape)
+                            .background(if (isDone) colors.statusDone else Color.Transparent),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isDone) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = if (isDone) "完了済み (Done)" else "未完了タスク (ToDo)",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDone) colors.statusDone else colors.primary
+                        )
+                        Text(
+                            text = if (isDone) "タイムラインに事実のログとして記録されています" else "タップして完了済みに切り替えられます",
+                            fontSize = 11.sp,
+                            color = colors.textSecondary
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // 2. Title Input
+            Text("タイトル", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
+            Spacer(modifier = Modifier.height(6.dp))
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = colors.primary,
+                    unfocusedBorderColor = colors.border,
+                    focusedContainerColor = colors.background,
+                    unfocusedContainerColor = colors.background
+                ),
+                modifier = Modifier.fillMaxWidth()
             )
-        },
-        text = {
-            Column {
-                // Done toggle
+
+            // Template Quick Adjustments (Count / Timer)
+            if (matchedTemplate?.actionType == "COUNT") {
+                Spacer(modifier = Modifier.height(12.dp))
+                val unitStr = if (matchedTemplate.unit.isNotBlank()) matchedTemplate.unit else "杯"
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { isDone = !isDone }
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(colors.background)
+                        .border(1.dp, colors.border, RoundedCornerShape(10.dp))
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Checkbox(
-                        checked = isDone,
-                        onCheckedChange = { isDone = it }
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = if (isDone) "完了済み (Done)" else "予定 (ToDo)",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = colors.textPrimary
+                        text = "数量微調整 (${unitStr}):",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = colors.textSecondary
                     )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text("タイトル") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                // Template-specific Quick Controls
-                if (matchedTemplate?.actionType == "COUNT") {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    val unitStr = if (matchedTemplate.unit.isNotBlank()) matchedTemplate.unit else "杯"
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(colors.background)
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "カウント数量 (${unitStr}):",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = colors.textSecondary
-                        )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            OutlinedButton(
-                                onClick = {
-                                    val regex = "(\\d+)$unitStr".toRegex()
-                                    val match = regex.find(title)
-                                    val cur = match?.groupValues?.get(1)?.toIntOrNull() ?: 1
-                                    val next = (cur - 1).coerceAtLeast(1)
-                                    title = if (match != null) {
-                                        title.replace(regex, "$next$unitStr")
-                                    } else {
-                                        "${matchedTemplate.title} (${next}${unitStr}目)"
-                                    }
-                                },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                modifier = Modifier.height(28.dp)
-                            ) {
-                                Text("-1", fontSize = 11.sp)
-                            }
-                            Spacer(modifier = Modifier.width(6.dp))
-                            OutlinedButton(
-                                onClick = {
-                                    val regex = "(\\d+)$unitStr".toRegex()
-                                    val match = regex.find(title)
-                                    val cur = match?.groupValues?.get(1)?.toIntOrNull() ?: 1
-                                    val next = cur + 1
-                                    title = if (match != null) {
-                                        title.replace(regex, "$next$unitStr")
-                                    } else {
-                                        "${matchedTemplate.title} (${next}${unitStr}目)"
-                                    }
-                                },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                modifier = Modifier.height(28.dp)
-                            ) {
-                                Text("+1", fontSize = 11.sp)
-                            }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedButton(
+                            onClick = {
+                                val regex = "(\\d+)$unitStr".toRegex()
+                                val match = regex.find(title)
+                                val cur = match?.groupValues?.get(1)?.toIntOrNull() ?: 1
+                                val next = (cur - 1).coerceAtLeast(1)
+                                title = if (match != null) {
+                                    title.replace(regex, "$next$unitStr")
+                                } else {
+                                    "${matchedTemplate.title} (${next}${unitStr}目)"
+                                }
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Text("-1", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
-                    }
-                } else if (matchedTemplate?.actionType == "TIMER") {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(colors.background)
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "タイマー時間微調整:",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = colors.textSecondary
-                        )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            OutlinedButton(
-                                onClick = {
-                                    val regex = "(\\d+)分".toRegex()
-                                    val match = regex.find(title) ?: regex.find(note)
-                                    val cur = match?.groupValues?.get(1)?.toIntOrNull() ?: 15
-                                    val next = (cur - 5).coerceAtLeast(1)
-                                    title = "${matchedTemplate.title} (${next}分)"
-                                    note = "計測時間: ${next}分"
-                                },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                modifier = Modifier.height(28.dp)
-                            ) {
-                                Text("-5分", fontSize = 11.sp)
-                            }
-                            Spacer(modifier = Modifier.width(6.dp))
-                            OutlinedButton(
-                                onClick = {
-                                    val regex = "(\\d+)分".toRegex()
-                                    val match = regex.find(title) ?: regex.find(note)
-                                    val cur = match?.groupValues?.get(1)?.toIntOrNull() ?: 15
-                                    val next = cur + 5
-                                    title = "${matchedTemplate.title} (${next}分)"
-                                    note = "計測時間: ${next}分"
-                                },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                modifier = Modifier.height(28.dp)
-                            ) {
-                                Text("+5分", fontSize = 11.sp)
-                            }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        OutlinedButton(
+                            onClick = {
+                                val regex = "(\\d+)$unitStr".toRegex()
+                                val match = regex.find(title)
+                                val cur = match?.groupValues?.get(1)?.toIntOrNull() ?: 1
+                                val next = cur + 1
+                                title = if (match != null) {
+                                    title.replace(regex, "$next$unitStr")
+                                } else {
+                                    "${matchedTemplate.title} (${next}${unitStr}目)"
+                                }
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Text("+1", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedTextField(
-                    value = note,
-                    onValueChange = { note = it },
-                    label = { Text("メモ・補足") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedTextField(
-                    value = amountText,
-                    onValueChange = { if (it.all { char -> char.isDigit() }) amountText = it },
-                    label = { Text("支出金額 (¥)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+            } else if (matchedTemplate?.actionType == "TIMER") {
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(colors.background)
+                        .border(1.dp, colors.border, RoundedCornerShape(10.dp))
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "タイマー微調整:",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = colors.textSecondary
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedButton(
+                            onClick = {
+                                val regex = "(\\d+)分".toRegex()
+                                val match = regex.find(title) ?: regex.find(note)
+                                val cur = match?.groupValues?.get(1)?.toIntOrNull() ?: 15
+                                val next = (cur - 5).coerceAtLeast(1)
+                                title = "${matchedTemplate.title} (${next}分)"
+                                note = "計測時間: ${next}分"
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Text("-5分", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        OutlinedButton(
+                            onClick = {
+                                val regex = "(\\d+)分".toRegex()
+                                val match = regex.find(title) ?: regex.find(note)
+                                val cur = match?.groupValues?.get(1)?.toIntOrNull() ?: 15
+                                val next = cur + 5
+                                title = "${matchedTemplate.title} (${next}分)"
+                                note = "計測時間: ${next}分"
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Text("+5分", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val updated = item.copy(
-                        title = title,
-                        note = note.ifBlank { null },
-                        amount = amountText.toLongOrNull(),
-                        isDone = isDone,
-                        completedAt = if (isDone && item.completedAt == null) System.currentTimeMillis() else item.completedAt
-                    )
-                    onSave(updated)
-                },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = colors.primary,
-                    contentColor = colors.onPrimary
-                )
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // 3. Amount Input (¥)
+            Text("支出金額 (任意)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
+            Spacer(modifier = Modifier.height(6.dp))
+            OutlinedTextField(
+                value = amountText,
+                onValueChange = { if (it.all { c -> c.isDigit() }) amountText = it },
+                leadingIcon = { Text("¥", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colors.primary) },
+                placeholder = { Text("0", color = colors.textSecondary.copy(alpha = 0.5f)) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = colors.primary,
+                    unfocusedBorderColor = colors.border,
+                    focusedContainerColor = colors.background,
+                    unfocusedContainerColor = colors.background
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // 4. Note Input
+            Text("メモ・補足 (任意)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
+            Spacer(modifier = Modifier.height(6.dp))
+            OutlinedTextField(
+                value = note,
+                onValueChange = { note = it },
+                minLines = 3,
+                maxLines = 6,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = colors.primary,
+                    unfocusedBorderColor = colors.border,
+                    focusedContainerColor = colors.background,
+                    unfocusedContainerColor = colors.background
+                ),
+                placeholder = { Text("気づきや詳細をメモ...", color = colors.textSecondary.copy(alpha = 0.5f)) },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            // 5. Delete Button (at the bottom, clean and safe)
+            OutlinedButton(
+                onClick = onDelete,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444)),
+                border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.4f)),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
             ) {
-                Text("保存")
+                Text("この記録・タスクを削除する", fontWeight = FontWeight.Bold, fontSize = 14.sp)
             }
-        },
-        dismissButton = {
-            Row {
-                TextButton(onClick = onDelete) {
-                    Text("削除", color = colors.statusOverdue)
-                }
-                Spacer(modifier = Modifier.width(4.dp))
-                TextButton(onClick = onDismiss) {
-                    Text("キャンセル")
-                }
-            }
+
+            Spacer(modifier = Modifier.height(32.dp))
         }
+    }
+}
+
+/**
+ * 互換性のためのエイリアス関数
+ */
+@Composable
+fun EditItemDialog(
+    item: TimelineItemEntity,
+    templates: List<TemplateEntity> = emptyList(),
+    onDismiss: () -> Unit,
+    onSave: (TimelineItemEntity) -> Unit,
+    onDelete: () -> Unit
+) {
+    ItemDetailBottomSheet(
+        item = item,
+        templates = templates,
+        onDismiss = onDismiss,
+        onSave = onSave,
+        onDelete = onDelete
     )
 }

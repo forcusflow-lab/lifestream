@@ -330,99 +330,165 @@ fun CompactUnifiedCycleTaskCard(
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
-                // 1. Icon (22sp)
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(accentColor.copy(alpha = 0.12f)),
-                    contentAlignment = Alignment.Center
+                // === 1行目: アイコン + タイトル(広々表示) + 周期・ストリークバッジ + アクションボタン ===
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // アイコン (32dp)
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(accentColor.copy(alpha = 0.12f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = template.iconKey ?: "🧹",
+                            fontSize = 17.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    // タイトル（十分な幅を確保）
                     Text(
-                        text = template.iconKey ?: "🧹",
-                        fontSize = 18.sp
+                        text = template.title,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // 周期バッジ
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(colors.background)
+                            .border(0.5.dp, colors.border, RoundedCornerShape(6.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "${interval}日ごと",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = colors.textSecondary
+                        )
+                    }
+
+                    // 連続達成ストリーク (2回以上なら表示)
+                    if (streak >= 2) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFFF59E0B).copy(alpha = 0.15f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "🔥${streak}",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFF59E0B)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // スキップボタン [↷]
+                    IconButton(
+                        onClick = onSkip,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Text(
+                            text = "↷",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textSecondary
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    // 完了ボタン [✓]
+                    FilledTonalButton(
+                        onClick = onCompletedNow,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = accentColor.copy(alpha = 0.15f),
+                            contentColor = accentColor
+                        ),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                        modifier = Modifier.height(28.dp)
+                    ) {
+                        Text(
+                            text = "✓",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
 
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-                // 2. Title & Status (Left Column)
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.Center
+                // === 2行目: ステータス説明（左） ＋ 7曜日ドット／次回予定（右） ===
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 42.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
+                    // 左側: ステータス
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = template.title,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.textPrimary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(statusBadgeColor.copy(alpha = 0.12f))
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                .background(statusBadgeColor.copy(alpha = 0.15f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text = "${interval}日",
-                                fontSize = 9.sp,
+                                text = when {
+                                    isOverdue -> "期限超過"
+                                    isDueToday -> "今日予定"
+                                    else -> "順調"
+                                },
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = statusBadgeColor
                             )
                         }
-                        // Streak badge
-                        if (streak >= 2) {
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(Color(0xFFF59E0B).copy(alpha = 0.15f))
-                                    .padding(horizontal = 4.dp, vertical = 1.dp)
-                            ) {
-                                Text(
-                                    text = "🔥${streak}",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFF59E0B)
-                                )
-                            }
-                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = statusSubtitle,
+                            fontSize = 11.sp,
+                            color = if (isOverdue) statusBadgeColor else colors.textSecondary
+                        )
                     }
-                    Text(
-                        text = statusSubtitle,
-                        fontSize = 10.sp,
-                        color = if (isOverdue) statusBadgeColor else colors.textSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
 
-                Spacer(modifier = Modifier.width(6.dp))
-
-                // 3. Center: 7-day mini indicator OR "··· 次回 M/D" (for long term)
-                if (isLongTerm) {
-                    val nextStr = if (nextTargetDate != null) "${nextTargetDate.monthValue}/${nextTargetDate.dayOfMonth}" else "未定"
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(colors.background.copy(alpha = 0.8f))
-                            .border(0.5.dp, colors.border, RoundedCornerShape(6.dp))
-                            .padding(horizontal = 7.dp, vertical = 4.dp)
+                    // 右側: 7-day mini indicator OR "··· 次回 M/D" (for long term)
+                    if (isLongTerm) {
+                        val nextStr = if (nextTargetDate != null) "${nextTargetDate.monthValue}/${nextTargetDate.dayOfMonth}" else "未定"
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(colors.background.copy(alpha = 0.8f))
+                                .border(0.5.dp, colors.border, RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
                     ) {
                         Text(
                             text = "··· 次回 $nextStr",
-                            fontSize = 10.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Medium,
                             color = if (isOverdue) colors.statusOverdue else colors.textSecondary
                         )
@@ -430,7 +496,7 @@ fun CompactUnifiedCycleTaskCard(
                 } else {
                     // Inline 7-day compact dots
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         val dayInitial = listOf("月", "火", "水", "木", "金", "土", "日")
@@ -474,71 +540,33 @@ fun CompactUnifiedCycleTaskCard(
                         }
                     }
                 }
-
-                Spacer(modifier = Modifier.width(6.dp))
-
-                // 4. Actions: Skip [↷] & Complete [✓]
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    // Skip Button
-                    IconButton(
-                        onClick = onSkip,
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Text(
-                            text = "↷",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.textSecondary
-                        )
-                    }
-
-                    // Complete Button
-                    FilledTonalButton(
-                        onClick = onCompletedNow,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = accentColor.copy(alpha = 0.15f),
-                            contentColor = accentColor
-                        ),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                        modifier = Modifier.height(30.dp)
-                    ) {
-                        Text(
-                            text = "✓",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
             }
+        }
 
-            // Completion rate bar (thin, at bottom of card)
-            if (completionRate > 0f) {
+        // Completion rate bar (thin, at bottom of card)
+        if (completionRate > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .background(colors.border.copy(alpha = 0.4f))
+            ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(3.dp)
-                        .background(colors.border.copy(alpha = 0.4f))
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(completionRate)
-                            .fillMaxHeight()
-                            .background(
-                                when {
-                                    completionRate >= 0.8f -> colors.statusDone
-                                    completionRate >= 0.5f -> colors.statusWarning
-                                    else -> colors.statusOverdue.copy(alpha = 0.6f)
-                                }
-                            )
-                    )
-                }
+                        .fillMaxWidth(completionRate)
+                        .fillMaxHeight()
+                        .background(
+                            when {
+                                completionRate >= 0.8f -> colors.statusDone
+                                completionRate >= 0.5f -> colors.statusWarning
+                                else -> colors.statusOverdue.copy(alpha = 0.6f)
+                            }
+                        )
+                )
             }
         }
     }
+}
 }
 
 @Composable

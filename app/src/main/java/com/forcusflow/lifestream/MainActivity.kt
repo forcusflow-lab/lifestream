@@ -27,7 +27,6 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeMode by viewModel.themeMode.collectAsState()
             val currentTab by viewModel.currentTab.collectAsState()
-            val todayBadgeCount by viewModel.todayBadgeCount.collectAsState()
 
             LifeStreamTheme(themeMode = themeMode) {
                 Scaffold(
@@ -35,8 +34,7 @@ class MainActivity : ComponentActivity() {
                     bottomBar = {
                         BottomNavBar(
                             selectedTab = currentTab,
-                            onTabSelected = { viewModel.currentTab.value = it },
-                            todayBadgeCount = todayBadgeCount
+                            onTabSelected = { viewModel.currentTab.value = it }
                         )
                     }
                 ) { innerPadding ->

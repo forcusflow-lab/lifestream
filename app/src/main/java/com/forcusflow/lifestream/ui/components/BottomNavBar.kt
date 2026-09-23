@@ -21,8 +21,7 @@ data class NavTabItem(val label: String, val index: Int)
 @Composable
 fun BottomNavBar(
     selectedTab: Int,
-    onTabSelected: (Int) -> Unit,
-    todayBadgeCount: Int = 0
+    onTabSelected: (Int) -> Unit
 ) {
     val colors = LifeStreamTheme.colors
     val tabs = listOf(
@@ -45,51 +44,28 @@ fun BottomNavBar(
         ) {
             tabs.forEach { tab ->
                 val isSelected = selectedTab == tab.index
-                Box {
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(16.dp))
-                            .clickable { onTabSelected(tab.index) }
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (isSelected) {
-                            Box(
-                                modifier = Modifier
-                                    .size(7.dp)
-                                    .clip(RoundedCornerShape(50))
-                                    .background(colors.primary)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                        }
-                        Text(
-                            text = tab.label,
-                            fontSize = 15.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isSelected) colors.textPrimary else colors.textSecondary
-                        )
-                    }
-
-                    // Badge for 今日 tab
-                    if (tab.index == 0 && todayBadgeCount > 0) {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable { onTabSelected(tab.index) }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (isSelected) {
                         Box(
                             modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .offset(x = (-2).dp, y = (2).dp)
-                                .defaultMinSize(minWidth = 16.dp, minHeight = 16.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFFEF4444)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = if (todayBadgeCount > 9) "9+" else todayBadgeCount.toString(),
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
-                            )
-                        }
+                                .size(7.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(colors.primary)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
                     }
+                    Text(
+                        text = tab.label,
+                        fontSize = 15.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isSelected) colors.textPrimary else colors.textSecondary
+                    )
                 }
             }
         }
