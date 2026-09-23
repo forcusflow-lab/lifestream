@@ -51,6 +51,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val anytimePendingItems: StateFlow<List<TimelineItemEntity>> = itemDao.getAnytimePendingFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // Badge count for Today tab: pending ToDos + overdue periodic tasks
+    val todayBadgeCount: StateFlow<Int> = combine(
+        anytimePendingItems,
+        templates
+    ) { pending, tmplList ->
+        val today = LocalDate.now()
+        val overdueCount = tmplList.count { tmpl ->
+            if (tmpl.type != "INTERVAL") return@count false
+            val lastDoneMillis = tmpl.lastCompletedAt ?: return@count true
+            val lastDate = java.time.Instant.ofEpochMilli(lastDoneMillis)
+                .atZone(zone).toLocalDate()
+            val elapsed = java.time.temporal.ChronoUnit.DAYS.between(lastDate, today)
+            elapsed >= (tmpl.intervalDays ?: 7)
+        }
+        pending.size + overdueCount
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     // Search query
     val searchQuery = MutableStateFlow("")
 

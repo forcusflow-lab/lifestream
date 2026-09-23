@@ -176,11 +176,18 @@ fun TimelineScreen(viewModel: MainViewModel) {
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            // Today counts (computed once, shared by both header badge and progress bar)
+            val doneCount = remember(todayItems) { todayItems.count { it.isDone } }
+            val todoCount = remember(anytimePending) { anytimePending.size }
+            val periodicCount = remember(dueOrOverduePeriodic) { dueOrOverduePeriodic.size }
+
             // Simplified Header: Only date in elegant font
-            Box(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 10.dp)
+                    .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
                     text = todayDateFormatted,
@@ -189,9 +196,99 @@ fun TimelineScreen(viewModel: MainViewModel) {
                     color = colors.textPrimary,
                     letterSpacing = (-0.5).sp
                 )
+                // Done count badge
+                if (doneCount > 0) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(colors.statusDone.copy(alpha = 0.15f))
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "✅ $doneCount 件完了",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.statusDone
+                        )
+                    }
+                }
             }
 
+            // Today Progress Summary Bar
+            val totalActionable = doneCount + todoCount + periodicCount
+
+            if (totalActionable > 0) {
+                val doneRatio = if (totalActionable > 0) doneCount.toFloat() / totalActionable else 0f
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 4.dp)
+                ) {
+                    // Stats row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier.size(7.dp).clip(CircleShape)
+                                    .background(colors.statusDone)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("完了 $doneCount", fontSize = 11.sp, color = colors.textSecondary, fontWeight = FontWeight.SemiBold)
+                        }
+                        if (todoCount > 0) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier.size(7.dp).clip(CircleShape)
+                                        .background(colors.primary)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("ToDo $todoCount", fontSize = 11.sp, color = colors.textSecondary, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                        if (periodicCount > 0) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier.size(7.dp).clip(CircleShape)
+                                        .background(colors.statusTarget)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("周期 $periodicCount", fontSize = 11.sp, color = colors.textSecondary, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                        Spacer(modifier = Modifier.weight(1f))
+                        Text(
+                            text = "${(doneRatio * 100).toInt()}%",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (doneRatio >= 1f) colors.statusDone else colors.textSecondary
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(3.dp))
+                    // Progress bar
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(colors.border)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(doneRatio.coerceIn(0f, 1f))
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(colors.statusDone)
+                        )
+                    }
+                }
+            }
+
+
             // Quick Record Bar (ActionTypes: COUNT, TIMER, CHECK)
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

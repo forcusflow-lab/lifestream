@@ -1,4 +1,4 @@
-﻿package com.forcusflow.lifestream
+package com.forcusflow.lifestream
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -27,6 +27,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeMode by viewModel.themeMode.collectAsState()
             val currentTab by viewModel.currentTab.collectAsState()
+            val todayBadgeCount by viewModel.todayBadgeCount.collectAsState()
 
             LifeStreamTheme(themeMode = themeMode) {
                 Scaffold(
@@ -34,7 +35,8 @@ class MainActivity : ComponentActivity() {
                     bottomBar = {
                         BottomNavBar(
                             selectedTab = currentTab,
-                            onTabSelected = { viewModel.currentTab.value = it }
+                            onTabSelected = { viewModel.currentTab.value = it },
+                            todayBadgeCount = todayBadgeCount
                         )
                     }
                 ) { innerPadding ->

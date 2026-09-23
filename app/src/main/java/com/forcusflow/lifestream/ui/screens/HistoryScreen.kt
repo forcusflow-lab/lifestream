@@ -54,15 +54,6 @@ fun HistoryScreen(viewModel: MainViewModel) {
 
     val currentMonthYearText = "${currentYearMonth.year}年 ${currentYearMonth.monthValue}月"
 
-    // Determine days that have logged items
-    val activeDays = remember(allItems) {
-        allItems.mapNotNull { item ->
-            val timestamp = item.completedAt ?: item.scheduledAt
-            timestamp?.let {
-                LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
-            }
-        }.toSet()
-    }
 
     // Items for selected date sorted chronologically
     val selectedDateItems = remember(allItems, selectedDate, viewModel.dayCutoffHour.collectAsState().value) {
@@ -156,8 +147,107 @@ fun HistoryScreen(viewModel: MainViewModel) {
                         )
                     }
                 } else {
-                    // Dynamic Calendar Card
+                    // Calendar and stats items
                     item {
+                        // Weekly Activity Summary Card
+                        val weekStart = remember(today) {
+                            today.minusDays(today.dayOfWeek.value.toLong() - 1)
+                        }
+                        val weekEnd = remember(weekStart) { weekStart.plusDays(6) }
+                        val thisWeekItems = remember(allItems, weekStart, weekEnd) {
+                            allItems.filter { item ->
+                                val t = item.completedAt ?: item.scheduledAt ?: return@filter false
+                                val date = LocalDateTime.ofInstant(Instant.ofEpochMilli(t), zone).toLocalDate()
+                                !date.isBefore(weekStart) && !date.isAfter(weekEnd)
+                            }
+                        }
+                        val weekDoneCount = thisWeekItems.count { it.isDone }
+                        val weekTodoCount = thisWeekItems.count { !it.isDone }
+                        val weekTotalAmount = thisWeekItems.mapNotNull { it.amount }.sum()
+
+                        if (thisWeekItems.isNotEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 12.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .border(1.dp, colors.border, RoundedCornerShape(14.dp))
+                                    .background(colors.card)
+                                    .padding(14.dp)
+                            ) {
+                                Column {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "📊 今週のサマリー",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = colors.textPrimary
+                                        )
+                                        Text(
+                                            text = "${weekStart.monthValue}/${weekStart.dayOfMonth} 〜 ${weekEnd.monthValue}/${weekEnd.dayOfMonth}",
+                                            fontSize = 11.sp,
+                                            color = colors.textSecondary
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        // Done count
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "$weekDoneCount",
+                                                fontSize = 22.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.statusDone
+                                            )
+                                            Text(
+                                                text = "完了",
+                                                fontSize = 11.sp,
+                                                color = colors.textSecondary
+                                            )
+                                        }
+                                        // ToDo remaining
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "$weekTodoCount",
+                                                fontSize = 22.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.primary
+                                            )
+                                            Text(
+                                                text = "ToDo",
+                                                fontSize = 11.sp,
+                                                color = colors.textSecondary
+                                            )
+                                        }
+                                        // Spending
+                                        if (weekTotalAmount > 0) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = "¥$weekTotalAmount",
+                                                    fontSize = 18.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = colors.statusTarget
+                                                )
+                                                Text(
+                                                    text = "支出合計",
+                                                    fontSize = 11.sp,
+                                                    color = colors.textSecondary
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Dynamic Calendar Card
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -249,11 +339,24 @@ fun HistoryScreen(viewModel: MainViewModel) {
                                 val totalSlots = leadingBlanks + daysInMonth
                                 val totalWeeks = (totalSlots + 6) / 7
 
+                                // Count logs per day for heatmap
+                                val logCountPerDay = remember(allItems) {
+                                    val map = mutableMapOf<LocalDate, Int>()
+                                    allItems.forEach { item ->
+                                        val timestamp = item.completedAt ?: item.scheduledAt
+                                        timestamp?.let {
+                                            val date = LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
+                                            map[date] = (map[date] ?: 0) + 1
+                                        }
+                                    }
+                                    map
+                                }
+
                                 for (weekIndex in 0 until totalWeeks) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(vertical = 4.dp),
+                                            .padding(vertical = 3.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         for (dayOfWeekIndex in 0 until 7) {
@@ -264,14 +367,27 @@ fun HistoryScreen(viewModel: MainViewModel) {
                                                 val dayDate = currentYearMonth.atDay(dayNumber)
                                                 val isSelected = selectedDate == dayDate
                                                 val isCurrentToday = dayDate == today
-                                                val hasLogs = activeDays.contains(dayDate)
+                                                val logCount = logCountPerDay[dayDate] ?: 0
+
+                                                // Heatmap intensity: 0=none, 1-2=light, 3-5=medium, 6+=strong
+                                                val heatAlpha = when {
+                                                    isSelected -> 0f
+                                                    logCount == 0 -> 0f
+                                                    logCount <= 2 -> 0.25f
+                                                    logCount <= 5 -> 0.55f
+                                                    else -> 0.85f
+                                                }
 
                                                 Column(
                                                     modifier = Modifier
                                                         .weight(1f)
                                                         .clip(RoundedCornerShape(8.dp))
                                                         .background(
-                                                            if (isSelected) colors.primary else Color.Transparent
+                                                            when {
+                                                                isSelected -> colors.primary
+                                                                logCount > 0 -> colors.statusDone.copy(alpha = heatAlpha)
+                                                                else -> Color.Transparent
+                                                            }
                                                         )
                                                         .border(
                                                             if (isCurrentToday && !isSelected) 1.dp else 0.dp,
@@ -288,20 +404,21 @@ fun HistoryScreen(viewModel: MainViewModel) {
                                                         fontWeight = if (isSelected || isCurrentToday) FontWeight.Bold else FontWeight.Medium,
                                                         color = when {
                                                             isSelected -> colors.onPrimary
+                                                            logCount >= 6 -> Color.White
                                                             else -> colors.textPrimary
                                                         }
                                                     )
                                                     Spacer(modifier = Modifier.height(2.dp))
-                                                    // Dot indicator
-                                                    if (hasLogs) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(4.dp)
-                                                                .clip(CircleShape)
-                                                                .background(if (isSelected) colors.onPrimary else colors.statusDone)
+                                                    // Count label for days with logs (compact)
+                                                    if (logCount > 0 && !isSelected) {
+                                                        Text(
+                                                            text = if (logCount < 10) "$logCount" else "9+",
+                                                            fontSize = 7.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = if (logCount >= 3) Color.White.copy(alpha = 0.9f) else colors.statusDone
                                                         )
                                                     } else {
-                                                        Spacer(modifier = Modifier.size(4.dp))
+                                                        Spacer(modifier = Modifier.size(8.dp))
                                                     }
                                                 }
                                             } else {
@@ -309,6 +426,28 @@ fun HistoryScreen(viewModel: MainViewModel) {
                                             }
                                         }
                                     }
+                                }
+
+                                // Heatmap legend
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("少", fontSize = 9.sp, color = colors.textSecondary)
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    listOf(0.15f, 0.35f, 0.6f, 0.85f).forEach { alpha ->
+                                        Box(
+                                            modifier = Modifier
+                                                .padding(horizontal = 1.dp)
+                                                .size(9.dp)
+                                                .clip(RoundedCornerShape(2.dp))
+                                                .background(colors.statusDone.copy(alpha = alpha))
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text("多", fontSize = 9.sp, color = colors.textSecondary)
                                 }
                             }
                         }
@@ -338,6 +477,8 @@ fun HistoryScreen(viewModel: MainViewModel) {
                             )
                         }
                     }
+
+
 
                     if (selectedDateItems.isEmpty()) {
                         item {
