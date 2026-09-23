@@ -350,6 +350,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Doneアイテム（またはToDo）を周期タスク（習慣・ルーティン）へ昇格登録する
+     */
+    fun promoteItemToPeriodicTemplate(
+        item: TimelineItemEntity,
+        intervalDays: Int = 7,
+        iconKey: String = "🔄",
+        colorHex: String = "#10B981",
+        onComplete: (() -> Unit)? = null
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val cleanTitle = item.title.removeSuffix(" 実施").trim()
+            val template = TemplateEntity(
+                title = cleanTitle,
+                type = "INTERVAL",
+                intervalDays = intervalDays,
+                defaultAmount = item.amount,
+                iconKey = iconKey,
+                colorHex = colorHex,
+                usageCount = 1,
+                lastCompletedAt = item.completedAt ?: System.currentTimeMillis(),
+                actionType = "CHECK",
+                unit = "回",
+                stepValue = 1,
+                isPinned = false
+            )
+            val templateId = templateDao.insert(template)
+            val updatedItem = item.copy(templateId = templateId)
+            itemDao.update(updatedItem)
+            onComplete?.invoke()
+        }
+    }
+
     fun toggleTemplatePin(template: TemplateEntity) {
         viewModelScope.launch(Dispatchers.IO) {
             val updated = template.copy(isPinned = !template.isPinned)

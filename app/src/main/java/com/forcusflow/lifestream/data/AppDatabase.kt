@@ -4,10 +4,6 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import androidx.sqlite.db.SupportSQLiteDatabase
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 @Database(
     entities = [TimelineItemEntity::class, TemplateEntity::class],
@@ -28,17 +24,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "lifestream.db"
-                ).fallbackToDestructiveMigration()
-                .addCallback(object : Callback() {
-                    override fun onCreate(db: SupportSQLiteDatabase) {
-                        super.onCreate(db)
-                        CoroutineScope(Dispatchers.IO).launch {
-                            getInstance(context).let { appDb ->
-                                DatabaseSeeder.seed(appDb.templateDao(), appDb.timelineItemDao())
-                            }
-                        }
-                    }
-                }).build()
+                ).fallbackToDestructiveMigration().build()
                 INSTANCE = instance
                 instance
             }

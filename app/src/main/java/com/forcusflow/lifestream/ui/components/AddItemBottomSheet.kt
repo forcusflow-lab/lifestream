@@ -49,6 +49,12 @@ fun AddItemBottomSheet(
     var amountText by remember { mutableStateOf("") }
     var isDone by remember { mutableStateOf(true) }
     var selectedTemplateId by remember { mutableStateOf<Long?>(null) }
+    val selectedTemplate = remember(selectedTemplateId, templates) {
+        templates.find { it.id == selectedTemplateId }
+    }
+
+    var countValue by remember { mutableStateOf(1) }
+    var timerMinutes by remember { mutableStateOf(15) }
 
     // Presets
     var selectedDonePreset by remember { mutableStateOf("今") }
@@ -132,7 +138,16 @@ fun AddItemBottomSheet(
                                 .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.background)
                                 .clickable {
                                     selectedTemplateId = t.id
-                                    title = t.title
+                                    val unitStr = if (t.unit.isNotBlank()) t.unit else "杯"
+                                    if (t.actionType == "COUNT") {
+                                        countValue = 1
+                                        title = "${t.title} (1${unitStr}目)"
+                                    } else if (t.actionType == "TIMER") {
+                                        timerMinutes = 15
+                                        title = "${t.title} (15分)"
+                                    } else {
+                                        title = t.title
+                                    }
                                     if (t.defaultAmount != null) {
                                         amountText = t.defaultAmount.toString()
                                         showExtraFields = true
@@ -164,6 +179,118 @@ fun AddItemBottomSheet(
                 shape = RoundedCornerShape(10.dp),
                 singleLine = true
             )
+
+            // 3-B. Dynamic Stepper for COUNT and TIMER Templates
+            if (selectedTemplate?.actionType == "COUNT") {
+                val unitStr = if (selectedTemplate.unit.isNotBlank()) selectedTemplate.unit else "杯"
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(colors.background)
+                        .border(0.5.dp, colors.border, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "数量 (${unitStr}):",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = colors.textSecondary
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                if (countValue > 1) {
+                                    countValue--
+                                    title = "${selectedTemplate.title} (${countValue}${unitStr}目)"
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                            modifier = Modifier.height(28.dp),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text("-1", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Text(
+                            text = "$countValue $unitStr",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary
+                        )
+                        OutlinedButton(
+                            onClick = {
+                                countValue++
+                                title = "${selectedTemplate.title} (${countValue}${unitStr}目)"
+                            },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                            modifier = Modifier.height(28.dp),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text("+1", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            } else if (selectedTemplate?.actionType == "TIMER") {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(colors.background)
+                        .border(0.5.dp, colors.border, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "計測時間 (分):",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = colors.textSecondary
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                if (timerMinutes > 5) {
+                                    timerMinutes -= 5
+                                    title = "${selectedTemplate.title} (${timerMinutes}分)"
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.height(28.dp),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text("-5", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Text(
+                            text = "$timerMinutes 分",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary
+                        )
+                        OutlinedButton(
+                            onClick = {
+                                timerMinutes += 5
+                                title = "${selectedTemplate.title} (${timerMinutes}分)"
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.height(28.dp),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text("+5", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 

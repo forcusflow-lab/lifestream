@@ -1,24 +1,49 @@
 package com.forcusflow.lifestream.data
 
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 
 object DatabaseSeeder {
+    private val mutex = Mutex()
+
     suspend fun seed(templateDao: TemplateDao, timelineItemDao: TimelineItemDao) {
-        // Only seed if empty
-        if (templateDao.getAll().isNotEmpty()) return
+        mutex.withLock {
+            val existingTemplates = templateDao.getAll()
+            if (existingTemplates.isNotEmpty()) {
+                // 自動クリーンアップ: 以前のレースコンディションで重複してしまったテンプレートを削除
+                val seenTitles = mutableSetOf<String>()
+                existingTemplates.forEach { tmpl ->
+                    if (!seenTitles.add(tmpl.title)) {
+                        templateDao.delete(tmpl)
+                    }
+                }
+                // 同様に初期タイムラインアイテムの重複もクリーンアップ
+                val existingItems = timelineItemDao.getAll()
+                val seenItemKeys = mutableSetOf<String>()
+                existingItems.forEach { item ->
+                    val key = "${item.title}_${item.note}_${item.templateId}"
+                    if (item.title in listOf("byLifeへようこそ！", "洗濯用洗剤をネットでポチる", "シーツ洗濯 実施", "フェイスパック 実施")) {
+                        if (!seenItemKeys.add(key)) {
+                            timelineItemDao.delete(item)
+                        }
+                    }
+                }
+                return@withLock
+            }
 
-        val zone = ZoneId.systemDefault()
-        val today = LocalDate.now()
-        val fiveDaysAgo = today.minusDays(5)
-        val twoDaysAgo = today.minusDays(2)
-        val twentyFiveDaysAgo = today.minusDays(25)
+            val zone = ZoneId.systemDefault()
+            val today = LocalDate.now()
+            val fiveDaysAgo = today.minusDays(5)
+            val twoDaysAgo = today.minusDays(2)
+            val twentyFiveDaysAgo = today.minusDays(25)
 
-        fun millis(date: LocalDate, hour: Int, minute: Int): Long {
-            return LocalDateTime.of(date, LocalTime.of(hour, minute)).atZone(zone).toInstant().toEpochMilli()
-        }
+            fun millis(date: LocalDate, hour: Int, minute: Int): Long {
+                return LocalDateTime.of(date, LocalTime.of(hour, minute)).atZone(zone).toInstant().toEpochMilli()
+            }
 
         // 1. Templates: 4 Action Stamps (Pinned to Quick Bar) + 3 Periodic Maintenance Tasks
         val templates = listOf(
@@ -176,5 +201,6 @@ object DatabaseSeeder {
         )
 
         timelineItemDao.insertAll(items)
+        }
     }
 }

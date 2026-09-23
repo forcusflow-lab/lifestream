@@ -466,6 +466,18 @@ fun TimelineScreen(viewModel: MainViewModel) {
                         viewModel.restoreItem(item)
                     }
                 }
+            },
+            onPromoteToPeriodic = { targetItem, intervalDays, iconKey ->
+                viewModel.promoteItemToPeriodicTemplate(
+                    item = targetItem,
+                    intervalDays = intervalDays,
+                    iconKey = iconKey
+                ) {
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar("「${targetItem.title}」を周期タスクに追加しました（${intervalDays}日ごと）")
+                    }
+                }
+                itemToEdit = null
             }
         )
     }
@@ -1139,7 +1151,8 @@ fun ItemDetailBottomSheet(
     templates: List<TemplateEntity> = emptyList(),
     onDismiss: () -> Unit,
     onSave: (TimelineItemEntity) -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onPromoteToPeriodic: ((TimelineItemEntity, Int, String) -> Unit)? = null
 ) {
     val colors = LifeStreamTheme.colors
     var title by remember { mutableStateOf(item.title) }
@@ -1147,6 +1160,11 @@ fun ItemDetailBottomSheet(
     var amountText by remember { mutableStateOf(item.amount?.toString() ?: "") }
     var isDone by remember { mutableStateOf(item.isDone) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    // Routine promotion accordion state
+    var showRoutineSection by remember { mutableStateOf(false) }
+    var selectedInterval by remember { mutableStateOf(7) }
+    var selectedRoutineIcon by remember { mutableStateOf("🔄") }
 
     val matchedTemplate = remember(templates, item) {
         templates.find { it.id == item.templateId } ?: templates.find { item.title.startsWith(it.title) }
@@ -1430,9 +1448,133 @@ fun ItemDetailBottomSheet(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-            // 5. Delete Button (at the bottom, clean and safe)
+            // 5. Promote to Routine / Periodic Task (Accordion Expander)
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = colors.background,
+                border = BorderStroke(1.dp, if (showRoutineSection) colors.primary.copy(alpha = 0.5f) else colors.border),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showRoutineSection = !showRoutineSection },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🔄", fontSize = 16.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "定期的にやる（ルーティン・周期に追加）",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (showRoutineSection) colors.primary else colors.textPrimary
+                            )
+                        }
+                        Text(
+                            text = if (showRoutineSection) "▲" else "▼",
+                            fontSize = 11.sp,
+                            color = colors.textSecondary
+                        )
+                    }
+
+                    if (showRoutineSection) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "実行周期を選択:",
+                            fontSize = 11.sp,
+                            color = colors.textSecondary,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        // Preset interval chips
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(
+                                3 to "3日ごと",
+                                7 to "7日ごと (毎週)",
+                                14 to "14日ごと (隔週)",
+                                30 to "30日ごと (毎月)"
+                            ).forEach { (days, label) ->
+                                val isSel = selectedInterval == days
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isSel) colors.primary else colors.card,
+                                    border = BorderStroke(1.dp, if (isSel) colors.primary else colors.border),
+                                    modifier = Modifier.clickable { selectedInterval = days }
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSel) colors.onPrimary else colors.textPrimary,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Icon selector
+                        Text(
+                            text = "アイコン:",
+                            fontSize = 11.sp,
+                            color = colors.textSecondary,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf("🔄", "🧹", "🛏️", "🧖", "🧼", "🏃", "📚", "💊", "🚗", "🌿", "💧", "🧘").forEach { icon ->
+                                val isSel = selectedRoutineIcon == icon
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isSel) colors.primary.copy(alpha = 0.2f) else colors.card)
+                                        .border(if (isSel) 2.dp else 1.dp, if (isSel) colors.primary else colors.border, CircleShape)
+                                        .clickable { selectedRoutineIcon = icon },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(icon, fontSize = 16.sp)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Button(
+                            onClick = {
+                                onPromoteToPeriodic?.invoke(item, selectedInterval, selectedRoutineIcon)
+                                showRoutineSection = false
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
+                            modifier = Modifier.fillMaxWidth().height(38.dp)
+                        ) {
+                            Text("この設定でルーティンに追加する", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // 6. Delete Button (at the bottom, clean and safe)
             OutlinedButton(
                 onClick = onDelete,
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444)),
@@ -1459,13 +1601,15 @@ fun EditItemDialog(
     templates: List<TemplateEntity> = emptyList(),
     onDismiss: () -> Unit,
     onSave: (TimelineItemEntity) -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onPromoteToPeriodic: ((TimelineItemEntity, Int, String) -> Unit)? = null
 ) {
     ItemDetailBottomSheet(
         item = item,
         templates = templates,
         onDismiss = onDismiss,
         onSave = onSave,
-        onDelete = onDelete
+        onDelete = onDelete,
+        onPromoteToPeriodic = onPromoteToPeriodic
     )
 }

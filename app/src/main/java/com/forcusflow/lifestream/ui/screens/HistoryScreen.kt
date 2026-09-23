@@ -537,6 +537,18 @@ fun HistoryScreen(viewModel: MainViewModel) {
                         viewModel.restoreItem(item)
                     }
                 }
+            },
+            onPromoteToPeriodic = { targetItem, intervalDays, iconKey ->
+                viewModel.promoteItemToPeriodicTemplate(
+                    item = targetItem,
+                    intervalDays = intervalDays,
+                    iconKey = iconKey
+                ) {
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar("「${targetItem.title}」を周期タスクに追加しました（${intervalDays}日ごと）")
+                    }
+                }
+                itemToEdit = null
             }
         )
     }
