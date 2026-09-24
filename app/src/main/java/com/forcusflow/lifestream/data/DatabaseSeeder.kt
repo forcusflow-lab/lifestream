@@ -61,7 +61,8 @@ object DatabaseSeeder {
                 actionType = "COUNT",
                 unit = "杯",
                 stepValue = 1,
-                isPinned = true
+                isPinned = true,
+                displayOrder = 0
             ),
             TemplateEntity(
                 id = 2,
@@ -76,7 +77,8 @@ object DatabaseSeeder {
                 actionType = "CHECK",
                 unit = "杯",
                 stepValue = 1,
-                isPinned = true
+                isPinned = true,
+                displayOrder = 1
             ),
             TemplateEntity(
                 id = 3,
@@ -91,7 +93,8 @@ object DatabaseSeeder {
                 actionType = "TIMER",
                 unit = "分",
                 stepValue = 1,
-                isPinned = true
+                isPinned = true,
+                displayOrder = 2
             ),
             TemplateEntity(
                 id = 4,
@@ -106,7 +109,8 @@ object DatabaseSeeder {
                 actionType = "TIMER",
                 unit = "分",
                 stepValue = 1,
-                isPinned = true
+                isPinned = true,
+                displayOrder = 3
             ),
 
             // === 周期タスク（定期メンテナンス） ===
@@ -123,7 +127,8 @@ object DatabaseSeeder {
                 actionType = "CHECK",
                 unit = "回",
                 stepValue = 1,
-                isPinned = false
+                isPinned = false,
+                displayOrder = 0
             ),
             TemplateEntity(
                 id = 6,
@@ -138,7 +143,8 @@ object DatabaseSeeder {
                 actionType = "CHECK",
                 unit = "回",
                 stepValue = 1,
-                isPinned = false
+                isPinned = false,
+                displayOrder = 1
             ),
             TemplateEntity(
                 id = 7,
@@ -153,7 +159,8 @@ object DatabaseSeeder {
                 actionType = "CHECK",
                 unit = "回",
                 stepValue = 1,
-                isPinned = false
+                isPinned = false,
+                displayOrder = 2
             )
         )
         templateDao.insertAll(templates)

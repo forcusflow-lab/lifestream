@@ -5,16 +5,16 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TemplateDao {
-    @Query("SELECT * FROM templates ORDER BY id ASC")
+    @Query("SELECT * FROM templates ORDER BY displayOrder ASC, id ASC")
     fun getAllFlow(): Flow<List<TemplateEntity>>
 
-    @Query("SELECT * FROM templates")
+    @Query("SELECT * FROM templates ORDER BY displayOrder ASC, id ASC")
     suspend fun getAll(): List<TemplateEntity>
 
     @Query("SELECT * FROM templates WHERE id = :id")
     suspend fun getById(id: Long): TemplateEntity?
 
-    @Query("SELECT * FROM templates WHERE type = :type")
+    @Query("SELECT * FROM templates WHERE type = :type ORDER BY displayOrder ASC, id ASC")
     fun getByTypeFlow(type: String): Flow<List<TemplateEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -25,6 +25,9 @@ interface TemplateDao {
 
     @Update
     suspend fun update(template: TemplateEntity)
+
+    @Update
+    suspend fun updateAll(templates: List<TemplateEntity>)
 
     @Delete
     suspend fun delete(template: TemplateEntity)

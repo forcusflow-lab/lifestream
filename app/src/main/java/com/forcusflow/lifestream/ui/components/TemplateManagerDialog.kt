@@ -13,6 +13,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,6 +38,8 @@ fun TemplateManagerDialog(
     val colors = LifeStreamTheme.colors
     val templates by viewModel.templates.collectAsState()
     var showCreateDialog by remember { mutableStateOf(false) }
+    var editingTemplate by remember { mutableStateOf<TemplateEntity?>(null) }
+    var templateToDelete by remember { mutableStateOf<TemplateEntity?>(null) }
     var selectedCategoryTab by remember { mutableStateOf(0) } // 0: スタンプ(行動), 1: 周期タスク(メンテ)
 
     val actionTemplates = remember(templates) { templates.filter { it.type != "INTERVAL" } }
@@ -100,7 +105,7 @@ fun TemplateManagerDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 420.dp)
+                    .heightIn(max = 440.dp)
             ) {
                 // Add New Template Button
                 OutlinedButton(
@@ -122,7 +127,13 @@ fun TemplateManagerDialog(
 
                 if (selectedCategoryTab == 0) {
                     Text(
-                        text = "💡 📌ピン留めしたスタンプは今日画面の上部バーに表示されます",
+                        text = "💡 📌ピン留めしたスタンプは今日画面の上部バーに表示されます。▲▼で並び替え可能。",
+                        fontSize = 11.sp,
+                        color = colors.textSecondary
+                    )
+                } else {
+                    Text(
+                        text = "💡 ▲▼で一覧での並び替え、✏️またはタップで内容を修正できます。",
                         fontSize = 11.sp,
                         color = colors.textSecondary
                     )
@@ -147,17 +158,19 @@ fun TemplateManagerDialog(
                     }
                 } else {
                     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                        currentList.forEach { t ->
+                        currentList.forEachIndexed { index, t ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 8.dp),
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { editingTemplate = t }
+                                    .padding(vertical = 6.dp, horizontal = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                                     Text(text = t.iconKey ?: "📌", fontSize = 20.sp)
-                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
                                     Column {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Text(
@@ -186,10 +199,11 @@ fun TemplateManagerDialog(
                                         val actionInfo = when (t.actionType) {
                                             "COUNT" -> "加算カウント (${t.unit})"
                                             "TIMER" -> "タイマー計測 (${t.unit})"
-                                            else -> if (t.intervalDays != null) "${t.intervalDays}日周期" else "単発記録"
+                                            else -> if (t.intervalDays != null) "${t.intervalDays}日周期" else "チェック"
                                         }
+                                        val priceInfo = if (t.defaultAmount != null) " • ¥${t.defaultAmount}" else ""
                                         Text(
-                                            text = "$actionInfo • 累計${t.usageCount}回",
+                                            text = "$actionInfo$priceInfo • 累計${t.usageCount}回",
                                             fontSize = 11.sp,
                                             color = colors.textSecondary
                                         )
@@ -197,29 +211,70 @@ fun TemplateManagerDialog(
                                 }
 
                                 Row(verticalAlignment = Alignment.CenterVertically) {
+                                    // Move Up
+                                    IconButton(
+                                        onClick = { viewModel.moveTemplate(t, isUp = true) },
+                                        enabled = index > 0,
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.KeyboardArrowUp,
+                                            contentDescription = "上へ",
+                                            tint = if (index > 0) colors.textPrimary else colors.textSecondary.copy(alpha = 0.25f),
+                                            modifier = Modifier.size(19.dp)
+                                        )
+                                    }
+
+                                    // Move Down
+                                    IconButton(
+                                        onClick = { viewModel.moveTemplate(t, isUp = false) },
+                                        enabled = index < currentList.size - 1,
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.KeyboardArrowDown,
+                                            contentDescription = "下へ",
+                                            tint = if (index < currentList.size - 1) colors.textPrimary else colors.textSecondary.copy(alpha = 0.25f),
+                                            modifier = Modifier.size(19.dp)
+                                        )
+                                    }
+
+                                    // Edit button
+                                    IconButton(
+                                        onClick = { editingTemplate = t },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Edit,
+                                            contentDescription = "修正",
+                                            tint = colors.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+
                                     // Pin toggle for Action Stamps
                                     if (t.type != "INTERVAL") {
                                         IconButton(
                                             onClick = { viewModel.toggleTemplatePin(t) },
-                                            modifier = Modifier.size(32.dp)
+                                            modifier = Modifier.size(28.dp)
                                         ) {
                                             Text(
                                                 text = if (t.isPinned) "📌" else "📍",
-                                                fontSize = 16.sp
+                                                fontSize = 15.sp
                                             )
                                         }
                                     }
 
                                     // Delete button
                                     IconButton(
-                                        onClick = { viewModel.deleteTemplate(t) },
-                                        modifier = Modifier.size(32.dp)
+                                        onClick = { templateToDelete = t },
+                                        modifier = Modifier.size(28.dp)
                                     ) {
                                         Icon(
                                             Icons.Default.Delete,
                                             contentDescription = "削除",
                                             tint = colors.statusOverdue.copy(alpha = 0.8f),
-                                            modifier = Modifier.size(18.dp)
+                                            modifier = Modifier.size(17.dp)
                                         )
                                     }
                                 }
@@ -237,8 +292,10 @@ fun TemplateManagerDialog(
         }
     )
 
+    // Create New Template Dialog
     if (showCreateDialog) {
-        CreateTemplateDialog(
+        TemplateEditorDialog(
+            templateToEdit = null,
             initialIsPeriodic = selectedCategoryTab == 1,
             onDismiss = { showCreateDialog = false },
             onSave = { title, actionType, unit, stepValue, intervalDays, defaultAmount, iconKey, colorHex, isPinned ->
@@ -259,10 +316,77 @@ fun TemplateManagerDialog(
             }
         )
     }
+
+    // Edit Existing Template Dialog
+    editingTemplate?.let { t ->
+        TemplateEditorDialog(
+            templateToEdit = t,
+            initialIsPeriodic = t.type == "INTERVAL",
+            onDismiss = { editingTemplate = null },
+            onSave = { title, actionType, unit, stepValue, intervalDays, defaultAmount, iconKey, colorHex, isPinned ->
+                val type = if (intervalDays != null) "INTERVAL" else if (actionType == "COUNT") "DAILY_COUNT" else "SIMPLE"
+                viewModel.updateTemplate(
+                    t.copy(
+                        title = title,
+                        type = type,
+                        intervalDays = intervalDays,
+                        defaultAmount = defaultAmount,
+                        iconKey = iconKey,
+                        colorHex = colorHex,
+                        actionType = actionType,
+                        unit = unit,
+                        stepValue = stepValue,
+                        isPinned = isPinned
+                    )
+                )
+                editingTemplate = null
+            }
+        )
+    }
+
+    // Delete Confirmation Dialog
+    templateToDelete?.let { t ->
+        AlertDialog(
+            onDismissRequest = { templateToDelete = null },
+            title = {
+                Text(
+                    text = "テンプレートの削除",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            },
+            text = {
+                Text(
+                    text = "「${t.title}」を削除してもよろしいですか？\n※これまでに記録したログデータは削除されません。",
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteTemplate(t)
+                        templateToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.statusOverdue)
+                ) {
+                    Text("削除する")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { templateToDelete = null }) {
+                    Text("キャンセル")
+                }
+            }
+        )
+    }
 }
 
+/**
+ * 新規作成・編集 兼用の包括的テンプレートエディター
+ */
 @Composable
-fun CreateTemplateDialog(
+fun TemplateEditorDialog(
+    templateToEdit: TemplateEntity? = null,
     initialIsPeriodic: Boolean = false,
     onDismiss: () -> Unit,
     onSave: (
@@ -279,27 +403,31 @@ fun CreateTemplateDialog(
 ) {
     val colors = LifeStreamTheme.colors
 
-    var title by remember { mutableStateOf("") }
-    var selectedActionType by remember { mutableStateOf("CHECK") } // "CHECK", "COUNT", "TIMER"
-    var unit by remember { mutableStateOf("") }
-    var stepValueText by remember { mutableStateOf("1") }
-    var isPeriodic by remember { mutableStateOf(initialIsPeriodic) }
-    var intervalDaysText by remember { mutableStateOf("7") }
-    var amountText by remember { mutableStateOf("") }
-    var isPinned by remember { mutableStateOf(!initialIsPeriodic) }
+    var title by remember { mutableStateOf(templateToEdit?.title ?: "") }
+    var selectedActionType by remember { mutableStateOf(templateToEdit?.actionType ?: "CHECK") } // "CHECK", "COUNT", "TIMER"
+    var unit by remember { mutableStateOf(templateToEdit?.unit ?: "") }
+    var stepValueText by remember { mutableStateOf((templateToEdit?.stepValue ?: 1).toString()) }
+    var isPeriodic by remember { mutableStateOf(templateToEdit?.type == "INTERVAL" || (templateToEdit == null && initialIsPeriodic)) }
+    var intervalDaysText by remember { mutableStateOf((templateToEdit?.intervalDays ?: 7).toString()) }
+    var amountText by remember { mutableStateOf(templateToEdit?.defaultAmount?.toString() ?: "") }
+    var isPinned by remember { mutableStateOf(templateToEdit?.isPinned ?: !initialIsPeriodic) }
 
-    val iconList = listOf("💧", "☕", "📖", "🚶", "🧖", "🍜", "🧹", "⏱️", "💊", "🍱", "🛏️", "🧼", "🌀", "💨", "🌿", "🪴", "🚗", "🏋️")
-    var selectedIcon by remember { mutableStateOf(if (initialIsPeriodic) "🧹" else "💧") }
+    val iconList = listOf("💧", "☕", "📖", "🚶", "🧖", "🍜", "🧹", "⏱️", "💊", "🍱", "🛏️", "🧼", "🌀", "💨", "🌿", "🪴", "🚗", "🏋️", "💻", "🧘")
+    var selectedIcon by remember {
+        mutableStateOf(templateToEdit?.iconKey ?: if (initialIsPeriodic) "🧹" else "💧")
+    }
 
     val colorOptions = listOf("#38BDF8", "#8C5A3C", "#3B82F6", "#10B981", "#A855F7", "#EF4444", "#F59E0B", "#6366F1", "#EC4899")
-    var selectedColor by remember { mutableStateOf("#38BDF8") }
+    var selectedColor by remember {
+        mutableStateOf(templateToEdit?.colorHex ?: "#38BDF8")
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = colors.card,
         title = {
             Text(
-                text = "新規テンプレート作成",
+                text = if (templateToEdit != null) "テンプレートの編集" else "新規テンプレート作成",
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp,
                 color = colors.textPrimary
@@ -312,7 +440,12 @@ fun CreateTemplateDialog(
                     .verticalScroll(rememberScrollState())
             ) {
                 // ActionType Selector (CHECK, COUNT, TIMER)
-                Text(text = "アクションタイプ:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
+                Text(
+                    text = "アクションタイプ:",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.textSecondary
+                )
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     modifier = Modifier
@@ -323,9 +456,9 @@ fun CreateTemplateDialog(
                         .padding(2.dp)
                 ) {
                     val actionTypes = listOf(
-                        Triple("CHECK", "単発", "タップで完了記録"),
-                        Triple("COUNT", "加算", "1タップで〇杯目"),
-                        Triple("TIMER", "タイマー", "時間計測")
+                        Triple("CHECK", "☑ チェック", "タップで完了記録"),
+                        Triple("COUNT", "🔢 カウント", "1タップで〇杯目"),
+                        Triple("TIMER", "⏱ タイム", "時間計測")
                     )
                     actionTypes.forEach { (type, label, _) ->
                         val isSel = selectedActionType == type
@@ -344,7 +477,7 @@ fun CreateTemplateDialog(
                         ) {
                             Text(
                                 text = label,
-                                fontSize = 12.sp,
+                                fontSize = 11.sp,
                                 fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
                                 color = if (isSel) colors.onPrimary else colors.textSecondary
                             )
@@ -523,13 +656,23 @@ fun CreateTemplateDialog(
                         val interval = if (isPeriodic) intervalDaysText.toIntOrNull() ?: 7 else null
                         val step = stepValueText.toIntOrNull() ?: 1
                         val amt = amountText.toLongOrNull()
-                        onSave(title, selectedActionType, unit, step, interval, amt, selectedIcon, selectedColor, if (isPeriodic) false else isPinned)
+                        onSave(
+                            title.trim(),
+                            selectedActionType,
+                            unit.trim(),
+                            step,
+                            interval,
+                            amt,
+                            selectedIcon,
+                            selectedColor,
+                            if (isPeriodic) false else isPinned
+                        )
                     }
                 },
                 enabled = title.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
             ) {
-                Text("作成")
+                Text(if (templateToEdit != null) "変更を保存" else "作成")
             }
         },
         dismissButton = {

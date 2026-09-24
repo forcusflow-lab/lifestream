@@ -39,7 +39,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val pinnedTemplates: StateFlow<List<TemplateEntity>> = templates
         .map { list ->
-            val nonInterval = list.filter { it.type != "INTERVAL" }.sortedBy { it.id }
+            val nonInterval = list.filter { it.type != "INTERVAL" }
             val pinned = nonInterval.filter { it.isPinned }
             if (pinned.isNotEmpty()) pinned else nonInterval.take(4)
         }
@@ -426,6 +426,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         isPinned: Boolean = false
     ) {
         viewModelScope.launch(Dispatchers.IO) {
+            val existing = templateDao.getAll()
+            val maxOrder = existing.filter { if (type == "INTERVAL") it.type == "INTERVAL" else it.type != "INTERVAL" }
+                .maxOfOrNull { it.displayOrder } ?: -1
             val template = TemplateEntity(
                 title = title,
                 type = type,
@@ -438,7 +441,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 actionType = actionType,
                 unit = unit,
                 stepValue = stepValue,
-                isPinned = isPinned
+                isPinned = isPinned,
+                displayOrder = maxOrder + 1
             )
             templateDao.insert(template)
         }
@@ -447,6 +451,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun updateTemplate(template: TemplateEntity) {
         viewModelScope.launch(Dispatchers.IO) {
             templateDao.update(template)
+        }
+    }
+
+    fun moveTemplate(template: TemplateEntity, isUp: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val list = templateDao.getAll().filter {
+                if (template.type == "INTERVAL") it.type == "INTERVAL" else it.type != "INTERVAL"
+            }.sortedWith(compareBy({ it.displayOrder }, { it.id })).toMutableList()
+            val currentIndex = list.indexOfFirst { it.id == template.id }
+            if (currentIndex == -1) return@launch
+            val targetIndex = if (isUp) currentIndex - 1 else currentIndex + 1
+            if (targetIndex !in 0 until list.size) return@launch
+
+            val item1 = list[currentIndex]
+            val item2 = list[targetIndex]
+            list[currentIndex] = item2
+            list[targetIndex] = item1
+
+            val updated = list.mapIndexed { idx, item -> item.copy(displayOrder = idx) }
+            templateDao.updateAll(updated)
         }
     }
 

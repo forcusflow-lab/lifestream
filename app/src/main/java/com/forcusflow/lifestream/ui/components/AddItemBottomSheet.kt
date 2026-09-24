@@ -27,8 +27,10 @@ import java.time.LocalTime
 import java.time.ZoneId
 
 /**
- * ゼロスクロール入力ボトムシート
- * キーボード表示時でもスクロール不要で親指が届く範囲ですべて完結するUI
+ * 商業レベル ゼロスクロール統一入力ボトムシート
+ * - 記録（できたこと）と予定（やること）のレイアウト・高さをバランス良く統一
+ * - 「メモ」と「金額」を常時視認可能な専用行として独立配置（スライド不要）
+ * - 片手親指で最速で記録できる手軽さを維持
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,10 +60,9 @@ fun AddItemBottomSheet(
     var countValue by remember { mutableStateOf(1) }
     var timerMinutes by remember { mutableStateOf(15) }
 
-    // Presets
+    // Timing Presets
     var selectedDonePreset by remember { mutableStateOf("今") }
     var selectedTodoPreset by remember { mutableStateOf("今日中") }
-    var showExtraFields by remember { mutableStateOf(false) }
 
     var customDate by remember { mutableStateOf(LocalDate.now().plusDays(1)) }
     var customHour by remember { mutableStateOf(10) }
@@ -76,9 +77,9 @@ fun AddItemBottomSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 20.dp)
+                .padding(bottom = 24.dp)
         ) {
-            // 1. Segmented Control (記録 vs 予定) - Compact
+            // 1. Segmented Control (記録 vs 予定)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -93,7 +94,7 @@ fun AddItemBottomSheet(
                         .clip(RoundedCornerShape(8.dp))
                         .background(if (isDone) colors.primary else Color.Transparent)
                         .clickable { isDone = true }
-                        .padding(vertical = 6.dp),
+                        .padding(vertical = 7.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -112,7 +113,7 @@ fun AddItemBottomSheet(
                             isDone = false
                             selectedTemplateId = null
                         }
-                        .padding(vertical = 6.dp),
+                        .padding(vertical = 7.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -126,80 +127,32 @@ fun AddItemBottomSheet(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // 2. Compact Horizontal Template Palette (Only shown for 記録/Done!)
-            if (isDone && templates.isNotEmpty()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    templates.take(12).forEach { t ->
-                        val isSelected = selectedTemplateId == t.id
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .border(
-                                    1.dp,
-                                    if (isSelected) colors.primary else colors.border,
-                                    RoundedCornerShape(6.dp)
-                                )
-                                .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.background)
-                                .clickable {
-                                    selectedTemplateId = t.id
-                                    val unitStr = if (t.unit.isNotBlank()) t.unit else "杯"
-                                    if (t.actionType == "COUNT") {
-                                        countValue = 1
-                                        title = "${t.title} (1${unitStr}目)"
-                                    } else if (t.actionType == "TIMER") {
-                                        timerMinutes = 15
-                                        title = "${t.title} (15分)"
-                                    } else {
-                                        title = t.title
-                                    }
-                                    if (t.defaultAmount != null) {
-                                        amountText = t.defaultAmount.toString()
-                                        showExtraFields = true
-                                    }
-                                }
-                                .padding(horizontal = 8.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(text = t.iconKey ?: "📌", fontSize = 12.sp)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = t.title,
-                                fontSize = 11.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSelected) colors.primary else colors.textPrimary
-                            )
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(10.dp))
-            }
-
-            // 3. Title Input (Main primary action)
+            // 2. Title Input (Main primary action)
             OutlinedTextField(
                 value = title,
                 onValueChange = { title = it },
-                label = { Text(if (isDone) "記録のタイトル (例: カフェ、散歩、読書)" else "予定のタイトル (例: 洗剤購入、ゴミ出し)") },
+                label = {
+                    Text(
+                        if (isDone) "記録のタイトル (例: カフェで作業, 水を飲む)"
+                        else "予定のタイトル (例: 洗剤購入, レポート提出)"
+                    )
+                },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
                 singleLine = true
             )
 
-            // 3-B. Dynamic Stepper for COUNT and TIMER Templates
+            // Dynamic Stepper for COUNT / TIMER Templates
             if (selectedTemplate?.actionType == "COUNT") {
                 val unitStr = if (selectedTemplate.unit.isNotBlank()) selectedTemplate.unit else "杯"
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
                         .background(colors.background)
                         .border(0.5.dp, colors.border, RoundedCornerShape(8.dp))
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                        .padding(horizontal = 12.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -246,14 +199,14 @@ fun AddItemBottomSheet(
                     }
                 }
             } else if (selectedTemplate?.actionType == "TIMER") {
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
                         .background(colors.background)
                         .border(0.5.dp, colors.border, RoundedCornerShape(8.dp))
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                        .padding(horizontal = 12.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -303,7 +256,36 @@ fun AddItemBottomSheet(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // 4. Timing Preset Chips in a Single Row
+            // 3. Dedicated, Always-Visible Sub-Row: Note & Amount (Side-by-Side, no horizontal scroll needed)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    label = { Text("📝 メモ (任意)") },
+                    modifier = Modifier.weight(1.35f),
+                    shape = RoundedCornerShape(8.dp),
+                    singleLine = true
+                )
+
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = { if (it.all { c -> c.isDigit() }) amountText = it },
+                    label = { Text("💴 金額 (¥)") },
+                    placeholder = { Text("0") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(0.95f),
+                    shape = RoundedCornerShape(8.dp),
+                    singleLine = true
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // 4. Timing Preset Chips in a Dedicated Row
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -349,189 +331,219 @@ fun AddItemBottomSheet(
                         )
                     }
                 }
-
-                // Toggle for Optional details (Amount & Note)
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .border(1.dp, if (showExtraFields || amountText.isNotBlank() || note.isNotBlank()) colors.primary else colors.border, RoundedCornerShape(6.dp))
-                        .background(if (showExtraFields) colors.primary.copy(alpha = 0.1f) else colors.card)
-                        .clickable { showExtraFields = !showExtraFields }
-                        .padding(horizontal = 8.dp, vertical = 5.dp)
-                ) {
-                    Text(
-                        text = if (showExtraFields) "▲ 詳細を閉じる" else "＋ メモ/金額",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (showExtraFields || amountText.isNotBlank() || note.isNotBlank()) colors.primary else colors.textSecondary
-                    )
-                }
             }
 
-            // 4-B. Custom Date & Time Picker for 予定 (ToDo)
-            if (!isDone && selectedTodoPreset == "📅 日時指定...") {
-                Spacer(modifier = Modifier.height(10.dp))
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = colors.background,
-                    border = BorderStroke(1.dp, colors.border),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(10.dp)) {
-                        // Date selector row
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("指定日:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(
-                                    onClick = { customDate = customDate.minusDays(1) },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Text("◀", fontSize = 12.sp, color = colors.textSecondary)
-                                }
-                                val dayName = listOf("月", "火", "水", "木", "金", "土", "日")[customDate.dayOfWeek.value - 1]
-                                Text(
-                                    text = "${customDate.monthValue}月${customDate.dayOfMonth}日 ($dayName)",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.textPrimary
-                                )
-                                IconButton(
-                                    onClick = { customDate = customDate.plusDays(1) },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Text("▶", fontSize = 12.sp, color = colors.textSecondary)
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            val todayDate = LocalDate.now()
-                            listOf(
-                                "今日" to todayDate,
-                                "明日" to todayDate.plusDays(1),
-                                "明後日" to todayDate.plusDays(2),
-                                "今週末" to todayDate.plusDays((7 - todayDate.dayOfWeek.value).coerceAtLeast(1).toLong()),
-                                "来週月曜" to todayDate.plusDays((8 - todayDate.dayOfWeek.value).toLong())
-                            ).forEach { (lbl, d) ->
-                                val isSel = customDate == d
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(if (isSel) colors.primary.copy(alpha = 0.15f) else colors.card)
-                                        .border(1.dp, if (isSel) colors.primary else colors.border, RoundedCornerShape(6.dp))
-                                        .clickable { customDate = d }
-                                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                                ) {
-                                    Text(lbl, fontSize = 11.sp, color = if (isSel) colors.primary else colors.textPrimary)
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // Time selector row
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("指定時刻:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(
-                                    onClick = { customHour = (customHour - 1 + 24) % 24 },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Text("-1h", fontSize = 11.sp, color = colors.textSecondary)
-                                }
-                                Text(
-                                    text = "%02d:%02d".format(customHour, customMinute),
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.textPrimary
-                                )
-                                IconButton(
-                                    onClick = { customHour = (customHour + 1) % 24 },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Text("+1h", fontSize = 11.sp, color = colors.textSecondary)
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            listOf(
-                                "朝 (9:00)" to (9 to 0),
-                                "昼 (12:00)" to (12 to 0),
-                                "夕方 (18:00)" to (18 to 0),
-                                "夜 (21:00)" to (21 to 0)
-                            ).forEach { (lbl, timePair) ->
-                                val isSel = customHour == timePair.first && customMinute == timePair.second
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(if (isSel) colors.primary.copy(alpha = 0.15f) else colors.card)
-                                        .border(1.dp, if (isSel) colors.primary else colors.border, RoundedCornerShape(6.dp))
-                                        .clickable {
-                                            customHour = timePair.first
-                                            customMinute = timePair.second
+            // 5. Contextual Area (記録: クイックテンプレートパレット / 予定: 日時指定ピッカー or ガイド)
+            if (isDone) {
+                if (templates.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "スタンプ:",
+                            fontSize = 11.sp,
+                            color = colors.textSecondary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        templates.take(12).forEach { t ->
+                            val isSelected = selectedTemplateId == t.id
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .border(
+                                        1.dp,
+                                        if (isSelected) colors.primary else colors.border,
+                                        RoundedCornerShape(6.dp)
+                                    )
+                                    .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.background)
+                                    .clickable {
+                                        selectedTemplateId = t.id
+                                        val unitStr = if (t.unit.isNotBlank()) t.unit else "杯"
+                                        if (t.actionType == "COUNT") {
+                                            countValue = 1
+                                            title = "${t.title} (1${unitStr}目)"
+                                        } else if (t.actionType == "TIMER") {
+                                            timerMinutes = 15
+                                            title = "${t.title} (15分)"
+                                        } else {
+                                            title = t.title
                                         }
-                                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                                ) {
-                                    Text(lbl, fontSize = 11.sp, color = if (isSel) colors.primary else colors.textPrimary)
-                                }
+                                        if (t.defaultAmount != null) {
+                                            amountText = t.defaultAmount.toString()
+                                        }
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = t.iconKey ?: "📌", fontSize = 12.sp)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = t.title,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) colors.primary else colors.textPrimary
+                                )
                             }
                         }
                     }
                 }
-            }
+            } else {
+                // 予定(ToDo)の場合
+                if (selectedTodoPreset == "📅 日時指定...") {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = colors.background,
+                        border = BorderStroke(1.dp, colors.border),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            // Date selector row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("指定日:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(
+                                        onClick = { customDate = customDate.minusDays(1) },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Text("◀", fontSize = 12.sp, color = colors.textSecondary)
+                                    }
+                                    val dayName = listOf("月", "火", "水", "木", "金", "土", "日")[customDate.dayOfWeek.value - 1]
+                                    Text(
+                                        text = "${customDate.monthValue}月${customDate.dayOfMonth}日 ($dayName)",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.textPrimary
+                                    )
+                                    IconButton(
+                                        onClick = { customDate = customDate.plusDays(1) },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Text("▶", fontSize = 12.sp, color = colors.textSecondary)
+                                    }
+                                }
+                            }
 
-            // 5. Expandable Extra Fields (Note & Amount)
-            if (showExtraFields || amountText.isNotBlank() || note.isNotBlank()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = note,
-                        onValueChange = { note = it },
-                        label = { Text("メモ") },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(8.dp),
-                        singleLine = true
-                    )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                val todayDate = LocalDate.now()
+                                listOf(
+                                    "今日" to todayDate,
+                                    "明日" to todayDate.plusDays(1),
+                                    "明後日" to todayDate.plusDays(2),
+                                    "今週末" to todayDate.plusDays((7 - todayDate.dayOfWeek.value).coerceAtLeast(1).toLong()),
+                                    "来週月曜" to todayDate.plusDays((8 - todayDate.dayOfWeek.value).toLong())
+                                ).forEach { (lbl, d) ->
+                                    val isSel = customDate == d
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(if (isSel) colors.primary.copy(alpha = 0.15f) else colors.card)
+                                            .border(1.dp, if (isSel) colors.primary else colors.border, RoundedCornerShape(6.dp))
+                                            .clickable { customDate = d }
+                                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                                    ) {
+                                        Text(lbl, fontSize = 11.sp, color = if (isSel) colors.primary else colors.textPrimary)
+                                    }
+                                }
+                            }
 
-                    if (isDone) {
-                        OutlinedTextField(
-                            value = amountText,
-                            onValueChange = { if (it.all { c -> c.isDigit() }) amountText = it },
-                            label = { Text("金額(¥)") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.width(100.dp),
-                            shape = RoundedCornerShape(8.dp),
-                            singleLine = true
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Time selector row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("指定時刻:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(
+                                        onClick = { customHour = (customHour - 1 + 24) % 24 },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Text("-1h", fontSize = 11.sp, color = colors.textSecondary)
+                                    }
+                                    Text(
+                                        text = "%02d:%02d".format(customHour, customMinute),
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.textPrimary
+                                    )
+                                    IconButton(
+                                        onClick = { customHour = (customHour + 1) % 24 },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Text("+1h", fontSize = 11.sp, color = colors.textSecondary)
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                listOf(
+                                    "朝 (9:00)" to (9 to 0),
+                                    "昼 (12:00)" to (12 to 0),
+                                    "夕方 (18:00)" to (18 to 0),
+                                    "夜 (21:00)" to (21 to 0)
+                                ).forEach { (lbl, timePair) ->
+                                    val isSel = customHour == timePair.first && customMinute == timePair.second
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(if (isSel) colors.primary.copy(alpha = 0.15f) else colors.card)
+                                            .border(1.dp, if (isSel) colors.primary else colors.border, RoundedCornerShape(6.dp))
+                                            .clickable {
+                                                customHour = timePair.first
+                                                customMinute = timePair.second
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                                    ) {
+                                        Text(lbl, fontSize = 11.sp, color = if (isSel) colors.primary else colors.textPrimary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // バランス保持用のアドバイスバー（高さの急変を防ぎ心地よい余白を維持）
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(colors.background.copy(alpha = 0.6f))
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "💡 「📅 日時指定...」を選ぶとカレンダーで未来日を設定できます",
+                            fontSize = 11.sp,
+                            color = colors.textSecondary
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // 6. Action Button
             Button(
@@ -539,6 +551,7 @@ fun AddItemBottomSheet(
                     if (title.isNotBlank()) {
                         val zone = ZoneId.systemDefault()
                         val now = LocalDateTime.now()
+                        val amt = amountText.toLongOrNull()
 
                         if (isDone) {
                             val doneTime = when (selectedDonePreset) {
@@ -548,8 +561,7 @@ fun AddItemBottomSheet(
                                 else -> now
                             }
                             val millis = doneTime.atZone(zone).toInstant().toEpochMilli()
-                            val amt = amountText.toLongOrNull()
-                            onSave(title, true, null, millis, amt, note.ifBlank { null }, selectedTemplateId)
+                            onSave(title.trim(), true, null, millis, amt, note.ifBlank { null }, selectedTemplateId)
                         } else {
                             val scheduledMillis = when (selectedTodoPreset) {
                                 "今日中" -> null
@@ -559,14 +571,14 @@ fun AddItemBottomSheet(
                                 "📅 日時指定..." -> LocalDateTime.of(customDate, LocalTime.of(customHour, customMinute)).atZone(zone).toInstant().toEpochMilli()
                                 else -> null
                             }
-                            onSave(title, false, scheduledMillis, null, null, note.ifBlank { null }, selectedTemplateId)
+                            onSave(title.trim(), false, scheduledMillis, null, amt, note.ifBlank { null }, selectedTemplateId)
                         }
                         onDismiss()
                     }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(44.dp),
+                    .height(46.dp),
                 shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = colors.primary,

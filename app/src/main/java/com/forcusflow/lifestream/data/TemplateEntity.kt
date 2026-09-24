@@ -20,5 +20,6 @@ data class TemplateEntity(
     val actionType: String = "CHECK", // "CHECK", "COUNT", "TIMER"
     val unit: String = "", // "杯", "回", "分"
     val stepValue: Int = 1, // 1タップあたりの増分 (デフォルト: 1)
-    val isPinned: Boolean = false // クイックスタンプバーへのピン留め
+    val isPinned: Boolean = false, // クイックスタンプバーへのピン留め
+    val displayOrder: Int = 0
 )
