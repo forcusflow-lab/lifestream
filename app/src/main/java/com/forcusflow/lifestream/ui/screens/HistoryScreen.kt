@@ -80,7 +80,7 @@ fun HistoryScreen(viewModel: MainViewModel) {
         ) {
             AppHeader(
                 title = "履歴とカレンダー",
-                subtitle = "日別タイムライン再現 ＋ 事実ログ検索"
+                subtitle = "日別タイムライン再現 ＋ 記録・予定の確認"
             )
 
             // Search Bar
@@ -221,7 +221,7 @@ fun HistoryScreen(viewModel: MainViewModel) {
                                                 color = colors.primary
                                             )
                                             Text(
-                                                text = "ToDo",
+                                                text = "予定",
                                                 fontSize = 11.sp,
                                                 color = colors.textSecondary
                                             )
@@ -492,7 +492,7 @@ fun HistoryScreen(viewModel: MainViewModel) {
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "この日の記録はありません",
+                                    text = if (selectedDate.isAfter(today)) "この日の予定はありません" else "この日の記録はありません",
                                     fontSize = 13.sp,
                                     color = colors.textSecondary
                                 )
@@ -505,7 +505,8 @@ fun HistoryScreen(viewModel: MainViewModel) {
                                 item = item,
                                 isFirst = index == 0,
                                 isLast = index == selectedDateItems.size - 1,
-                                onClick = { itemToEdit = item }
+                                onClick = { itemToEdit = item },
+                                onToggleDone = { viewModel.toggleItemDone(item) }
                             )
                         }
                     }
@@ -563,7 +564,8 @@ fun TaskitoHistoryStemRow(
     item: TimelineItemEntity,
     isFirst: Boolean,
     isLast: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onToggleDone: (() -> Unit)? = null
 ) {
     val colors = LifeStreamTheme.colors
     val zone = ZoneId.systemDefault()
@@ -604,21 +606,38 @@ fun TaskitoHistoryStemRow(
                 )
             }
 
-            // Green Done Node Circle with Check
+            // Interactive Checkbox / Done Node
             Box(
                 modifier = Modifier
-                    .size(18.dp)
-                    .clip(CircleShape)
-                    .border(2.dp, colors.statusDone, CircleShape)
-                    .background(colors.statusDone),
+                    .size(36.dp)
+                    .clickable(enabled = onToggleDone != null) { onToggleDone?.invoke() },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    Icons.Default.Check,
-                    contentDescription = "完了",
-                    tint = Color.White,
-                    modifier = Modifier.size(12.dp)
-                )
+                if (item.isDone) {
+                    Box(
+                        modifier = Modifier
+                            .size(18.dp)
+                            .clip(CircleShape)
+                            .border(2.dp, colors.statusDone, CircleShape)
+                            .background(colors.statusDone),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = "完了",
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(18.dp)
+                            .clip(CircleShape)
+                            .border(2.dp, colors.primary, CircleShape)
+                            .background(colors.card)
+                    )
+                }
             }
         }
 
@@ -630,12 +649,30 @@ fun TaskitoHistoryStemRow(
                 .weight(1f)
                 .padding(vertical = 6.dp)
         ) {
-            Text(
-                text = timeStr,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = colors.textSecondary
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (!item.isDone) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(colors.primary.copy(alpha = 0.12f))
+                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                    ) {
+                        Text(
+                            text = "予定",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.primary
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                }
+                Text(
+                    text = timeStr,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.textSecondary
+                )
+            }
             Text(
                 text = item.title,
                 fontSize = 15.sp,

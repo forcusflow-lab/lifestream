@@ -337,7 +337,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 templateId = template.id
             )
             itemDao.insert(item)
-            templateDao.recordCompletion(template.id, millis)
+            val latestMillis = maxOf(millis, template.lastCompletedAt ?: 0L)
+            templateDao.update(template.copy(usageCount = template.usageCount + 1, lastCompletedAt = latestMillis))
+        }
+    }
+
+    fun toggleCycleTask(template: TemplateEntity, targetDate: LocalDate) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val startOfDay = targetDate.atStartOfDay(zone).toInstant().toEpochMilli()
+            val endOfDay = targetDate.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
+            val all = itemDao.getAll()
+            val existing = all.find { item ->
+                item.isDone &&
+                (item.templateId == template.id || item.title.startsWith(template.title)) &&
+                item.completedAt != null &&
+                item.completedAt in startOfDay..endOfDay
+            }
+            if (existing != null) {
+                itemDao.delete(existing)
+                val remaining = all.filter { it.id != existing.id && it.isDone && (it.templateId == template.id || it.title.startsWith(template.title)) && it.completedAt != null }
+                val newLast = remaining.maxOfOrNull { it.completedAt!! }
+                templateDao.update(template.copy(lastCompletedAt = newLast))
+            } else {
+                recordCycleTask(template, targetDate)
+            }
         }
     }
 
@@ -418,6 +441,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 isPinned = isPinned
             )
             templateDao.insert(template)
+        }
+    }
+
+    fun updateTemplate(template: TemplateEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            templateDao.update(template)
         }
     }
 

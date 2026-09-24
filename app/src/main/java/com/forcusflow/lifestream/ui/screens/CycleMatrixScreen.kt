@@ -9,12 +9,16 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,6 +40,7 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.YearMonth
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 
@@ -95,6 +101,7 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
     val today = LocalDate.now()
 
     var showAddPeriodicDialog by remember { mutableStateOf(false) }
+    var editingTemplate by remember { mutableStateOf<TemplateEntity?>(null) }
 
     // Sort periodic tasks: Overdue first, then Due Soon, then On Track
     val periodicTemplates = remember(templates, today) {
@@ -234,6 +241,18 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                             completedDates = completedDates,
                             streak = streak,
                             completionRate = completionRate,
+                            onClick = { editingTemplate = template },
+                            onToggleDate = { date ->
+                                viewModel.toggleCycleTask(template, date)
+                                coroutineScope.launch {
+                                    val dStr = "${date.monthValue}/${date.dayOfMonth}"
+                                    if (completedDates.contains(date)) {
+                                        snackbarHostState.showSnackbar("「${template.title}」($dStr) の達成を取り消しました")
+                                    } else {
+                                        snackbarHostState.showSnackbar("「${template.title}」($dStr) の達成を記録しました")
+                                    }
+                                }
+                            },
                             onCompletedNow = {
                                 viewModel.recordCycleTask(template, today)
                                 coroutineScope.launch {
@@ -274,11 +293,53 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
             }
         )
     }
+
+    if (editingTemplate != null) {
+        EditPeriodicTaskBottomSheet(
+            template = editingTemplate!!,
+            allItems = allItems,
+            onDismiss = { editingTemplate = null },
+            onSave = { updated ->
+                viewModel.updateTemplate(updated)
+                editingTemplate = null
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("「${updated.title}」を更新しました")
+                }
+            },
+            onDelete = { toDelete ->
+                viewModel.deleteTemplate(toDelete)
+                editingTemplate = null
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("「${toDelete.title}」を削除しました")
+                }
+            },
+            onToggleDate = { date ->
+                viewModel.toggleCycleTask(editingTemplate!!, date)
+            }
+        )
+    }
 }
+
+val DEFAULT_ICON_OPTIONS = listOf(
+    "🧹", "🧖", "🛏️", "🧼", "🌀", "💨", "🌿", "💊", "🚗", "🪴",
+    "🚿", "🧺", "🏃", "🐶", "📚", "💪", "🍱", "🪥", "🌙", "☀️",
+    "🌊", "🧘", "🎵", "🏠"
+)
+
+val DEFAULT_COLOR_OPTIONS = listOf(
+    Pair("#10B981", "グリーン"),
+    Pair("#3B82F6", "ブルー"),
+    Pair("#A855F7", "パープル"),
+    Pair("#F59E0B", "オレンジ"),
+    Pair("#EF4444", "レッド"),
+    Pair("#8C5A3C", "ブラウン"),
+    Pair("#EC4899", "ピンク"),
+    Pair("#6366F1", "インディゴ")
+)
 
 /**
  * 1行超コンパクト周期カード (高さ ~60dp) — 商用レベル拡張版
- * ストリーク表示 + 達成率インジケーター追加
+ * ストリーク表示 + 達成率インジケーター + 24dp×28dp 曜日直接トグル
  */
 @Composable
 fun CompactUnifiedCycleTaskCard(
@@ -288,6 +349,8 @@ fun CompactUnifiedCycleTaskCard(
     completedDates: Set<LocalDate>,
     streak: Int = 0,
     completionRate: Float = 0f,
+    onClick: () -> Unit,
+    onToggleDate: (LocalDate) -> Unit,
     onCompletedNow: () -> Unit,
     onSkip: () -> Unit
 ) {
@@ -301,9 +364,7 @@ fun CompactUnifiedCycleTaskCard(
     val interval = template.intervalDays ?: 7
     val isOverdue = elapsedDays != null && elapsedDays >= interval
     val isDueToday = elapsedDays != null && elapsedDays == (interval - 1)
-    val isLongTerm = interval > 14
 
-    val nextTargetDate = lastDoneDate?.plusDays(interval.toLong())
 
     val statusBadgeColor = when {
         isOverdue -> colors.statusOverdue
@@ -327,7 +388,9 @@ fun CompactUnifiedCycleTaskCard(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = colors.card),
         border = BorderStroke(1.dp, if (isOverdue) statusBadgeColor.copy(alpha = 0.5f) else colors.border),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Column(
@@ -441,7 +504,7 @@ fun CompactUnifiedCycleTaskCard(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // === 2行目: ステータス説明（左） ＋ 7曜日ドット／次回予定（右） ===
+                // === 2行目: ステータス説明（左） ＋ 7曜日直接チェックピル（右） ===
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -476,27 +539,9 @@ fun CompactUnifiedCycleTaskCard(
                         )
                     }
 
-                    // 右側: 7-day mini indicator OR "··· 次回 M/D" (for long term)
-                    if (isLongTerm) {
-                        val nextStr = if (nextTargetDate != null) "${nextTargetDate.monthValue}/${nextTargetDate.dayOfMonth}" else "未定"
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(colors.background.copy(alpha = 0.8f))
-                                .border(0.5.dp, colors.border, RoundedCornerShape(6.dp))
-                            .padding(horizontal = 8.dp, vertical = 3.dp)
-                    ) {
-                        Text(
-                            text = "··· 次回 $nextStr",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = if (isOverdue) colors.statusOverdue else colors.textSecondary
-                        )
-                    }
-                } else {
-                    // Inline 7-day compact dots
+                    // 右側: 7曜日 インタラクティブ・チェックピル (24dp×28dp, 11sp Bold)
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         val dayInitial = listOf("月", "火", "水", "木", "金", "土", "日")
@@ -505,68 +550,472 @@ fun CompactUnifiedCycleTaskCard(
                             val isCurDay = (date == today)
                             val isFuture = date.isAfter(today)
 
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally
+                            Box(
+                                modifier = Modifier
+                                    .width(24.dp)
+                                    .height(28.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(
+                                        when {
+                                            isDone -> Color(0xFF16A34A)
+                                            isCurDay -> colors.primary.copy(alpha = 0.15f)
+                                            else -> colors.background
+                                        }
+                                    )
+                                    .border(
+                                        width = if (isCurDay) 1.5.dp else if (isDone) 1.dp else 0.5.dp,
+                                        color = when {
+                                            isDone -> Color(0xFF16A34A)
+                                            isCurDay -> colors.primary
+                                            isFuture -> colors.border.copy(alpha = 0.3f)
+                                            else -> colors.border
+                                        },
+                                        shape = RoundedCornerShape(6.dp)
+                                    )
+                                    .clickable(enabled = !isFuture) {
+                                        onToggleDate(date)
+                                    },
+                                contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = dayInitial[idx],
-                                    fontSize = 8.sp,
-                                    color = if (isCurDay) colors.primary else colors.textSecondary.copy(alpha = 0.7f),
-                                    fontWeight = if (isCurDay) FontWeight.Bold else FontWeight.Normal
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .size(10.dp)
-                                        .clip(CircleShape)
-                                        .background(
-                                            when {
-                                                isDone -> Color(0xFF16A34A)
-                                                isCurDay -> colors.primary.copy(alpha = 0.2f)
-                                                else -> Color.Transparent
-                                            }
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = dayInitial[idx],
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isCurDay || isDone) FontWeight.Bold else FontWeight.Medium,
+                                        color = when {
+                                            isDone -> Color.White
+                                            isCurDay -> colors.primary
+                                            isFuture -> colors.textSecondary.copy(alpha = 0.4f)
+                                            else -> colors.textPrimary
+                                        }
+                                    )
+                                    if (isDone) {
+                                        Text(
+                                            text = "✓",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color.White
                                         )
-                                        .border(
-                                            width = if (isCurDay || isDone) 1.dp else 0.5.dp,
-                                            color = when {
-                                                isDone -> Color(0xFF16A34A)
-                                                isCurDay -> colors.primary
-                                                isFuture -> colors.border.copy(alpha = 0.3f)
-                                                else -> colors.border
-                                            },
-                                            shape = CircleShape
-                                        )
-                                )
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
-        }
 
-        // Completion rate bar (thin, at bottom of card)
-        if (completionRate > 0f) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(3.dp)
-                    .background(colors.border.copy(alpha = 0.4f))
-            ) {
+            // Completion rate bar (thin, at bottom of card)
+            if (completionRate > 0f) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(completionRate)
-                        .fillMaxHeight()
-                        .background(
-                            when {
-                                completionRate >= 0.8f -> colors.statusDone
-                                completionRate >= 0.5f -> colors.statusWarning
-                                else -> colors.statusOverdue.copy(alpha = 0.6f)
-                            }
-                        )
-                )
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .background(colors.border.copy(alpha = 0.4f))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(completionRate)
+                            .fillMaxHeight()
+                            .background(
+                                when {
+                                    completionRate >= 0.8f -> colors.statusDone
+                                    completionRate >= 0.5f -> colors.statusWarning
+                                    else -> colors.statusOverdue.copy(alpha = 0.6f)
+                                }
+                            )
+                    )
+                }
             }
         }
     }
 }
+
+/**
+ * 周期タスクの詳細・編集・過去実績カレンダー BottomSheet
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditPeriodicTaskBottomSheet(
+    template: TemplateEntity,
+    allItems: List<TimelineItemEntity>,
+    onDismiss: () -> Unit,
+    onSave: (TemplateEntity) -> Unit,
+    onDelete: (TemplateEntity) -> Unit,
+    onToggleDate: (LocalDate) -> Unit
+) {
+    val colors = LifeStreamTheme.colors
+    val zone = ZoneId.systemDefault()
+    val today = LocalDate.now()
+
+    var title by remember { mutableStateOf(template.title) }
+    var intervalText by remember { mutableStateOf((template.intervalDays ?: 7).toString()) }
+    var iconKey by remember { mutableStateOf(template.iconKey ?: "🧹") }
+    var selectedColorHex by remember { mutableStateOf(template.colorHex ?: "#10B981") }
+    var currentMonth by remember { mutableStateOf(YearMonth.now()) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+
+    val completedDates = remember(allItems, template.id) {
+        allItems.filter {
+            it.isDone &&
+            (it.templateId == template.id || it.title.startsWith(template.title)) &&
+            it.completedAt != null
+        }.map {
+            LocalDateTime.ofInstant(Instant.ofEpochMilli(it.completedAt!!), zone).toLocalDate()
+        }.toSet()
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = colors.card,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 32.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = onDismiss) {
+                    Text("キャンセル", color = colors.textSecondary, fontSize = 15.sp)
+                }
+                Text(
+                    text = "周期タスクの編集・履歴",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary
+                )
+                Button(
+                    onClick = {
+                        val days = intervalText.toIntOrNull() ?: 7
+                        val updated = template.copy(
+                            title = title.trim(),
+                            intervalDays = days,
+                            iconKey = iconKey,
+                            colorHex = selectedColorHex
+                        )
+                        onSave(updated)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                    enabled = title.isNotBlank()
+                ) {
+                    Text("保存", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // タスク名
+            Text("タスク名", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
+            Spacer(modifier = Modifier.height(6.dp))
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp)
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 周期日数
+            Text("実施周期 (日数)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
+            Spacer(modifier = Modifier.height(6.dp))
+            OutlinedTextField(
+                value = intervalText,
+                onValueChange = { if (it.all { c -> c.isDigit() }) intervalText = it },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp)
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                listOf("3日" to 3, "7日 (毎週)" to 7, "14日 (隔週)" to 14, "30日 (毎月)" to 30).forEach { (label, days) ->
+                    val isSelected = intervalText == days.toString()
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(6.dp))
+                            .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.card)
+                            .clickable { intervalText = days.toString() }
+                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                    ) {
+                        Text(
+                            text = label,
+                            fontSize = 11.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) colors.primary else colors.textPrimary
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // アイコン
+            Text("アイコン", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                DEFAULT_ICON_OPTIONS.forEach { ic ->
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(
+                                1.5.dp,
+                                if (iconKey == ic) colors.primary else colors.border,
+                                RoundedCornerShape(8.dp)
+                            )
+                            .background(if (iconKey == ic) colors.primary.copy(alpha = 0.15f) else colors.card)
+                            .clickable { iconKey = ic },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = ic, fontSize = 17.sp)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // カラー
+            Text("テーマカラー", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                DEFAULT_COLOR_OPTIONS.forEach { (hex, _) ->
+                    val parsedColor = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrElse { colors.primary }
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(parsedColor)
+                            .border(
+                                width = if (selectedColorHex == hex) 2.5.dp else 0.dp,
+                                color = if (selectedColorHex == hex) colors.textPrimary else Color.Transparent,
+                                shape = CircleShape
+                            )
+                            .clickable { selectedColorHex = hex },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (selectedColorHex == hex) {
+                            Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // === 過去の達成記録・月間カレンダー ===
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = colors.background,
+                border = BorderStroke(1.dp, colors.border),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = { currentMonth = currentMonth.minusMonths(1) },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(Icons.Default.ChevronLeft, contentDescription = "前月", tint = colors.textPrimary)
+                        }
+                        Text(
+                            text = "${currentMonth.year}年 ${currentMonth.monthValue}月",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary
+                        )
+                        IconButton(
+                            onClick = {
+                                if (currentMonth.isBefore(YearMonth.now())) {
+                                    currentMonth = currentMonth.plusMonths(1)
+                                }
+                            },
+                            enabled = currentMonth.isBefore(YearMonth.now()),
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.ChevronRight,
+                                contentDescription = "次月",
+                                tint = if (currentMonth.isBefore(YearMonth.now())) colors.textPrimary else colors.textSecondary.copy(alpha = 0.3f)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // 曜日ヘッダー
+                    val dayNames = listOf("月", "火", "水", "木", "金", "土", "日")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceAround
+                    ) {
+                        dayNames.forEach { d ->
+                            Text(
+                                text = d,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.textSecondary,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.width(32.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // 日付グリッド (1 to lengthOfMonth)
+                    val firstDay = currentMonth.atDay(1)
+                    val startOffset = firstDay.dayOfWeek.value - 1 // 0 (Mon) to 6 (Sun)
+                    val daysInMonth = currentMonth.lengthOfMonth()
+                    val totalCells = startOffset + daysInMonth
+                    val rows = (totalCells + 6) / 7
+
+                    for (r in 0 until rows) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceAround
+                        ) {
+                            for (c in 0 until 7) {
+                                val cellIdx = r * 7 + c
+                                val dayNum = cellIdx - startOffset + 1
+                                if (dayNum in 1..daysInMonth) {
+                                    val date = currentMonth.atDay(dayNum)
+                                    val isDone = completedDates.contains(date)
+                                    val isCurDay = (date == today)
+                                    val isFuture = date.isAfter(today)
+
+                                    Box(
+                                        modifier = Modifier
+                                            .size(34.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(
+                                                when {
+                                                    isDone -> Color(0xFF16A34A)
+                                                    isCurDay -> colors.primary.copy(alpha = 0.15f)
+                                                    else -> Color.Transparent
+                                                }
+                                            )
+                                            .border(
+                                                width = if (isCurDay) 1.5.dp else 0.dp,
+                                                color = if (isCurDay) colors.primary else Color.Transparent,
+                                                shape = RoundedCornerShape(8.dp)
+                                            )
+                                            .clickable(enabled = !isFuture) {
+                                                onToggleDate(date)
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text(
+                                                text = "$dayNum",
+                                                fontSize = 11.sp,
+                                                fontWeight = if (isDone || isCurDay) FontWeight.Bold else FontWeight.Normal,
+                                                color = when {
+                                                    isDone -> Color.White
+                                                    isCurDay -> colors.primary
+                                                    isFuture -> colors.textSecondary.copy(alpha = 0.35f)
+                                                    else -> colors.textPrimary
+                                                }
+                                            )
+                                            if (isDone) {
+                                                Text("✓", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    Spacer(modifier = Modifier.size(34.dp))
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "💡 押し忘れた過去の日付をタップして、いつでも達成記録を追加・解除できます",
+                        fontSize = 10.sp,
+                        color = colors.textSecondary,
+                        lineHeight = 14.sp
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // 削除ボタン
+            OutlinedButton(
+                onClick = { showDeleteConfirmDialog = true },
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.statusOverdue),
+                border = BorderStroke(1.dp, colors.statusOverdue.copy(alpha = 0.7f)),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+            ) {
+                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("この周期タスクを削除", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            }
+        }
+    }
+
+    if (showDeleteConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            title = { Text("周期タスクの削除", fontWeight = FontWeight.Bold) },
+            text = { Text("「${template.title}」を削除しますか？\n過去に記録されたログはそのまま残りますが、周期一覧からは削除されます。") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirmDialog = false
+                        onDelete(template)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.statusOverdue)
+                ) {
+                    Text("削除する", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                    Text("キャンセル")
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -579,23 +1028,8 @@ fun AddPeriodicTaskDialog(
     var intervalText by remember { mutableStateOf("7") }
     var iconKey by remember { mutableStateOf("🧹") }
     var selectedColorHex by remember { mutableStateOf("#8C5A3C") }
-
-    val iconOptions = listOf(
-        "🧹", "🧖", "🛏️", "🧼", "🌀", "💨", "🌿", "💊", "🚗", "🪴",
-        "🚿", "🧺", "🏃", "🐶", "📚", "💪", "🍱", "🪥", "🌙", "☀️",
-        "🌊", "🧘", "🎵", "🏠"
-    )
-
-    val colorOptions = listOf(
-        Pair("#10B981", "グリーン"),
-        Pair("#3B82F6", "ブルー"),
-        Pair("#A855F7", "パープル"),
-        Pair("#F59E0B", "オレンジ"),
-        Pair("#EF4444", "レッド"),
-        Pair("#8C5A3C", "ブラウン"),
-        Pair("#EC4899", "ピンク"),
-        Pair("#6366F1", "インディゴ")
-    )
+    val iconOptions = DEFAULT_ICON_OPTIONS
+    val colorOptions = DEFAULT_COLOR_OPTIONS
 
     AlertDialog(
         onDismissRequest = onDismiss,

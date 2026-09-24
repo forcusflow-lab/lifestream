@@ -1170,6 +1170,23 @@ fun ItemDetailBottomSheet(
         templates.find { it.id == item.templateId } ?: templates.find { item.title.startsWith(it.title) }
     }
 
+    var selectedActionType by remember {
+        mutableStateOf(
+            when {
+                matchedTemplate?.actionType == "COUNT" || "\\d+(杯|回|個|本|皿|枚)".toRegex().containsMatchIn(item.title) -> "COUNT"
+                matchedTemplate?.actionType == "TIMER" || "\\d+分".toRegex().containsMatchIn(item.title) || (item.note?.contains("\\d+分".toRegex()) == true) -> "TIMER"
+                else -> "CHECK"
+            }
+        )
+    }
+    var selectedUnit by remember {
+        mutableStateOf(
+            matchedTemplate?.unit?.ifBlank { null }
+                ?: "\\d+([杯回個本皿枚])".toRegex().find(item.title)?.groupValues?.get(1)
+                ?: "回"
+        )
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -1200,7 +1217,7 @@ fun ItemDetailBottomSheet(
                     Text("キャンセル", color = colors.textSecondary, fontSize = 15.sp)
                 }
                 Text(
-                    text = if (isDone) "記録の詳細・編集" else "ToDoの詳細・編集",
+                    text = if (isDone) "記録の詳細・編集" else "予定の詳細・編集",
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     color = colors.textPrimary
@@ -1258,13 +1275,13 @@ fun ItemDetailBottomSheet(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
-                            text = if (isDone) "完了済み (Done)" else "未完了タスク (ToDo)",
+                            text = if (isDone) "記録済み (できたこと)" else "未完了の予定 (やること)",
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isDone) colors.statusDone else colors.primary
                         )
                         Text(
-                            text = if (isDone) "タイムラインに事実のログとして記録されています" else "タップして完了済みに切り替えられます",
+                            text = if (isDone) "タイムラインに実行実績として記録されています" else "タップして記録済みに切り替えられます",
                             fontSize = 11.sp,
                             color = colors.textSecondary
                         )
@@ -1291,10 +1308,54 @@ fun ItemDetailBottomSheet(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // Template Quick Adjustments (Count / Timer)
-            if (matchedTemplate?.actionType == "COUNT") {
-                Spacer(modifier = Modifier.height(12.dp))
-                val unitStr = if (matchedTemplate.unit.isNotBlank()) matchedTemplate.unit else "杯"
+            // 2-B. 記録タイプ（チェック / カウント / タイム）
+            Spacer(modifier = Modifier.height(14.dp))
+            Text("記録タイプ", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(colors.background)
+                    .border(1.dp, colors.border, RoundedCornerShape(10.dp))
+                    .padding(3.dp)
+            ) {
+                listOf(
+                    Pair("CHECK", "☑ チェック"),
+                    Pair("COUNT", "🔢 カウント"),
+                    Pair("TIMER", "⏱ タイム")
+                ).forEach { (typeKey, label) ->
+                    val isSelected = selectedActionType == typeKey
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isSelected) colors.primary else Color.Transparent)
+                            .clickable {
+                                selectedActionType = typeKey
+                                if (typeKey == "COUNT" && !"\\d+".toRegex().containsMatchIn(title)) {
+                                    title = "$title (1${selectedUnit}目)"
+                                } else if (typeKey == "TIMER" && !"\\d+分".toRegex().containsMatchIn(title)) {
+                                    title = "$title (15分)"
+                                    if (note.isBlank()) note = "計測時間: 15分"
+                                }
+                            }
+                            .padding(vertical = 7.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = label,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) colors.onPrimary else colors.textSecondary
+                        )
+                    }
+                }
+            }
+
+            // カウント用ステッパー
+            if (selectedActionType == "COUNT") {
+                Spacer(modifier = Modifier.height(10.dp))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1306,7 +1367,7 @@ fun ItemDetailBottomSheet(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "数量微調整 (${unitStr}):",
+                        text = "数量 (${selectedUnit}):",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
                         color = colors.textSecondary
@@ -1314,14 +1375,14 @@ fun ItemDetailBottomSheet(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedButton(
                             onClick = {
-                                val regex = "(\\d+)$unitStr".toRegex()
+                                val regex = "(\\d+)$selectedUnit".toRegex()
                                 val match = regex.find(title)
                                 val cur = match?.groupValues?.get(1)?.toIntOrNull() ?: 1
                                 val next = (cur - 1).coerceAtLeast(1)
                                 title = if (match != null) {
-                                    title.replace(regex, "$next$unitStr")
+                                    title.replace(regex, "$next$selectedUnit")
                                 } else {
-                                    "${matchedTemplate.title} (${next}${unitStr}目)"
+                                    "$title ($next$selectedUnit)"
                                 }
                             },
                             shape = RoundedCornerShape(8.dp),
@@ -1333,14 +1394,14 @@ fun ItemDetailBottomSheet(
                         Spacer(modifier = Modifier.width(8.dp))
                         OutlinedButton(
                             onClick = {
-                                val regex = "(\\d+)$unitStr".toRegex()
+                                val regex = "(\\d+)$selectedUnit".toRegex()
                                 val match = regex.find(title)
                                 val cur = match?.groupValues?.get(1)?.toIntOrNull() ?: 1
                                 val next = cur + 1
                                 title = if (match != null) {
-                                    title.replace(regex, "$next$unitStr")
+                                    title.replace(regex, "$next$selectedUnit")
                                 } else {
-                                    "${matchedTemplate.title} (${next}${unitStr}目)"
+                                    "$title ($next$selectedUnit)"
                                 }
                             },
                             shape = RoundedCornerShape(8.dp),
@@ -1351,8 +1412,34 @@ fun ItemDetailBottomSheet(
                         }
                     }
                 }
-            } else if (matchedTemplate?.actionType == "TIMER") {
-                Spacer(modifier = Modifier.height(12.dp))
+
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf("杯", "回", "個", "本", "皿", "枚").forEach { u ->
+                        val isSel = selectedUnit == u
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isSel) colors.primary.copy(alpha = 0.15f) else colors.card)
+                                .border(1.dp, if (isSel) colors.primary else colors.border, RoundedCornerShape(6.dp))
+                                .clickable {
+                                    val oldU = selectedUnit
+                                    selectedUnit = u
+                                    title = title.replace(oldU, u)
+                                }
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(u, fontSize = 11.sp, color = if (isSel) colors.primary else colors.textPrimary)
+                        }
+                    }
+                }
+            } else if (selectedActionType == "TIMER") {
+                Spacer(modifier = Modifier.height(10.dp))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1364,7 +1451,7 @@ fun ItemDetailBottomSheet(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "タイマー微調整:",
+                        text = "作業時間 (分):",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
                         color = colors.textSecondary
@@ -1376,7 +1463,7 @@ fun ItemDetailBottomSheet(
                                 val match = regex.find(title) ?: regex.find(note)
                                 val cur = match?.groupValues?.get(1)?.toIntOrNull() ?: 15
                                 val next = (cur - 5).coerceAtLeast(1)
-                                title = "${matchedTemplate.title} (${next}分)"
+                                title = if (regex.containsMatchIn(title)) title.replace(regex, "${next}分") else "$title (${next}分)"
                                 note = "計測時間: ${next}分"
                             },
                             shape = RoundedCornerShape(8.dp),
@@ -1392,7 +1479,7 @@ fun ItemDetailBottomSheet(
                                 val match = regex.find(title) ?: regex.find(note)
                                 val cur = match?.groupValues?.get(1)?.toIntOrNull() ?: 15
                                 val next = cur + 5
-                                title = "${matchedTemplate.title} (${next}分)"
+                                title = if (regex.containsMatchIn(title)) title.replace(regex, "${next}分") else "$title (${next}分)"
                                 note = "計測時間: ${next}分"
                             },
                             shape = RoundedCornerShape(8.dp),
