@@ -4,6 +4,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -43,11 +48,19 @@ class MainActivity : ComponentActivity() {
                             .fillMaxSize()
                             .padding(bottom = innerPadding.calculateBottomPadding())
                     ) {
-                        when (currentTab) {
-                            0 -> TimelineScreen(viewModel = viewModel)
-                            1 -> HistoryScreen(viewModel = viewModel)
-                            2 -> CycleMatrixScreen(viewModel = viewModel)
-                            3 -> SettingsScreen(viewModel = viewModel)
+                        AnimatedContent(
+                            targetState = currentTab,
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(220))
+                            },
+                            label = "TabCrossfade"
+                        ) { tab ->
+                            when (tab) {
+                                0 -> TimelineScreen(viewModel = viewModel)
+                                1 -> HistoryScreen(viewModel = viewModel)
+                                2 -> CycleMatrixScreen(viewModel = viewModel)
+                                3 -> SettingsScreen(viewModel = viewModel)
+                            }
                         }
                     }
                 }

@@ -1,4 +1,4 @@
-﻿package com.forcusflow.lifestream.ui.theme
+package com.forcusflow.lifestream.ui.theme
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -39,7 +39,7 @@ val ClassicWarmColors = LifeStreamColors(
     onPrimary = Color(0xFFFFFFFF),
     textPrimary = Color(0xFF2D241E),
     textSecondary = Color(0xFF786B61),
-    border = Color(0xFFE2DDD5),
+    border = Color(0xFFE8E4DC),
     divider = Color(0xFFEFECE6),
     nowLine = Color(0xFFDC2626),
     statusDone = Color(0xFF16A34A),
@@ -75,7 +75,7 @@ val PureMinimalOledColors = LifeStreamColors(
     card = Color(0xFF121212),
     primary = Color(0xFFFFFFFF),
     onPrimary = Color(0xFF000000),
-    textPrimary = Color(0xFFFFFFFF),
+    textPrimary = Color(0xFFF4F4F5),
     textSecondary = Color(0xFFA1A1AA),
     border = Color(0xFF27272A),
     divider = Color(0xFF1E1E1E),

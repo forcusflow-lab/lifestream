@@ -12,8 +12,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.*
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -507,5 +508,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
         val json = Json { prettyPrint = true }
         return json.encodeToString(data)
+    }
+
+    suspend fun importJson(jsonStr: String): Pair<Int, Int> {
+        return withContext(Dispatchers.IO) {
+            val json = Json { ignoreUnknownKeys = true }
+            val root = json.parseToJsonElement(jsonStr).jsonObject
+            val templatesJson = root["templates"]
+            val itemsJson = root["timeline_items"]
+
+            var importedTemplates = 0
+            var importedItems = 0
+
+            if (templatesJson != null) {
+                val tmpls = json.decodeFromJsonElement<List<TemplateEntity>>(templatesJson)
+                tmpls.forEach { t ->
+                    templateDao.insert(t)
+                    importedTemplates++
+                }
+            }
+            if (itemsJson != null) {
+                val its = json.decodeFromJsonElement<List<TimelineItemEntity>>(itemsJson)
+                its.forEach { item ->
+                    itemDao.insert(item)
+                    importedItems++
+                }
+            }
+            Pair(importedTemplates, importedItems)
+        }
     }
 }

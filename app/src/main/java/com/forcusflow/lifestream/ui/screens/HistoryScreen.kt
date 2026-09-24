@@ -1,5 +1,8 @@
 package com.forcusflow.lifestream.ui.screens
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,7 +21,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,6 +44,7 @@ import java.util.Locale
 @Composable
 fun HistoryScreen(viewModel: MainViewModel) {
     val colors = LifeStreamTheme.colors
+    val haptic = LocalHapticFeedback.current
     val zone = ZoneId.systemDefault()
     val today = LocalDate.now()
     val coroutineScope = rememberCoroutineScope()
@@ -149,6 +156,132 @@ fun HistoryScreen(viewModel: MainViewModel) {
                 } else {
                     // Calendar and stats items
                     item {
+                        // Monthly Life Insights Card
+                        val monthStart = remember(currentYearMonth) { currentYearMonth.atDay(1) }
+                        val monthEnd = remember(currentYearMonth) { currentYearMonth.atEndOfMonth() }
+                        val thisMonthItems = remember(allItems, monthStart, monthEnd) {
+                            allItems.filter { item ->
+                                val t = item.completedAt ?: item.scheduledAt ?: return@filter false
+                                val date = LocalDateTime.ofInstant(Instant.ofEpochMilli(t), zone).toLocalDate()
+                                !date.isBefore(monthStart) && !date.isAfter(monthEnd)
+                            }
+                        }
+                        val thisMonthDoneCount = thisMonthItems.count { it.isDone }
+                        val thisMonthSpend = thisMonthItems.mapNotNull { it.amount }.sum()
+                        val topHabits = remember(thisMonthItems) {
+                            thisMonthItems.filter { it.isDone }
+                                .groupBy { it.title }
+                                .entries
+                                .sortedByDescending { it.value.size }
+                                .take(3)
+                                .map { Pair(it.key, it.value.size) }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 12.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .border(1.dp, colors.border, RoundedCornerShape(16.dp))
+                                .background(colors.card)
+                                .padding(16.dp)
+                        ) {
+                            Column {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "📊 ${currentYearMonth.monthValue}月のライフインサイト",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.textPrimary
+                                    )
+                                    Text(
+                                        text = "${currentYearMonth.year}年",
+                                        fontSize = 11.sp,
+                                        color = colors.textSecondary
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    // Done count
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(colors.statusDone.copy(alpha = 0.08f))
+                                            .padding(10.dp)
+                                    ) {
+                                        Column {
+                                            Text(
+                                                text = "$thisMonthDoneCount",
+                                                fontSize = 20.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.statusDone
+                                            )
+                                            Text("完了記録", fontSize = 11.sp, color = colors.textSecondary)
+                                        }
+                                    }
+                                    // Spending
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(colors.statusTarget.copy(alpha = 0.08f))
+                                            .padding(10.dp)
+                                    ) {
+                                        Column {
+                                            Text(
+                                                text = "¥%,d".format(thisMonthSpend),
+                                                fontSize = 20.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.statusTarget
+                                            )
+                                            Text("今月の支出", fontSize = 11.sp, color = colors.textSecondary)
+                                        }
+                                    }
+                                }
+                                if (topHabits.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text(
+                                        text = "習慣化トップランキング",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = colors.textSecondary
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        val medals = listOf("🥇", "🥈", "🥉")
+                                        topHabits.forEachIndexed { idx, habit ->
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(colors.background)
+                                                    .border(0.5.dp, colors.border, RoundedCornerShape(8.dp))
+                                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "${medals.getOrElse(idx) { "•" }} ${habit.first} (${habit.second}回)",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = colors.textPrimary,
+                                                    maxLines = 1
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         // Weekly Activity Summary Card
                         val weekStart = remember(today) {
                             today.minusDays(today.dayOfWeek.value.toLong() - 1)
@@ -265,7 +398,10 @@ fun HistoryScreen(viewModel: MainViewModel) {
                                 ) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         IconButton(
-                                            onClick = { viewModel.previousMonth() },
+                                            onClick = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                viewModel.previousMonth()
+                                            },
                                             modifier = Modifier.size(32.dp)
                                         ) {
                                             Icon(Icons.Default.ChevronLeft, contentDescription = "前月", tint = colors.textPrimary)
@@ -277,7 +413,10 @@ fun HistoryScreen(viewModel: MainViewModel) {
                                             color = colors.textPrimary
                                         )
                                         IconButton(
-                                            onClick = { viewModel.nextMonth() },
+                                            onClick = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                viewModel.nextMonth()
+                                            },
                                             modifier = Modifier.size(32.dp)
                                         ) {
                                             Icon(Icons.Default.ChevronRight, contentDescription = "次月", tint = colors.textPrimary)
@@ -285,7 +424,10 @@ fun HistoryScreen(viewModel: MainViewModel) {
                                     }
 
                                     TextButton(
-                                        onClick = { viewModel.goToToday() },
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            viewModel.goToToday()
+                                        },
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                                     ) {
                                         Text(
@@ -394,7 +536,10 @@ fun HistoryScreen(viewModel: MainViewModel) {
                                                             if (isCurrentToday && !isSelected) colors.primary else Color.Transparent,
                                                             RoundedCornerShape(8.dp)
                                                         )
-                                                        .clickable { viewModel.selectedCalendarDate.value = dayDate }
+                                                        .clickable {
+                                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                            viewModel.selectedCalendarDate.value = dayDate
+                                                        }
                                                         .padding(vertical = 4.dp),
                                                     horizontalAlignment = Alignment.CenterHorizontally
                                                 ) {
@@ -568,10 +713,20 @@ fun TaskitoHistoryStemRow(
     onToggleDone: (() -> Unit)? = null
 ) {
     val colors = LifeStreamTheme.colors
+    val haptic = LocalHapticFeedback.current
     val zone = ZoneId.systemDefault()
     val timestamp = item.completedAt ?: item.scheduledAt ?: System.currentTimeMillis()
     val timeStr = LocalDateTime.ofInstant(Instant.ofEpochMilli(timestamp), zone)
         .format(DateTimeFormatter.ofPattern("HH:mm"))
+
+    val checkScale by animateFloatAsState(
+        targetValue = if (item.isDone) 1.25f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "historyCheckScale"
+    )
 
     Row(
         modifier = Modifier
@@ -582,10 +737,10 @@ fun TaskitoHistoryStemRow(
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Continuous Stem Column (32dp)
+        // Continuous Stem Column (36dp)
         Box(
             modifier = Modifier
-                .width(32.dp)
+                .width(36.dp)
                 .fillMaxHeight(),
             contentAlignment = Alignment.Center
         ) {
@@ -606,16 +761,20 @@ fun TaskitoHistoryStemRow(
                 )
             }
 
-            // Interactive Checkbox / Done Node
+            // Interactive Checkbox / Done Node with 48.dp touch target & spring bounce
             Box(
                 modifier = Modifier
-                    .size(36.dp)
-                    .clickable(enabled = onToggleDone != null) { onToggleDone?.invoke() },
+                    .size(48.dp)
+                    .clickable(enabled = onToggleDone != null) {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onToggleDone?.invoke()
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 if (item.isDone) {
                     Box(
                         modifier = Modifier
+                            .scale(checkScale)
                             .size(18.dp)
                             .clip(CircleShape)
                             .border(2.dp, colors.statusDone, CircleShape)
@@ -632,6 +791,7 @@ fun TaskitoHistoryStemRow(
                 } else {
                     Box(
                         modifier = Modifier
+                            .scale(checkScale)
                             .size(18.dp)
                             .clip(CircleShape)
                             .border(2.dp, colors.primary, CircleShape)

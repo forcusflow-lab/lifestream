@@ -44,6 +44,8 @@ fun SettingsScreen(viewModel: MainViewModel) {
     var showCutoffDialog by remember { mutableStateOf(false) }
     var showTemplatesDialog by remember { mutableStateOf(false) }
     var showResetConfirmDialog by remember { mutableStateOf(false) }
+    var showImportDialog by remember { mutableStateOf(false) }
+    var importJsonText by remember { mutableStateOf("") }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -162,6 +164,18 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 )
                 Spacer(modifier = Modifier.height(10.dp))
 
+                // Item 3.5: Data Import
+                SettingActionCard(
+                    title = "データ取り込み & 復元 (インポート)",
+                    subtitle = "JSON形式のバックアップテキストから記録と設定をインポート",
+                    actionLabel = "取り込み >",
+                    onClick = {
+                        importJsonText = ""
+                        showImportDialog = true
+                    }
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+
                 // Item 4: Notifications
                 SettingActionCard(
                     title = "通知・リマインダー",
@@ -263,6 +277,85 @@ fun SettingsScreen(viewModel: MainViewModel) {
             },
             dismissButton = {
                 TextButton(onClick = { showResetConfirmDialog = false }) {
+                    Text("キャンセル")
+                }
+            }
+        )
+    }
+
+    // Import JSON Dialog
+    if (showImportDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportDialog = false },
+            containerColor = colors.card,
+            title = {
+                Text("データ取り込み (JSONインポート)", fontWeight = FontWeight.Bold, color = colors.textPrimary)
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "エクスポートしたバックアップJSONを貼り付けて復元します：",
+                        fontSize = 13.sp,
+                        color = colors.textSecondary
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedButton(
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clipText = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+                            if (clipText.isNotBlank()) {
+                                importJsonText = clipText
+                            } else {
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("クリップボードが空です")
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("📋 クリップボードから貼り付け", fontSize = 12.sp)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = importJsonText,
+                        onValueChange = { importJsonText = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(150.dp),
+                        placeholder = { Text("ここにJSONテキストを貼り付け...", fontSize = 12.sp) },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = colors.primary,
+                            unfocusedBorderColor = colors.border,
+                            focusedTextColor = colors.textPrimary,
+                            unfocusedTextColor = colors.textPrimary
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (importJsonText.isNotBlank()) {
+                            coroutineScope.launch {
+                                val (tCount, iCount) = viewModel.importJson(importJsonText)
+                                if (tCount >= 0) {
+                                    showImportDialog = false
+                                    snackbarHostState.showSnackbar("復元完了: テンプレート${tCount}件、タイムライン記録${iCount}件を取り込みました")
+                                } else {
+                                    snackbarHostState.showSnackbar("JSONの解析に失敗しました。フォーマットをご確認ください")
+                                }
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
+                ) {
+                    Text("取り込む")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportDialog = false }) {
                     Text("キャンセル")
                 }
             }

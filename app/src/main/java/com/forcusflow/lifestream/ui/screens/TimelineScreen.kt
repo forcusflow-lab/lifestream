@@ -1,5 +1,8 @@
 package com.forcusflow.lifestream.ui.screens
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -18,12 +21,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -66,14 +73,23 @@ fun TimelineScreen(viewModel: MainViewModel) {
     val activeTimerTemplate by viewModel.activeTimerTemplate.collectAsState()
     val timerSeconds by viewModel.timerElapsedSeconds.collectAsState()
 
+    val haptic = LocalHapticFeedback.current
+
     var showAddSheet by remember { mutableStateOf(false) }
     var itemToEdit by remember { mutableStateOf<TimelineItemEntity?>(null) }
     var showTemplateManagerDialog by remember { mutableStateOf(false) }
+    var showSearchSheet by remember { mutableStateOf(false) }
 
     val zone = ZoneId.systemDefault()
-    val now = LocalDateTime.now()
-    val nowMillis = now.atZone(zone).toInstant().toEpochMilli()
-    val nowTimeStr = now.format(DateTimeFormatter.ofPattern("HH:mm"))
+    var currentTime by remember { mutableStateOf(LocalDateTime.now()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(10_000L)
+            currentTime = LocalDateTime.now()
+        }
+    }
+    val nowMillis = currentTime.atZone(zone).toInstant().toEpochMilli()
+    val nowTimeStr = currentTime.format(DateTimeFormatter.ofPattern("HH:mm"))
 
     val today = LocalDate.now()
     val todayDateFormatted = remember(today) {
@@ -174,11 +190,13 @@ fun TimelineScreen(viewModel: MainViewModel) {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Pure Minimal & Elegant Header: Only date in refined typography
-            Box(
+            // Pure Minimal & Elegant Header: Date + Search Icon
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 6.dp)
+                    .padding(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = todayDateFormatted,
@@ -187,6 +205,20 @@ fun TimelineScreen(viewModel: MainViewModel) {
                     color = colors.textPrimary,
                     letterSpacing = (-0.5).sp
                 )
+                IconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        showSearchSheet = true
+                    },
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Search,
+                        contentDescription = "検索",
+                        tint = colors.textPrimary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
 
 
@@ -242,6 +274,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
                             )
                             .background(chipBgColor)
                             .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 viewModel.quickRecordTemplate(t) { savedItem ->
                                     coroutineScope.launch {
                                         val result = snackbarHostState.showSnackbar(
@@ -324,6 +357,61 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                     isFirst = isFirst,
                                     isLast = isLast
                                 )
+                                if (todayItems.isEmpty() && anytimePending.isEmpty() && dueOrOverduePeriodic.isEmpty()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 16.dp, bottom = 12.dp)
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(colors.card)
+                                            .border(0.5.dp, colors.border, RoundedCornerShape(14.dp))
+                                            .padding(18.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text(
+                                                text = "🌿 清々しい1日のはじまり",
+                                                fontSize = 15.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.textPrimary
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = "今日の最初の行動をワンタップで記録しましょう",
+                                                fontSize = 12.sp,
+                                                color = colors.textSecondary
+                                            )
+                                            Spacer(modifier = Modifier.height(14.dp))
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                modifier = Modifier.horizontalScroll(rememberScrollState())
+                                            ) {
+                                                pinnedTemplates.take(4).forEach { t ->
+                                                    OutlinedButton(
+                                                        onClick = {
+                                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                            viewModel.quickRecordTemplate(t) { saved ->
+                                                                coroutineScope.launch {
+                                                                    snackbarHostState.showSnackbar("「${saved.title}」を記録しました！")
+                                                                }
+                                                            }
+                                                        },
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        border = BorderStroke(1.dp, colors.border),
+                                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = "${t.iconKey ?: "📌"} ${t.title}",
+                                                            fontSize = 12.sp,
+                                                            color = colors.textPrimary,
+                                                            fontWeight = FontWeight.SemiBold
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                             is TimelineRowItem.AnytimeToDo -> {
                                 val item = rowItem.entity
@@ -435,7 +523,14 @@ fun TimelineScreen(viewModel: MainViewModel) {
         )
     }
 
-    // Template Manager Dialog
+    // Full-Text Search Bottom Sheet
+    if (showSearchSheet) {
+        SearchBottomSheet(
+            allItems = allItems,
+            onDismiss = { showSearchSheet = false },
+            onSelectItem = { itemToEdit = it }
+        )
+    }
     if (showTemplateManagerDialog) {
         com.forcusflow.lifestream.ui.components.TemplateManagerDialog(
             viewModel = viewModel,
@@ -654,10 +749,21 @@ fun TaskitoAnytimeItemRow(
     onDelete: () -> Unit
 ) {
     val colors = LifeStreamTheme.colors
+    val haptic = LocalHapticFeedback.current
+
+    val checkScale by animateFloatAsState(
+        targetValue = if (item.isDone) 1.25f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "anytimeCheckScale"
+    )
 
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             if (value == SwipeToDismissBoxValue.EndToStart || value == SwipeToDismissBoxValue.StartToEnd) {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 onDelete()
                 true
             } else false
@@ -689,7 +795,7 @@ fun TaskitoAnytimeItemRow(
             // Continuous stem line
             Box(
                 modifier = Modifier
-                    .width(32.dp)
+                    .width(36.dp)
                     .fillMaxHeight(),
                 contentAlignment = Alignment.Center
             ) {
@@ -710,15 +816,19 @@ fun TaskitoAnytimeItemRow(
                     )
                 }
 
-                // Hollow ToDo node with generous 36.dp touch target
+                // Hollow ToDo node with generous 48.dp touch target & spring animation
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
-                        .clickable { onToggle() },
+                        .size(48.dp)
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onToggle()
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
                         modifier = Modifier
+                            .scale(checkScale)
                             .size(20.dp)
                             .clip(CircleShape)
                             .border(2.dp, colors.primary, CircleShape)
@@ -970,6 +1080,7 @@ fun TaskitoTimelineItemRow(
     onDelete: () -> Unit
 ) {
     val colors = LifeStreamTheme.colors
+    val haptic = LocalHapticFeedback.current
     val zone = ZoneId.systemDefault()
     val timestamp = item.completedAt ?: item.scheduledAt ?: System.currentTimeMillis()
     val timeStr = LocalDateTime.ofInstant(Instant.ofEpochMilli(timestamp), zone)
@@ -979,9 +1090,19 @@ fun TaskitoTimelineItemRow(
     val nodeColor = if (isDone) colors.statusDone else colors.card
     val nodeBorderColor = if (isDone) colors.statusDone else colors.textSecondary
 
+    val checkScale by animateFloatAsState(
+        targetValue = if (isDone) 1.25f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "timelineCheckScale"
+    )
+
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             if (value == SwipeToDismissBoxValue.EndToStart || value == SwipeToDismissBoxValue.StartToEnd) {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 onDelete()
                 true
             } else false
@@ -1017,7 +1138,7 @@ fun TaskitoTimelineItemRow(
                 // Taskito Continuous Stem Column
                 Box(
                     modifier = Modifier
-                        .width(32.dp)
+                        .width(36.dp)
                         .fillMaxHeight(),
                     contentAlignment = Alignment.Center
                 ) {
@@ -1039,15 +1160,19 @@ fun TaskitoTimelineItemRow(
                         )
                     }
 
-                    // Node Circle (Interactive - tap to toggle done, 36.dp touch target)
+                    // Node Circle (Interactive - tap to toggle done, 48.dp touch target & spring bounce)
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
-                            .clickable { onToggle() },
+                            .size(48.dp)
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onToggle()
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         Box(
                             modifier = Modifier
+                                .scale(checkScale)
                                 .size(18.dp)
                                 .clip(CircleShape)
                                 .border(2.dp, nodeBorderColor, CircleShape)
@@ -1700,3 +1825,302 @@ fun EditItemDialog(
         onPromoteToPeriodic = onPromoteToPeriodic
     )
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SearchBottomSheet(
+    allItems: List<TimelineItemEntity>,
+    onDismiss: () -> Unit,
+    onSelectItem: (TimelineItemEntity) -> Unit
+) {
+    val colors = LifeStreamTheme.colors
+    val haptic = LocalHapticFeedback.current
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedFilterIndex by remember { mutableStateOf(0) } // 0: すべて, 1: できたこと, 2: 予定, 3: 支出のみ
+    val filterLabels = listOf("すべて", "📝 できたこと", "📋 予定", "💴 支出のみ")
+
+    val zone = remember { ZoneId.systemDefault() }
+    val dateFormatter = remember { DateTimeFormatter.ofPattern("M/d HH:mm") }
+
+    val filteredItems = remember(allItems, searchQuery, selectedFilterIndex) {
+        allItems.filter { item ->
+            val matchesQuery = if (searchQuery.isBlank()) {
+                true
+            } else {
+                item.title.contains(searchQuery, ignoreCase = true) ||
+                    (item.note?.contains(searchQuery, ignoreCase = true) == true)
+            }
+
+            val matchesFilter = when (selectedFilterIndex) {
+                1 -> item.isDone
+                2 -> !item.isDone
+                3 -> (item.amount != null && item.amount > 0)
+                else -> true
+            }
+
+            matchesQuery && matchesFilter
+        }.sortedByDescending { it.completedAt ?: it.scheduledAt ?: 0L }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = colors.background,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.85f)
+                .padding(horizontal = 20.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "記録・予定の全文検索",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary
+                )
+                IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "閉じる",
+                        tint = colors.textSecondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Search input field
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = {
+                    Text(
+                        "タイトル、メモ、内容で検索...",
+                        fontSize = 14.sp,
+                        color = colors.textSecondary
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        Icons.Default.Search,
+                        contentDescription = null,
+                        tint = colors.textSecondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "クリア",
+                                tint = colors.textSecondary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = colors.primary,
+                    unfocusedBorderColor = colors.border,
+                    focusedTextColor = colors.textPrimary,
+                    unfocusedTextColor = colors.textPrimary
+                )
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Filter Chips
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                filterLabels.forEachIndexed { index, label ->
+                    val isSelected = selectedFilterIndex == index
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(if (isSelected) colors.primary else colors.card)
+                            .border(
+                                width = 1.dp,
+                                color = if (isSelected) colors.primary else colors.border,
+                                shape = RoundedCornerShape(20.dp)
+                            )
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                selectedFilterIndex = index
+                            }
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = label,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) colors.onPrimary else colors.textPrimary
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "${filteredItems.size}件のアイテム",
+                fontSize = 12.sp,
+                color = colors.textSecondary,
+                fontWeight = FontWeight.Medium
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (filteredItems.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "🔍",
+                            fontSize = 32.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = if (searchQuery.isNotBlank()) "一致するアイテムは見つかりませんでした" else "記録がありません",
+                            fontSize = 13.sp,
+                            color = colors.textSecondary
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(bottom = 24.dp)
+                ) {
+                    items(filteredItems.size) { idx ->
+                        val item = filteredItems[idx]
+                        val timestamp = item.completedAt ?: item.scheduledAt ?: System.currentTimeMillis()
+                        val dateTimeStr = LocalDateTime.ofInstant(Instant.ofEpochMilli(timestamp), zone)
+                            .format(dateFormatter)
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(colors.card)
+                                .border(1.dp, colors.border, RoundedCornerShape(12.dp))
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onSelectItem(item)
+                                    onDismiss()
+                                }
+                                .padding(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Status Pill
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .clip(CircleShape)
+                                        .background(if (item.isDone) colors.statusDone.copy(alpha = 0.15f) else colors.primary.copy(alpha = 0.12f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (item.isDone) {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = colors.statusDone,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .clip(CircleShape)
+                                                .background(colors.primary)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(10.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = item.title,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = colors.textPrimary,
+                                            textDecoration = if (item.isDone) TextDecoration.LineThrough else null,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = dateTimeStr,
+                                            fontSize = 11.sp,
+                                            color = colors.textSecondary
+                                        )
+                                    }
+
+                                    if (!item.note.isNullOrBlank()) {
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = item.note,
+                                            fontSize = 12.sp,
+                                            color = colors.textSecondary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+
+                                if (item.amount != null && item.amount > 0) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(colors.statusTarget.copy(alpha = 0.12f))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "¥%,d".format(item.amount),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = colors.statusTarget
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+

@@ -25,6 +25,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -253,12 +255,6 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                                     }
                                 }
                             },
-                            onCompletedNow = {
-                                viewModel.recordCycleTask(template, today)
-                                coroutineScope.launch {
-                                    snackbarHostState.showSnackbar("「${template.title}」の完了を記録しました")
-                                }
-                            },
                             onSkip = {
                                 viewModel.skipCycleTask(template)
                                 coroutineScope.launch {
@@ -351,11 +347,11 @@ fun CompactUnifiedCycleTaskCard(
     completionRate: Float = 0f,
     onClick: () -> Unit,
     onToggleDate: (LocalDate) -> Unit,
-    onCompletedNow: () -> Unit,
     onSkip: () -> Unit
 ) {
     val colors = LifeStreamTheme.colors
     val zone = ZoneId.systemDefault()
+    val haptic = LocalHapticFeedback.current
 
     val lastDoneDate = template.lastCompletedAt?.let {
         LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
@@ -364,7 +360,6 @@ fun CompactUnifiedCycleTaskCard(
     val interval = template.intervalDays ?: 7
     val isOverdue = elapsedDays != null && elapsedDays >= interval
     val isDueToday = elapsedDays != null && elapsedDays == (interval - 1)
-
 
     val statusBadgeColor = when {
         isOverdue -> colors.statusOverdue
@@ -398,7 +393,7 @@ fun CompactUnifiedCycleTaskCard(
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
-                // === 1行目: アイコン + タイトル(広々表示) + 周期・ストリークバッジ + アクションボタン ===
+                // === 1行目: アイコン + タイトル(広々表示) + 周期・ストリークバッジ + スキップボタン ===
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -466,11 +461,14 @@ fun CompactUnifiedCycleTaskCard(
                         }
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
 
                     // スキップボタン [↷]
                     IconButton(
-                        onClick = onSkip,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onSkip()
+                        },
                         modifier = Modifier.size(28.dp)
                     ) {
                         Text(
@@ -478,26 +476,6 @@ fun CompactUnifiedCycleTaskCard(
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             color = colors.textSecondary
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(4.dp))
-
-                    // 完了ボタン [✓]
-                    FilledTonalButton(
-                        onClick = onCompletedNow,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = accentColor.copy(alpha = 0.15f),
-                            contentColor = accentColor
-                        ),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                        modifier = Modifier.height(28.dp)
-                    ) {
-                        Text(
-                            text = "✓",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
@@ -573,6 +551,7 @@ fun CompactUnifiedCycleTaskCard(
                                         shape = RoundedCornerShape(6.dp)
                                     )
                                     .clickable(enabled = !isFuture) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                         onToggleDate(date)
                                     },
                                 contentAlignment = Alignment.Center
