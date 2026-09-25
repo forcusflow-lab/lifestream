@@ -345,7 +345,7 @@ fun AddItemBottomSheet(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "スタンプ:",
+                            text = "クイック記録:",
                             fontSize = 11.sp,
                             color = colors.textSecondary,
                             fontWeight = FontWeight.SemiBold

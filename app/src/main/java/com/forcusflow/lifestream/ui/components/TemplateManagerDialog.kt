@@ -20,8 +20,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -36,14 +39,16 @@ fun TemplateManagerDialog(
     onDismiss: () -> Unit
 ) {
     val colors = LifeStreamTheme.colors
+    val haptic = LocalHapticFeedback.current
     val templates by viewModel.templates.collectAsState()
     var showCreateDialog by remember { mutableStateOf(false) }
     var editingTemplate by remember { mutableStateOf<TemplateEntity?>(null) }
     var templateToDelete by remember { mutableStateOf<TemplateEntity?>(null) }
-    var selectedCategoryTab by remember { mutableStateOf(0) } // 0: スタンプ(行動), 1: 周期タスク(メンテ)
 
-    val actionTemplates = remember(templates) { templates.filter { it.type != "INTERVAL" } }
-    val periodicTemplates = remember(templates) { templates.filter { it.type == "INTERVAL" } }
+    // 日常のクイック記録のみを抽出（周期タスクは周期・ルーティンタブで一元管理）
+    val quickActionTemplates = remember(templates) {
+        templates.filter { it.type != "INTERVAL" }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -51,54 +56,17 @@ fun TemplateManagerDialog(
         title = {
             Column {
                 Text(
-                    text = "テンプレート管理",
+                    text = "クイック記録の管理",
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
                     color = colors.textPrimary
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                // Category Switcher Tab
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(colors.background)
-                        .border(1.dp, colors.border, RoundedCornerShape(8.dp))
-                        .padding(2.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(if (selectedCategoryTab == 0) colors.primary else Color.Transparent)
-                            .clickable { selectedCategoryTab = 0 }
-                            .padding(vertical = 6.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "行動スタンプ (${actionTemplates.size})",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (selectedCategoryTab == 0) colors.onPrimary else colors.textSecondary
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(if (selectedCategoryTab == 1) colors.primary else Color.Transparent)
-                            .clickable { selectedCategoryTab = 1 }
-                            .padding(vertical = 6.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "周期メンテ (${periodicTemplates.size})",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (selectedCategoryTab == 1) colors.onPrimary else colors.textSecondary
-                        )
-                    }
-                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "今日タブの上部バーや＋登録で使う日常アクション",
+                    fontSize = 11.sp,
+                    color = colors.textSecondary
+                )
             }
         },
         text = {
@@ -107,9 +75,12 @@ fun TemplateManagerDialog(
                     .fillMaxWidth()
                     .heightIn(max = 440.dp)
             ) {
-                // Add New Template Button
+                // Add New Quick Record Button
                 OutlinedButton(
-                    onClick = { showCreateDialog = true },
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        showCreateDialog = true
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.primary)
@@ -117,7 +88,7 @@ fun TemplateManagerDialog(
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (selectedCategoryTab == 0) "＋ 新しいスタンプを追加" else "＋ 新しい周期タスクを追加",
+                        text = "＋ クイック記録を追加",
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp
                     )
@@ -125,25 +96,16 @@ fun TemplateManagerDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                if (selectedCategoryTab == 0) {
-                    Text(
-                        text = "💡 📌ピン留めしたスタンプは今日画面の上部バーに表示されます。▲▼で並び替え可能。",
-                        fontSize = 11.sp,
-                        color = colors.textSecondary
-                    )
-                } else {
-                    Text(
-                        text = "💡 ▲▼で一覧での並び替え、✏️またはタップで内容を修正できます。",
-                        fontSize = 11.sp,
-                        color = colors.textSecondary
-                    )
-                }
+                Text(
+                    text = "💡 📌ピン留めした項目は今日画面の上部バーに常駐します。▲▼で並び替え可能。",
+                    fontSize = 11.sp,
+                    color = colors.textSecondary,
+                    lineHeight = 15.sp
+                )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                val currentList = if (selectedCategoryTab == 0) actionTemplates else periodicTemplates
-
-                if (currentList.isEmpty()) {
+                if (quickActionTemplates.isEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -151,69 +113,66 @@ fun TemplateManagerDialog(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = if (selectedCategoryTab == 0) "登録されたスタンプはありません" else "登録された周期タスクはありません",
+                            text = "登録されたクイック記録はありません",
                             fontSize = 13.sp,
                             color = colors.textSecondary
                         )
                     }
                 } else {
                     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                        currentList.forEachIndexed { index, t ->
+                        quickActionTemplates.forEachIndexed { index, t ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(8.dp))
-                                    .clickable { editingTemplate = t }
+                                    .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        editingTemplate = t
+                                    }
                                     .padding(vertical = 6.dp, horizontal = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                // 左側: アイコン + タイトル + サブ情報（無駄な改行なし）
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
                                     Text(text = t.iconKey ?: "📌", fontSize = 20.sp)
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Column {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(
-                                                text = t.title,
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = colors.textPrimary
-                                            )
-                                            if (t.isPinned && t.type != "INTERVAL") {
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Box(
-                                                    modifier = Modifier
-                                                        .clip(RoundedCornerShape(4.dp))
-                                                        .background(colors.primary.copy(alpha = 0.15f))
-                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                                ) {
-                                                    Text(
-                                                        text = "ピン留め中",
-                                                        fontSize = 10.sp,
-                                                        color = colors.primary,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                }
-                                            }
-                                        }
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = t.title,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = colors.textPrimary,
+                                            maxLines = 1
+                                        )
                                         val actionInfo = when (t.actionType) {
-                                            "COUNT" -> "加算カウント (${t.unit})"
-                                            "TIMER" -> "タイマー計測 (${t.unit})"
-                                            else -> if (t.intervalDays != null) "${t.intervalDays}日周期" else "チェック"
+                                            "COUNT" -> "カウント (${t.unit})"
+                                            "TIMER" -> "時間計測 (${t.unit})"
+                                            else -> "チェック"
                                         }
                                         val priceInfo = if (t.defaultAmount != null) " • ¥${t.defaultAmount}" else ""
                                         Text(
                                             text = "$actionInfo$priceInfo • 累計${t.usageCount}回",
                                             fontSize = 11.sp,
-                                            color = colors.textSecondary
+                                            color = colors.textSecondary,
+                                            maxLines = 1
                                         )
                                     }
                                 }
 
+                                Spacer(modifier = Modifier.width(4.dp))
+
+                                // 右側操作ボタン群 (▲, ▼, ✏️, 📌/📍, 🗑)
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     // Move Up
                                     IconButton(
-                                        onClick = { viewModel.moveTemplate(t, isUp = true) },
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            viewModel.moveTemplate(t, isUp = true)
+                                        },
                                         enabled = index > 0,
                                         modifier = Modifier.size(28.dp)
                                     ) {
@@ -227,21 +186,27 @@ fun TemplateManagerDialog(
 
                                     // Move Down
                                     IconButton(
-                                        onClick = { viewModel.moveTemplate(t, isUp = false) },
-                                        enabled = index < currentList.size - 1,
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            viewModel.moveTemplate(t, isUp = false)
+                                        },
+                                        enabled = index < quickActionTemplates.size - 1,
                                         modifier = Modifier.size(28.dp)
                                     ) {
                                         Icon(
                                             Icons.Default.KeyboardArrowDown,
                                             contentDescription = "下へ",
-                                            tint = if (index < currentList.size - 1) colors.textPrimary else colors.textSecondary.copy(alpha = 0.25f),
+                                            tint = if (index < quickActionTemplates.size - 1) colors.textPrimary else colors.textSecondary.copy(alpha = 0.25f),
                                             modifier = Modifier.size(19.dp)
                                         )
                                     }
 
                                     // Edit button
                                     IconButton(
-                                        onClick = { editingTemplate = t },
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            editingTemplate = t
+                                        },
                                         modifier = Modifier.size(28.dp)
                                     ) {
                                         Icon(
@@ -252,22 +217,27 @@ fun TemplateManagerDialog(
                                         )
                                     }
 
-                                    // Pin toggle for Action Stamps
-                                    if (t.type != "INTERVAL") {
-                                        IconButton(
-                                            onClick = { viewModel.toggleTemplatePin(t) },
-                                            modifier = Modifier.size(28.dp)
-                                        ) {
-                                            Text(
-                                                text = if (t.isPinned) "📌" else "📍",
-                                                fontSize = 15.sp
-                                            )
-                                        }
+                                    // Pin toggle (鮮やかな📌 vs 薄いグレー📍で一目瞭然に表現)
+                                    IconButton(
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            viewModel.toggleTemplatePin(t)
+                                        },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Text(
+                                            text = if (t.isPinned) "📌" else "📍",
+                                            fontSize = 15.sp,
+                                            modifier = if (t.isPinned) Modifier else Modifier.alpha(0.3f)
+                                        )
                                     }
 
                                     // Delete button
                                     IconButton(
-                                        onClick = { templateToDelete = t },
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            templateToDelete = t
+                                        },
                                         modifier = Modifier.size(28.dp)
                                     ) {
                                         Icon(
@@ -292,18 +262,17 @@ fun TemplateManagerDialog(
         }
     )
 
-    // Create New Template Dialog
+    // Create New Quick Record Dialog
     if (showCreateDialog) {
         TemplateEditorDialog(
             templateToEdit = null,
-            initialIsPeriodic = selectedCategoryTab == 1,
             onDismiss = { showCreateDialog = false },
-            onSave = { title, actionType, unit, stepValue, intervalDays, defaultAmount, iconKey, colorHex, isPinned ->
-                val type = if (intervalDays != null) "INTERVAL" else if (actionType == "COUNT") "DAILY_COUNT" else "SIMPLE"
+            onSave = { title, actionType, unit, stepValue, defaultAmount, iconKey, colorHex, isPinned ->
+                val type = if (actionType == "COUNT") "DAILY_COUNT" else "SIMPLE"
                 viewModel.addTemplate(
                     title = title,
                     type = type,
-                    intervalDays = intervalDays,
+                    intervalDays = null,
                     defaultAmount = defaultAmount,
                     iconKey = iconKey,
                     colorHex = colorHex,
@@ -317,19 +286,18 @@ fun TemplateManagerDialog(
         )
     }
 
-    // Edit Existing Template Dialog
+    // Edit Existing Quick Record Dialog
     editingTemplate?.let { t ->
         TemplateEditorDialog(
             templateToEdit = t,
-            initialIsPeriodic = t.type == "INTERVAL",
             onDismiss = { editingTemplate = null },
-            onSave = { title, actionType, unit, stepValue, intervalDays, defaultAmount, iconKey, colorHex, isPinned ->
-                val type = if (intervalDays != null) "INTERVAL" else if (actionType == "COUNT") "DAILY_COUNT" else "SIMPLE"
+            onSave = { title, actionType, unit, stepValue, defaultAmount, iconKey, colorHex, isPinned ->
+                val type = if (actionType == "COUNT") "DAILY_COUNT" else "SIMPLE"
                 viewModel.updateTemplate(
                     t.copy(
                         title = title,
                         type = type,
-                        intervalDays = intervalDays,
+                        intervalDays = null,
                         defaultAmount = defaultAmount,
                         iconKey = iconKey,
                         colorHex = colorHex,
@@ -350,7 +318,7 @@ fun TemplateManagerDialog(
             onDismissRequest = { templateToDelete = null },
             title = {
                 Text(
-                    text = "テンプレートの削除",
+                    text = "クイック記録の削除",
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp
                 )
@@ -364,6 +332,7 @@ fun TemplateManagerDialog(
             confirmButton = {
                 Button(
                     onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         viewModel.deleteTemplate(t)
                         templateToDelete = null
                     },
@@ -382,19 +351,17 @@ fun TemplateManagerDialog(
 }
 
 /**
- * 新規作成・編集 兼用の包括的テンプレートエディター
+ * 新規作成・編集 兼用のクイック記録エディター
  */
 @Composable
 fun TemplateEditorDialog(
     templateToEdit: TemplateEntity? = null,
-    initialIsPeriodic: Boolean = false,
     onDismiss: () -> Unit,
     onSave: (
         title: String,
         actionType: String,
         unit: String,
         stepValue: Int,
-        intervalDays: Int?,
         defaultAmount: Long?,
         iconKey: String,
         colorHex: String,
@@ -402,24 +369,31 @@ fun TemplateEditorDialog(
     ) -> Unit
 ) {
     val colors = LifeStreamTheme.colors
+    val haptic = LocalHapticFeedback.current
 
     var title by remember { mutableStateOf(templateToEdit?.title ?: "") }
     var selectedActionType by remember { mutableStateOf(templateToEdit?.actionType ?: "CHECK") } // "CHECK", "COUNT", "TIMER"
-    var unit by remember { mutableStateOf(templateToEdit?.unit ?: "") }
+    var unit by remember {
+        mutableStateOf(
+            templateToEdit?.unit ?: when (templateToEdit?.actionType) {
+                "COUNT" -> "杯"
+                "TIMER" -> "分"
+                else -> ""
+            }
+        )
+    }
     var stepValueText by remember { mutableStateOf((templateToEdit?.stepValue ?: 1).toString()) }
-    var isPeriodic by remember { mutableStateOf(templateToEdit?.type == "INTERVAL" || (templateToEdit == null && initialIsPeriodic)) }
-    var intervalDaysText by remember { mutableStateOf((templateToEdit?.intervalDays ?: 7).toString()) }
     var amountText by remember { mutableStateOf(templateToEdit?.defaultAmount?.toString() ?: "") }
-    var isPinned by remember { mutableStateOf(templateToEdit?.isPinned ?: !initialIsPeriodic) }
+    var isPinned by remember { mutableStateOf(templateToEdit?.isPinned ?: true) }
 
-    val iconList = listOf("💧", "☕", "📖", "🚶", "🧖", "🍜", "🧹", "⏱️", "💊", "🍱", "🛏️", "🧼", "🌀", "💨", "🌿", "🪴", "🚗", "🏋️", "💻", "🧘")
+    val iconList = listOf("📚", "🧹", "💧", "🍪", "☕", "📖", "🚶", "🧖", "🍜", "⏱️", "💊", "🍱", "🛏️", "🧼", "🌀", "💨", "🌿", "🪴", "🚗", "🏋️", "💻", "🧘")
     var selectedIcon by remember {
-        mutableStateOf(templateToEdit?.iconKey ?: if (initialIsPeriodic) "🧹" else "💧")
+        mutableStateOf(templateToEdit?.iconKey ?: "💧")
     }
 
-    val colorOptions = listOf("#38BDF8", "#8C5A3C", "#3B82F6", "#10B981", "#A855F7", "#EF4444", "#F59E0B", "#6366F1", "#EC4899")
+    val colorOptions = listOf("#3B82F6", "#10B981", "#38BDF8", "#F59E0B", "#8C5A3C", "#A855F7", "#EF4444", "#6366F1", "#EC4899")
     var selectedColor by remember {
-        mutableStateOf(templateToEdit?.colorHex ?: "#38BDF8")
+        mutableStateOf(templateToEdit?.colorHex ?: "#3B82F6")
     }
 
     AlertDialog(
@@ -427,7 +401,7 @@ fun TemplateEditorDialog(
         containerColor = colors.card,
         title = {
             Text(
-                text = if (templateToEdit != null) "テンプレートの編集" else "新規テンプレート作成",
+                text = if (templateToEdit != null) "クイック記録の編集" else "新規クイック記録の作成",
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp,
                 color = colors.textPrimary
@@ -456,9 +430,9 @@ fun TemplateEditorDialog(
                         .padding(2.dp)
                 ) {
                     val actionTypes = listOf(
-                        Triple("CHECK", "☑ チェック", "タップで完了記録"),
-                        Triple("COUNT", "🔢 カウント", "1タップで〇杯目"),
-                        Triple("TIMER", "⏱ タイム", "時間計測")
+                        Triple("CHECK", "☑ チェック", "タップで完了"),
+                        Triple("COUNT", "🔢 カウント", "回数・杯数"),
+                        Triple("TIMER", "⏱ 時間", "作業時間の計測")
                     )
                     actionTypes.forEach { (type, label, _) ->
                         val isSel = selectedActionType == type
@@ -468,11 +442,16 @@ fun TemplateEditorDialog(
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(if (isSel) colors.primary else Color.Transparent)
                                 .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     selectedActionType = type
-                                    if (type == "COUNT" && unit.isBlank()) unit = "杯"
-                                    if (type == "TIMER" && unit.isBlank()) unit = "分"
+                                    if (type == "COUNT" && (unit.isBlank() || unit == "分" || unit == "時間")) {
+                                        unit = "杯"
+                                    }
+                                    if (type == "TIMER" && (unit.isBlank() || unit != "分" && unit != "時間")) {
+                                        unit = "分"
+                                    }
                                 }
-                                .padding(vertical = 6.dp),
+                                .padding(vertical = 7.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
@@ -485,20 +464,23 @@ fun TemplateEditorDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // Title
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
-                    label = { Text("テンプレート名 (例: 水を飲む, 英語学習)") },
+                    label = { Text("名前 (例: 勉強, 水を飲む, お菓子)") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
                 )
 
                 // Unit & Step value if COUNT or TIMER
-                if (selectedActionType == "COUNT" || selectedActionType == "TIMER") {
-                    Spacer(modifier = Modifier.height(8.dp))
+                if (selectedActionType == "COUNT") {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(text = "単位と増分:", fontSize = 12.sp, color = colors.textSecondary)
+                    Spacer(modifier = Modifier.height(4.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -506,58 +488,84 @@ fun TemplateEditorDialog(
                         OutlinedTextField(
                             value = unit,
                             onValueChange = { unit = it },
-                            label = { Text(if (selectedActionType == "COUNT") "単位 (杯, 回)" else "単位 (分, 時間)") },
+                            label = { Text("単位") },
                             singleLine = true,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
                         )
-                        if (selectedActionType == "COUNT") {
-                            OutlinedTextField(
-                                value = stepValueText,
-                                onValueChange = { if (it.all { c -> c.isDigit() }) stepValueText = it },
-                                label = { Text("1回の増分") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                singleLine = true,
-                                modifier = Modifier.weight(0.8f)
-                            )
+                        OutlinedTextField(
+                            value = stepValueText,
+                            onValueChange = { if (it.all { c -> c.isDigit() }) stepValueText = it },
+                            label = { Text("1回の増分") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.weight(0.8f),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    // カウント専用の単位プリセット（「分」は完全排除）
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("杯", "個", "回", "本", "錠", "枚").forEach { u ->
+                            val isSel = unit == u
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isSel) colors.primary.copy(alpha = 0.15f) else colors.background)
+                                    .border(0.5.dp, if (isSel) colors.primary else colors.border, RoundedCornerShape(6.dp))
+                                    .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        unit = u
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = u,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSel) colors.primary else colors.textPrimary
+                                )
+                            }
+                        }
+                    }
+                } else if (selectedActionType == "TIMER") {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(text = "時間単位:", fontSize = 12.sp, color = colors.textSecondary)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("分", "時間").forEach { u ->
+                            val isSel = unit == u
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSel) colors.primary.copy(alpha = 0.15f) else colors.background)
+                                    .border(1.dp, if (isSel) colors.primary else colors.border, RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        unit = u
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = u,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSel) colors.primary else colors.textPrimary
+                                )
+                            }
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Periodic option
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { isPeriodic = !isPeriodic }
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Checkbox(
-                        checked = isPeriodic,
-                        onCheckedChange = { isPeriodic = it }
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "周期タスクとして管理する (日数指定)",
-                        fontSize = 13.sp,
-                        color = colors.textPrimary
-                    )
-                }
-
-                if (isPeriodic) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    OutlinedTextField(
-                        value = intervalDaysText,
-                        onValueChange = { if (it.all { c -> c.isDigit() }) intervalDaysText = it },
-                        label = { Text("周期日数 (例: 7, 14, 30)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 // Optional default amount
                 OutlinedTextField(
@@ -566,10 +574,11 @@ fun TemplateEditorDialog(
                     label = { Text("デフォルト金額 (¥) ※任意") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
                 )
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // Icon Picker
                 Text(text = "アイコン:", fontSize = 12.sp, color = colors.textSecondary)
@@ -591,7 +600,10 @@ fun TemplateEditorDialog(
                                     RoundedCornerShape(8.dp)
                                 )
                                 .background(if (selectedIcon == ic) colors.primary.copy(alpha = 0.15f) else colors.card)
-                                .clickable { selectedIcon = ic },
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    selectedIcon = ic
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Text(text = ic, fontSize = 18.sp)
@@ -599,7 +611,7 @@ fun TemplateEditorDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // Color Picker
                 Text(text = "カラー:", fontSize = 12.sp, color = colors.textSecondary)
@@ -622,30 +634,33 @@ fun TemplateEditorDialog(
                                     if (selectedColor == hex) Color.White else Color.Transparent,
                                     CircleShape
                                 )
-                                .clickable { selectedColor = hex }
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    selectedColor = hex
+                                }
                         )
                     }
                 }
 
-                if (!isPeriodic) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { isPinned = !isPinned },
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Checkbox(
-                            checked = isPinned,
-                            onCheckedChange = { isPinned = it }
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "上部クイックバーにピン留めする",
-                            fontSize = 13.sp,
-                            color = colors.textPrimary
-                        )
-                    }
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Pin to top bar checkbox
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { isPinned = !isPinned },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = isPinned,
+                        onCheckedChange = { isPinned = it }
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "今日画面の上部バーにピン留めする",
+                        fontSize = 13.sp,
+                        color = colors.textPrimary
+                    )
                 }
             }
         },
@@ -653,7 +668,7 @@ fun TemplateEditorDialog(
             Button(
                 onClick = {
                     if (title.isNotBlank()) {
-                        val interval = if (isPeriodic) intervalDaysText.toIntOrNull() ?: 7 else null
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         val step = stepValueText.toIntOrNull() ?: 1
                         val amt = amountText.toLongOrNull()
                         onSave(
@@ -661,11 +676,10 @@ fun TemplateEditorDialog(
                             selectedActionType,
                             unit.trim(),
                             step,
-                            interval,
                             amt,
                             selectedIcon,
                             selectedColor,
-                            if (isPeriodic) false else isPinned
+                            isPinned
                         )
                     }
                 },

@@ -1433,7 +1433,7 @@ fun ItemDetailBottomSheet(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // 2-B. 記録タイプ（チェック / カウント / タイム）
+            // 2-B. 記録タイプ（チェック / カウント / 時間）
             Spacer(modifier = Modifier.height(14.dp))
             Text("記録タイプ", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
             Spacer(modifier = Modifier.height(6.dp))
@@ -1448,7 +1448,7 @@ fun ItemDetailBottomSheet(
                 listOf(
                     Pair("CHECK", "☑ チェック"),
                     Pair("COUNT", "🔢 カウント"),
-                    Pair("TIMER", "⏱ タイム")
+                    Pair("TIMER", "⏱ 時間")
                 ).forEach { (typeKey, label) ->
                     val isSelected = selectedActionType == typeKey
                     Box(

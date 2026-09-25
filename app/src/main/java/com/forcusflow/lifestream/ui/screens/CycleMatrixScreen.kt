@@ -613,6 +613,154 @@ fun CompactUnifiedCycleTaskCard(
 }
 
 /**
+ * 実施周期セレクター（ステッパー ＋ プリセットピル ＋ 自然言語プレビュー）
+ * 人気習慣管理アプリの定石に準拠し、直感的に間隔を設定できるUI
+ */
+@Composable
+fun PeriodicIntervalSelector(
+    intervalDays: Int,
+    onIntervalChange: (Int) -> Unit
+) {
+    val colors = LifeStreamTheme.colors
+    val haptic = LocalHapticFeedback.current
+
+    val presets = listOf(
+        Pair(2, "2日"),
+        Pair(3, "3日"),
+        Pair(5, "5日"),
+        Pair(7, "7日 (毎週)"),
+        Pair(10, "10日"),
+        Pair(14, "14日 (隔週)"),
+        Pair(30, "30日 (毎月)")
+    )
+
+    val explanation = when (intervalDays) {
+        1 -> "毎日（1日ごと）に推奨されます"
+        7 -> "毎週（前回完了から7日後）に自動で今日タブに推奨・浮上します"
+        14 -> "隔週（前回完了から14日後）に自動で今日タブに推奨・浮上します"
+        30 -> "毎月（前回完了から30日後）に自動で今日タブに推奨・浮上します"
+        else -> "前回完了から【${intervalDays}日後】に自動で今日タブに推奨・浮上します"
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "実施周期:",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.textSecondary
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Center Stepper Row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(colors.background)
+                .border(1.dp, colors.border, RoundedCornerShape(12.dp))
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FilledTonalIconButton(
+                onClick = {
+                    if (intervalDays > 1) {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onIntervalChange(intervalDays - 1)
+                    }
+                },
+                enabled = intervalDays > 1,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Text("−", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            }
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "${intervalDays} 日ごと",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary
+                )
+                Text(
+                    text = if (intervalDays % 7 == 0) "${intervalDays / 7}週間ごと" else "サイクル: ${intervalDays}日間",
+                    fontSize = 11.sp,
+                    color = colors.textSecondary
+                )
+            }
+
+            FilledTonalIconButton(
+                onClick = {
+                    if (intervalDays < 365) {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onIntervalChange(intervalDays + 1)
+                    }
+                },
+                enabled = intervalDays < 365,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Text("＋", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Quick Preset Chips (Horizontal Scroll)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            presets.forEach { (days, label) ->
+                val isSelected = intervalDays == days
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (isSelected) colors.primary else colors.card)
+                        .border(
+                            1.dp,
+                            if (isSelected) colors.primary else colors.border,
+                            RoundedCornerShape(8.dp)
+                        )
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onIntervalChange(days)
+                        }
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = label,
+                        fontSize = 11.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        color = if (isSelected) colors.onPrimary else colors.textPrimary
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Natural Language Explanation Card
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(colors.primary.copy(alpha = 0.08f))
+                .border(0.5.dp, colors.primary.copy(alpha = 0.25f), RoundedCornerShape(8.dp))
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+        ) {
+            Text(
+                text = "💡 $explanation",
+                fontSize = 11.sp,
+                color = colors.primary,
+                lineHeight = 15.sp
+            )
+        }
+    }
+}
+
+/**
  * 周期タスクの詳細・編集・過去実績カレンダー BottomSheet
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -630,7 +778,7 @@ fun EditPeriodicTaskBottomSheet(
     val today = LocalDate.now()
 
     var title by remember { mutableStateOf(template.title) }
-    var intervalText by remember { mutableStateOf((template.intervalDays ?: 7).toString()) }
+    var intervalDays by remember { mutableStateOf(template.intervalDays ?: 7) }
     var iconKey by remember { mutableStateOf(template.iconKey ?: "🧹") }
     var selectedColorHex by remember { mutableStateOf(template.colorHex ?: "#10B981") }
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
@@ -676,10 +824,9 @@ fun EditPeriodicTaskBottomSheet(
                 )
                 Button(
                     onClick = {
-                        val days = intervalText.toIntOrNull() ?: 7
                         val updated = template.copy(
                             title = title.trim(),
-                            intervalDays = days,
+                            intervalDays = intervalDays,
                             iconKey = iconKey,
                             colorHex = selectedColorHex
                         )
@@ -707,44 +854,13 @@ fun EditPeriodicTaskBottomSheet(
                 shape = RoundedCornerShape(10.dp)
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // 周期日数
-            Text("実施周期 (日数)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
-            Spacer(modifier = Modifier.height(6.dp))
-            OutlinedTextField(
-                value = intervalText,
-                onValueChange = { if (it.all { c -> c.isDigit() }) intervalText = it },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(10.dp)
+            // 周期設定セレクター
+            PeriodicIntervalSelector(
+                intervalDays = intervalDays,
+                onIntervalChange = { intervalDays = it }
             )
-
-            Spacer(modifier = Modifier.height(6.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                listOf("3日" to 3, "7日 (毎週)" to 7, "14日 (隔週)" to 14, "30日 (毎月)" to 30).forEach { (label, days) ->
-                    val isSelected = intervalText == days.toString()
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(6.dp))
-                            .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.card)
-                            .clickable { intervalText = days.toString() }
-                            .padding(horizontal = 8.dp, vertical = 5.dp)
-                    ) {
-                        Text(
-                            text = label,
-                            fontSize = 11.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) colors.primary else colors.textPrimary
-                        )
-                    }
-                }
-            }
 
             Spacer(modifier = Modifier.height(14.dp))
 
@@ -1004,7 +1120,7 @@ fun AddPeriodicTaskDialog(
 ) {
     val colors = LifeStreamTheme.colors
     var title by remember { mutableStateOf("") }
-    var intervalText by remember { mutableStateOf("7") }
+    var intervalDays by remember { mutableStateOf(7) }
     var iconKey by remember { mutableStateOf("🧹") }
     var selectedColorHex by remember { mutableStateOf("#8C5A3C") }
     val iconOptions = DEFAULT_ICON_OPTIONS
@@ -1022,7 +1138,11 @@ fun AddPeriodicTaskDialog(
             )
         },
         text = {
-            Column {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
                 Text(
                     text = "アイコンを選択:",
                     fontSize = 12.sp,
@@ -1107,51 +1227,19 @@ fun AddPeriodicTaskDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                OutlinedTextField(
-                    value = intervalText,
-                    onValueChange = { if (it.all { c -> c.isDigit() }) intervalText = it },
-                    label = { Text("実施周期の日数 (例: 7, 14, 30)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                PeriodicIntervalSelector(
+                    intervalDays = intervalDays,
+                    onIntervalChange = { intervalDays = it }
                 )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                // Quick presets for interval
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    listOf("3日" to 3, "7日" to 7, "14日" to 14, "30日" to 30).forEach { (label, days) ->
-                        val isSelected = intervalText == days.toString()
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(6.dp))
-                                .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.card)
-                                .clickable { intervalText = days.toString() }
-                                .padding(horizontal = 10.dp, vertical = 5.dp)
-                        ) {
-                            Text(
-                                text = label,
-                                fontSize = 11.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSelected) colors.primary else colors.textPrimary
-                            )
-                        }
-                    }
-                }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    val days = intervalText.toIntOrNull() ?: 7
                     if (title.isNotBlank()) {
-                        onAdd(title, days, iconKey, selectedColorHex)
+                        onAdd(title.trim(), intervalDays, iconKey, selectedColorHex)
                     }
                 },
                 enabled = title.isNotBlank(),

@@ -26,7 +26,7 @@ object DatabaseSeeder {
                 val seenItemKeys = mutableSetOf<String>()
                 existingItems.forEach { item ->
                     val key = "${item.title}_${item.note}_${item.templateId}"
-                    if (item.title in listOf("byLifeへようこそ！", "洗濯用洗剤をネットでポチる", "シーツ洗濯 実施", "フェイスパック 実施")) {
+                    if (item.title in listOf("byLifeへようこそ！", "洗濯用洗剤をネットでポチる", "眉毛を整える 実施", "フェイスパック 実施")) {
                         if (!seenItemKeys.add(key)) {
                             timelineItemDao.delete(item)
                         }
@@ -39,17 +39,48 @@ object DatabaseSeeder {
             val today = LocalDate.now()
             val fiveDaysAgo = today.minusDays(5)
             val twoDaysAgo = today.minusDays(2)
-            val twentyFiveDaysAgo = today.minusDays(25)
 
             fun millis(date: LocalDate, hour: Int, minute: Int): Long {
                 return LocalDateTime.of(date, LocalTime.of(hour, minute)).atZone(zone).toInstant().toEpochMilli()
             }
 
-        // 1. Templates: 4 Action Stamps (Pinned to Quick Bar) + 3 Periodic Maintenance Tasks
+        // 1. Templates: 4 Quick Records (Pinned) + 2 Periodic Routine Tasks
         val templates = listOf(
-            // === クイックスタンプ（行動ログ用・上部バーピン留め） ===
+            // === クイック記録（日常の即時ログ用・上部バーピン留め） ===
             TemplateEntity(
                 id = 1,
+                title = "勉強",
+                type = "SIMPLE",
+                intervalDays = null,
+                defaultAmount = null,
+                iconKey = "📚",
+                colorHex = "#3B82F6",
+                usageCount = 0,
+                lastCompletedAt = null,
+                actionType = "TIMER",
+                unit = "分",
+                stepValue = 1,
+                isPinned = true,
+                displayOrder = 0
+            ),
+            TemplateEntity(
+                id = 2,
+                title = "家事",
+                type = "SIMPLE",
+                intervalDays = null,
+                defaultAmount = null,
+                iconKey = "🧹",
+                colorHex = "#10B981",
+                usageCount = 0,
+                lastCompletedAt = null,
+                actionType = "TIMER",
+                unit = "分",
+                stepValue = 1,
+                isPinned = true,
+                displayOrder = 1
+            ),
+            TemplateEntity(
+                id = 3,
                 title = "水を飲む",
                 type = "DAILY_COUNT",
                 intervalDays = null,
@@ -62,68 +93,36 @@ object DatabaseSeeder {
                 unit = "杯",
                 stepValue = 1,
                 isPinned = true,
-                displayOrder = 0
-            ),
-            TemplateEntity(
-                id = 2,
-                title = "コーヒー",
-                type = "SIMPLE",
-                intervalDays = null,
-                defaultAmount = 350,
-                iconKey = "☕",
-                colorHex = "#8C5A3C",
-                usageCount = 0,
-                lastCompletedAt = null,
-                actionType = "CHECK",
-                unit = "杯",
-                stepValue = 1,
-                isPinned = true,
-                displayOrder = 1
-            ),
-            TemplateEntity(
-                id = 3,
-                title = "読書・勉強",
-                type = "SIMPLE",
-                intervalDays = null,
-                defaultAmount = null,
-                iconKey = "📖",
-                colorHex = "#3B82F6",
-                usageCount = 0,
-                lastCompletedAt = null,
-                actionType = "TIMER",
-                unit = "分",
-                stepValue = 1,
-                isPinned = true,
                 displayOrder = 2
             ),
             TemplateEntity(
                 id = 4,
-                title = "散歩・運動",
-                type = "SIMPLE",
+                title = "お菓子食べる",
+                type = "DAILY_COUNT",
                 intervalDays = null,
                 defaultAmount = null,
-                iconKey = "🚶",
-                colorHex = "#10B981",
+                iconKey = "🍪",
+                colorHex = "#F59E0B",
                 usageCount = 0,
                 lastCompletedAt = null,
-                actionType = "TIMER",
-                unit = "分",
+                actionType = "COUNT",
+                unit = "個",
                 stepValue = 1,
                 isPinned = true,
                 displayOrder = 3
             ),
 
-            // === 周期タスク（定期メンテナンス） ===
+            // === 周期・ルーティン（定期サイクル） ===
             TemplateEntity(
                 id = 5,
-                title = "シーツ洗濯",
+                title = "眉毛を整える",
                 type = "INTERVAL",
                 intervalDays = 7,
                 defaultAmount = null,
-                iconKey = "🛏️",
-                colorHex = "#10B981",
+                iconKey = "✂️",
+                colorHex = "#8C5A3C",
                 usageCount = 1,
-                lastCompletedAt = millis(fiveDaysAgo, 10, 0),
+                lastCompletedAt = millis(fiveDaysAgo, 19, 0),
                 actionType = "CHECK",
                 unit = "回",
                 stepValue = 1,
@@ -134,7 +133,7 @@ object DatabaseSeeder {
                 id = 6,
                 title = "フェイスパック",
                 type = "INTERVAL",
-                intervalDays = 3,
+                intervalDays = 7,
                 defaultAmount = null,
                 iconKey = "🧖",
                 colorHex = "#A855F7",
@@ -145,22 +144,6 @@ object DatabaseSeeder {
                 stepValue = 1,
                 isPinned = false,
                 displayOrder = 1
-            ),
-            TemplateEntity(
-                id = 7,
-                title = "換気扇フィルター清掃",
-                type = "INTERVAL",
-                intervalDays = 30,
-                defaultAmount = null,
-                iconKey = "🌀",
-                colorHex = "#6366F1",
-                usageCount = 1,
-                lastCompletedAt = millis(twentyFiveDaysAgo, 14, 0),
-                actionType = "CHECK",
-                unit = "回",
-                stepValue = 1,
-                isPinned = false,
-                displayOrder = 2
             )
         )
         templateDao.insertAll(templates)
@@ -173,7 +156,7 @@ object DatabaseSeeder {
         items.add(
             TimelineItemEntity(
                 title = "byLifeへようこそ！",
-                note = "上のスタンプや右下の＋から今日の行動を記録してみましょう",
+                note = "上のクイック記録や右下の＋から今日の行動を記録してみましょう",
                 isDone = true,
                 completedAt = now.minusMinutes(10).atZone(zone).toInstant().toEpochMilli()
             )
@@ -192,9 +175,9 @@ object DatabaseSeeder {
         // Previous cycle completions (for periodic tracking reference)
         items.add(
             TimelineItemEntity(
-                title = "シーツ洗濯 実施",
+                title = "眉毛を整える 実施",
                 isDone = true,
-                completedAt = millis(fiveDaysAgo, 10, 0),
+                completedAt = millis(fiveDaysAgo, 19, 0),
                 templateId = 5
             )
         )

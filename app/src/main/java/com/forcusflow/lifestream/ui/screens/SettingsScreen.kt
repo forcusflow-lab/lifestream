@@ -126,11 +126,12 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 )
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Item 2: Templates
+                // Item 2: Quick Records (Templates)
+                val quickCount = templates.count { it.type != "INTERVAL" }
                 SettingActionCard(
-                    title = "テンプレート一覧管理",
-                    subtitle = "水, パック, シーツ, 夜食など ${templates.size}件登録中",
-                    actionLabel = "編集 >",
+                    title = "クイック記録（テンプレート）管理",
+                    subtitle = "勉強, 家事, 水など ${quickCount}件登録中（並び替え・ピン留め）",
+                    actionLabel = "管理 >",
                     onClick = { showTemplatesDialog = true }
                 )
                 Spacer(modifier = Modifier.height(10.dp))
@@ -191,8 +192,8 @@ fun SettingsScreen(viewModel: MainViewModel) {
 
                 // Item 5: Reset / Sample Data
                 SettingActionCard(
-                    title = "サンプルデータの復元・再投入",
-                    subtitle = "初期モックデータ（周期6種、水、夜食ログ）へリセット",
+                    title = "初期データの復元・再投入",
+                    subtitle = "初期データ（クイック記録4種、周期2種）へリセット",
                     actionLabel = "復元 >",
                     onClick = { showResetConfirmDialog = true }
                 )
@@ -259,7 +260,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
             containerColor = colors.card,
             title = { Text("サンプルデータの復元", fontWeight = FontWeight.Bold, color = colors.textPrimary) },
             text = {
-                Text("データベースを初期化し、画像仕様通りの初期モックデータを再投入します。よろしいですか？", fontSize = 13.sp, color = colors.textPrimary)
+                Text("データベースを初期化し、初期デフォルトデータ（クイック記録4種、周期2種）を再投入します。よろしいですか？", fontSize = 13.sp, color = colors.textPrimary)
             },
             confirmButton = {
                 Button(
