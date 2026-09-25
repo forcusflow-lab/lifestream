@@ -42,8 +42,26 @@ fun ItemDetailBottomSheet(
     onPromoteToPeriodic: ((TimelineItemEntity, Int, String) -> Unit)? = null
 ) {
     val colors = LifeStreamTheme.colors
-    var title by remember { mutableStateOf(item.title) }
-    var note by remember { mutableStateOf(item.note ?: "") }
+
+    // Clean initial title without synthetic brackets
+    val initialCleanTitle = remember(item.title) {
+        item.title
+            .replace("\\s*\\(\\d+(分|秒)\\)".toRegex(), "")
+            .replace("\\s*\\(\\d+[杯回個本皿枚]目?\\)".toRegex(), "")
+            .trim()
+    }
+    var title by remember { mutableStateOf(initialCleanTitle) }
+
+    // Clean initial note without system generated prefixes
+    val initialCleanNote = remember(item.note) {
+        when {
+            item.note == null -> ""
+            item.note.startsWith("計測時間: ") -> ""
+            item.note in listOf("クイック記録完了", "時間計測完了", "デイリー習慣カウント") -> ""
+            else -> item.note
+        }
+    }
+    var note by remember { mutableStateOf(initialCleanNote) }
     var amountText by remember { mutableStateOf(item.amount?.toString() ?: "") }
     var isDone by remember { mutableStateOf(item.isDone) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -60,12 +78,13 @@ fun ItemDetailBottomSheet(
     var selectedActionType by remember {
         mutableStateOf(
             when {
-                matchedTemplate?.actionType == "COUNT" || "\\d+(杯|回|個|本|皿|枚)".toRegex().containsMatchIn(item.title) -> "COUNT"
-                matchedTemplate?.actionType == "TIMER" || "\\d+分".toRegex().containsMatchIn(item.title) || (item.note?.contains("\\d+分".toRegex()) == true) -> "TIMER"
+                item.countValue != null || matchedTemplate?.actionType == "COUNT" || "\\d+[杯回個本皿枚]".toRegex().containsMatchIn(item.title) -> "COUNT"
+                item.durationSeconds != null || matchedTemplate?.actionType == "TIMER" || "\\d+分".toRegex().containsMatchIn(item.title) -> "TIMER"
                 else -> "CHECK"
             }
         )
     }
+
     var selectedUnit by remember {
         mutableStateOf(
             matchedTemplate?.unit?.ifBlank { null }
@@ -73,6 +92,31 @@ fun ItemDetailBottomSheet(
                 ?: "回"
         )
     }
+
+    // Direct numerical state for duration (in minutes)
+    val initialDurationMinutes = remember(item.durationSeconds, item.title) {
+        if (item.durationSeconds != null && item.durationSeconds > 0) {
+            val mins = (item.durationSeconds + 30) / 60
+            mins.coerceAtLeast(1)
+        } else {
+            val parsedMin = "\\((\\d+)分\\)".toRegex().find(item.title)?.groupValues?.get(1)?.toIntOrNull()
+            val parsedSec = "\\((\\d+)秒\\)".toRegex().find(item.title)?.groupValues?.get(1)?.toIntOrNull()
+            when {
+                parsedMin != null -> parsedMin
+                parsedSec != null -> ((parsedSec + 30) / 60).coerceAtLeast(1)
+                else -> 15
+            }
+        }
+    }
+    var durationMinutes by remember { mutableStateOf(initialDurationMinutes) }
+
+    // Direct numerical state for count
+    val initialCount = remember(item.countValue, item.title) {
+        item.countValue
+            ?: "\\((\\d+)[杯回個本皿枚]目?\\)".toRegex().find(item.title)?.groupValues?.get(1)?.toIntOrNull()
+            ?: 1
+    }
+    var countValue by remember { mutableStateOf(initialCount) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -112,12 +156,16 @@ fun ItemDetailBottomSheet(
                 Button(
                     onClick = {
                         val parsedAmount = amountText.toLongOrNull()
+                        val finalDurationSeconds = if (selectedActionType == "TIMER") durationMinutes * 60 else null
+                        val finalCountValue = if (selectedActionType == "COUNT") countValue else null
                         val updated = item.copy(
                             title = title.trim(),
                             note = note.trim().ifBlank { null },
                             amount = parsedAmount,
                             isDone = isDone,
-                            completedAt = if (isDone && item.completedAt == null) System.currentTimeMillis() else if (!isDone) null else item.completedAt
+                            completedAt = if (isDone && item.completedAt == null) System.currentTimeMillis() else if (!isDone) null else item.completedAt,
+                            durationSeconds = finalDurationSeconds,
+                            countValue = finalCountValue
                         )
                         onSave(updated)
                     },
@@ -218,15 +266,7 @@ fun ItemDetailBottomSheet(
                             .weight(1f)
                             .clip(RoundedCornerShape(8.dp))
                             .background(if (isSelected) colors.primary else Color.Transparent)
-                            .clickable {
-                                selectedActionType = typeKey
-                                if (typeKey == "COUNT" && !"\\d+".toRegex().containsMatchIn(title)) {
-                                    title = "$title (1${selectedUnit}目)"
-                                } else if (typeKey == "TIMER" && !"\\d+分".toRegex().containsMatchIn(title)) {
-                                    title = "$title (15分)"
-                                    if (note.isBlank()) note = "計測時間: 15分"
-                                }
-                            }
+                            .clickable { selectedActionType = typeKey }
                             .padding(vertical = 7.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -254,43 +294,30 @@ fun ItemDetailBottomSheet(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "数量 (${selectedUnit}):",
+                        text = "数量 ($selectedUnit):",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
                         color = colors.textSecondary
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedButton(
-                            onClick = {
-                                val regex = "(\\d+)$selectedUnit".toRegex()
-                                val match = regex.find(title)
-                                val cur = match?.groupValues?.get(1)?.toIntOrNull() ?: 1
-                                val next = (cur - 1).coerceAtLeast(1)
-                                title = if (match != null) {
-                                    title.replace(regex, "$next$selectedUnit")
-                                } else {
-                                    "$title ($next$selectedUnit)"
-                                }
-                            },
+                            onClick = { countValue = (countValue - 1).coerceAtLeast(1) },
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                             modifier = Modifier.height(32.dp)
                         ) {
                             Text("-1", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "$countValue $selectedUnit",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
                         OutlinedButton(
-                            onClick = {
-                                val regex = "(\\d+)$selectedUnit".toRegex()
-                                val match = regex.find(title)
-                                val cur = match?.groupValues?.get(1)?.toIntOrNull() ?: 1
-                                val next = cur + 1
-                                title = if (match != null) {
-                                    title.replace(regex, "$next$selectedUnit")
-                                } else {
-                                    "$title ($next$selectedUnit)"
-                                }
-                            },
+                            onClick = { countValue += 1 },
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                             modifier = Modifier.height(32.dp)
@@ -314,11 +341,7 @@ fun ItemDetailBottomSheet(
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(if (isSel) colors.primary.copy(alpha = 0.15f) else colors.card)
                                 .border(1.dp, if (isSel) colors.primary else colors.border, RoundedCornerShape(6.dp))
-                                .clickable {
-                                    val oldU = selectedUnit
-                                    selectedUnit = u
-                                    title = title.replace(oldU, u)
-                                }
+                                .clickable { selectedUnit = u }
                                 .padding(horizontal = 10.dp, vertical = 4.dp)
                         ) {
                             Text(u, fontSize = 11.sp, color = if (isSel) colors.primary else colors.textPrimary)
@@ -338,37 +361,30 @@ fun ItemDetailBottomSheet(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "作業時間 (分):",
+                        text = "作業時間:",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
                         color = colors.textSecondary
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedButton(
-                            onClick = {
-                                val regex = "(\\d+)分".toRegex()
-                                val match = regex.find(title) ?: regex.find(note)
-                                val cur = match?.groupValues?.get(1)?.toIntOrNull() ?: 15
-                                val next = (cur - 5).coerceAtLeast(1)
-                                title = if (regex.containsMatchIn(title)) title.replace(regex, "${next}分") else "$title (${next}分)"
-                                note = "計測時間: ${next}分"
-                            },
+                            onClick = { durationMinutes = (durationMinutes - 5).coerceAtLeast(1) },
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                             modifier = Modifier.height(32.dp)
                         ) {
                             Text("-5分", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "$durationMinutes 分",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
                         OutlinedButton(
-                            onClick = {
-                                val regex = "(\\d+)分".toRegex()
-                                val match = regex.find(title) ?: regex.find(note)
-                                val cur = match?.groupValues?.get(1)?.toIntOrNull() ?: 15
-                                val next = cur + 5
-                                title = if (regex.containsMatchIn(title)) title.replace(regex, "${next}分") else "$title (${next}分)"
-                                note = "計測時間: ${next}分"
-                            },
+                            onClick = { durationMinutes += 5 },
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                             modifier = Modifier.height(32.dp)

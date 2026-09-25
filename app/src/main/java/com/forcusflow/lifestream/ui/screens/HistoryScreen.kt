@@ -834,15 +834,74 @@ fun TaskitoHistoryStemRow(
                     color = colors.textSecondary
                 )
             }
-            Text(
-                text = item.title,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = colors.textPrimary
-            )
-            if (!item.note.isNullOrBlank()) {
+            val cleanTitle = remember(item.title) {
+                item.title
+                    .replace("\\s*\\(\\d+(分|秒)\\)".toRegex(), "")
+                    .replace("\\s*\\(\\d+[杯回個本皿枚]目?\\)".toRegex(), "")
+                    .trim()
+            }
+            val durationSec = remember(item.durationSeconds, item.title) {
+                item.durationSeconds
+                    ?: "\\((\\d+)分\\)".toRegex().find(item.title)?.groupValues?.get(1)?.toIntOrNull()?.times(60)
+                    ?: "\\((\\d+)秒\\)".toRegex().find(item.title)?.groupValues?.get(1)?.toIntOrNull()
+            }
+            val countVal = remember(item.countValue, item.title) {
+                item.countValue
+                    ?: "\\((\\d+)[杯回個本皿枚]目?\\)".toRegex().find(item.title)?.groupValues?.get(1)?.toIntOrNull()
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = item.note,
+                    text = cleanTitle,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary
+                )
+                if (durationSec != null && durationSec > 0) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    val durationText = if (durationSec >= 60) "${(durationSec + 30) / 60}分" else "${durationSec}秒"
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xFFEF4444).copy(alpha = 0.12f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "⏱ $durationText",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFEF4444)
+                        )
+                    }
+                }
+                if (countVal != null && countVal > 0) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xFF0284C7).copy(alpha = 0.12f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "$countVal",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0284C7)
+                        )
+                    }
+                }
+            }
+            val displayNote = remember(item.note) {
+                when {
+                    item.note.isNullOrBlank() -> null
+                    item.note in listOf("クイック記録完了", "時間計測完了", "デイリー習慣カウント") -> null
+                    item.note.startsWith("計測時間: ") -> null
+                    item.note.startsWith("時間計測完了 (") && item.note.endsWith(")") -> null
+                    else -> item.note
+                }
+            }
+            if (displayNote != null) {
+                Text(
+                    text = displayNote,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Normal,
                     color = colors.textSecondary

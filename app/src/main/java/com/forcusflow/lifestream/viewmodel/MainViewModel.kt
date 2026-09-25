@@ -89,6 +89,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Active Timer state for actionType = "TIMER"
     val activeTimerTemplate = MutableStateFlow<TemplateEntity?>(null)
     val timerElapsedSeconds = MutableStateFlow(0L)
+    private var timerStartTimeMillis: Long? = null
     private var timerJob: kotlinx.coroutines.Job? = null
 
     init {
@@ -150,41 +151,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         timerJob?.cancel()
+        val start = System.currentTimeMillis()
+        timerStartTimeMillis = start
         activeTimerTemplate.value = template
         timerElapsedSeconds.value = 0L
         timerJob = viewModelScope.launch {
             while (true) {
                 kotlinx.coroutines.delay(1000)
-                timerElapsedSeconds.value += 1
+                timerElapsedSeconds.value = ((System.currentTimeMillis() - start) / 1000).coerceAtLeast(0L)
             }
         }
     }
 
     fun stopAndSaveTimer(onRecorded: (TimelineItemEntity) -> Unit = {}) {
         val template = activeTimerTemplate.value ?: return
-        val seconds = timerElapsedSeconds.value
+        val start = timerStartTimeMillis
+        val seconds = if (start != null) {
+            ((System.currentTimeMillis() - start) / 1000).coerceAtLeast(1L)
+        } else {
+            timerElapsedSeconds.value.coerceAtLeast(1L)
+        }
         timerJob?.cancel()
         timerJob = null
         activeTimerTemplate.value = null
+        timerStartTimeMillis = null
         timerElapsedSeconds.value = 0L
-
-        val durationText = if (seconds >= 60) {
-            val mins = kotlin.math.max(1L, (seconds + 30) / 60)
-            "${mins}分"
-        } else {
-            "${seconds}秒"
-        }
 
         val now = System.currentTimeMillis()
         viewModelScope.launch(Dispatchers.IO) {
             val newItem = TimelineItemEntity(
-                title = "${template.title} ($durationText)",
+                title = template.title,
                 isDone = true,
                 scheduledAt = null,
                 completedAt = now,
                 amount = template.defaultAmount,
-                note = "計測時間: $durationText",
-                templateId = template.id
+                note = null,
+                templateId = template.id,
+                durationSeconds = seconds.toInt(),
+                countValue = null
             )
             val id = itemDao.insert(newItem)
             val savedItem = newItem.copy(id = id)
@@ -198,6 +202,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         timerJob?.cancel()
         timerJob = null
         activeTimerTemplate.value = null
+        timerStartTimeMillis = null
         timerElapsedSeconds.value = 0L
     }
 
@@ -213,7 +218,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch(Dispatchers.IO) {
             val now = System.currentTimeMillis()
-            val (title, note) = when (template.actionType) {
+            val countValue = when (template.actionType) {
                 "COUNT" -> {
                     val today = LocalDate.now()
                     val (start, end) = getDayRange(today)
@@ -221,23 +226,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         val t = item.completedAt ?: item.scheduledAt
                         t != null && t in start..end && item.templateId == template.id
                     }
-                    val nextCount = currentCount + template.stepValue
-                    val unitStr = if (template.unit.isNotBlank()) template.unit else "回"
-                    Pair("${template.title} (${nextCount}${unitStr}目)", null)
+                    currentCount + template.stepValue
                 }
-                else -> {
-                    Pair(template.title, null)
-                }
+                else -> null
             }
 
             val newItem = TimelineItemEntity(
-                title = title,
+                title = template.title,
                 isDone = true,
                 scheduledAt = null,
                 completedAt = now,
                 amount = template.defaultAmount,
-                note = note,
-                templateId = template.id
+                note = null,
+                templateId = template.id,
+                durationSeconds = null,
+                countValue = countValue
             )
             val id = itemDao.insert(newItem)
             val savedItem = newItem.copy(id = id)
@@ -275,7 +278,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         completedAt: Long?,
         amount: Long?,
         note: String?,
-        templateId: Long?
+        templateId: Long?,
+        durationSeconds: Int? = null,
+        countValue: Int? = null
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             val item = TimelineItemEntity(
@@ -285,7 +290,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 completedAt = completedAt,
                 amount = amount,
                 note = note,
-                templateId = templateId
+                templateId = templateId,
+                durationSeconds = durationSeconds,
+                countValue = countValue
             )
             itemDao.insert(item)
             if (isDone && templateId != null) {

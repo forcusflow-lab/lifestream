@@ -246,8 +246,12 @@ fun TimelineScreen(viewModel: MainViewModel) {
                         isTimer -> "${t.iconKey ?: "⏱️"} ${t.title}"
                         isCount -> {
                             val count = todayItems.count { it.templateId == t.id }
-                            val unitStr = if (t.unit.isNotBlank()) t.unit else "回"
-                            "${t.iconKey ?: "💧"} ${t.title} (${count}${unitStr})"
+                            if (count > 0) {
+                                val unitStr = if (t.unit.isNotBlank()) t.unit else "回"
+                                "${t.iconKey ?: "💧"} ${t.title} (${count}${unitStr})"
+                            } else {
+                                "${t.iconKey ?: "💧"} ${t.title}"
+                            }
                         }
                         else -> "${t.iconKey ?: "📌"} ${t.title}"
                     }
@@ -464,6 +468,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                 val item = rowItem.entity
                                 TaskitoTimelineItemRow(
                                     item = item,
+                                    templates = templates,
                                     isFirst = isFirst,
                                     isLast = isLast,
                                     onToggle = { viewModel.toggleItemDone(item) },
@@ -878,8 +883,14 @@ fun TaskitoAnytimeItemRow(
                             )
                         }
                         Spacer(modifier = Modifier.width(6.dp))
+                        val cleanTitle = remember(item.title) {
+                            item.title
+                                .replace("\\s*\\(\\d+(分|秒)\\)".toRegex(), "")
+                                .replace("\\s*\\(\\d+[杯回個本皿枚]目?\\)".toRegex(), "")
+                                .trim()
+                        }
                         Text(
-                            text = item.title,
+                            text = cleanTitle,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = colors.textPrimary,
@@ -1074,6 +1085,7 @@ fun TaskitoPeriodicSurfacedRow(
 @Composable
 fun TaskitoTimelineItemRow(
     item: TimelineItemEntity,
+    templates: List<TemplateEntity> = emptyList(),
     isFirst: Boolean,
     isLast: Boolean,
     onToggle: () -> Unit,
@@ -1214,20 +1226,86 @@ fun TaskitoTimelineItemRow(
                             color = colors.textSecondary
                         )
                         Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = item.title,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.textPrimary
-                        )
+
+                        // Clean title without synthetic brackets
+                        val cleanTitle = remember(item.title) {
+                            item.title
+                                .replace("\\s*\\(\\d+(分|秒)\\)".toRegex(), "")
+                                .replace("\\s*\\(\\d+[杯回個本皿枚]目?\\)".toRegex(), "")
+                                .trim()
+                        }
+
+                        // Extracted duration in seconds (from column or fallback parsing of legacy title)
+                        val durationSec = remember(item.durationSeconds, item.title) {
+                            item.durationSeconds
+                                ?: "\\((\\d+)分\\)".toRegex().find(item.title)?.groupValues?.get(1)?.toIntOrNull()?.times(60)
+                                ?: "\\((\\d+)秒\\)".toRegex().find(item.title)?.groupValues?.get(1)?.toIntOrNull()
+                        }
+
+                        // Extracted count value (from column or fallback parsing of legacy title)
+                        val countVal = remember(item.countValue, item.title) {
+                            item.countValue
+                                ?: "\\((\\d+)[杯回個本皿枚]目?\\)".toRegex().find(item.title)?.groupValues?.get(1)?.toIntOrNull()
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = cleanTitle,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.textPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+
+                            if (durationSec != null && durationSec > 0) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                val durationText = if (durationSec >= 60) "${(durationSec + 30) / 60}分" else "${durationSec}秒"
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFFEF4444).copy(alpha = 0.12f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "⏱ $durationText",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFEF4444)
+                                    )
+                                }
+                            }
+
+                            if (countVal != null && countVal > 0) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                val matched = templates.find { it.id == item.templateId }
+                                val unit = matched?.unit?.ifBlank { "回" } ?: "回"
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFF0284C7).copy(alpha = 0.12f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "$countVal$unit",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF0284C7)
+                                    )
+                                }
+                            }
+                        }
+
                         val displayNote = remember(item.note) {
                             when {
                                 item.note.isNullOrBlank() -> null
                                 item.note in listOf("クイック記録完了", "時間計測完了", "デイリー習慣カウント") -> null
-                                item.note.startsWith("時間計測完了 (") && item.note.endsWith(")") -> {
-                                    val inner = item.note.removePrefix("時間計測完了 (").removeSuffix(")")
-                                    "計測時間: $inner"
-                                }
+                                item.note.startsWith("計測時間: ") -> null // 二重表示防止
+                                item.note.startsWith("時間計測完了 (") && item.note.endsWith(")") -> null
                                 else -> item.note
                             }
                         }
@@ -1511,8 +1589,12 @@ fun SearchBottomSheet(
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
+                                        val cleanTitle = item.title
+                                            .replace("\\s*\\(\\d+(分|秒)\\)".toRegex(), "")
+                                            .replace("\\s*\\(\\d+[杯回個本皿枚]目?\\)".toRegex(), "")
+                                            .trim()
                                         Text(
-                                            text = item.title,
+                                            text = cleanTitle,
                                             fontSize = 14.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = colors.textPrimary,

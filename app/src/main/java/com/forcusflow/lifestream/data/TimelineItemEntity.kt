@@ -1,4 +1,4 @@
-﻿package com.forcusflow.lifestream.data
+package com.forcusflow.lifestream.data
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
@@ -15,5 +15,7 @@ data class TimelineItemEntity(
     val completedAt: Long? = null,
     val amount: Long? = null,
     val note: String? = null,
-    val templateId: Long? = null
+    val templateId: Long? = null,
+    val durationSeconds: Int? = null,
+    val countValue: Int? = null
 )
