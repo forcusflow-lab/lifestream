@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.forcusflow.lifestream.data.TimelineItemEntity
 import com.forcusflow.lifestream.ui.components.AppHeader
+import com.forcusflow.lifestream.ui.components.ItemDetailBottomSheet
 import com.forcusflow.lifestream.ui.theme.LifeStreamTheme
 import com.forcusflow.lifestream.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
@@ -660,9 +661,9 @@ fun HistoryScreen(viewModel: MainViewModel) {
         }
     }
 
-    // Edit Item Dialog
+    // Edit Item Sheet
     itemToEdit?.let { item ->
-        EditItemDialog(
+        ItemDetailBottomSheet(
             item = item,
             templates = templates,
             onDismiss = { itemToEdit = null },

@@ -53,7 +53,7 @@ import java.time.temporal.ChronoUnit
 fun calculateStreak(allItems: List<TimelineItemEntity>, template: TemplateEntity, zone: ZoneId): Int {
     val interval = template.intervalDays ?: 7
     val completionDates = allItems
-        .filter { it.isDone && (it.templateId == template.id || it.title.startsWith(template.title)) && it.completedAt != null }
+        .filter { it.isDone && it.templateId == template.id && it.completedAt != null }
         .map { LocalDateTime.ofInstant(Instant.ofEpochMilli(it.completedAt!!), zone).toLocalDate() }
         .sortedDescending()
         .toList()
@@ -85,7 +85,7 @@ fun calculateCompletionRate(allItems: List<TimelineItemEntity>, template: Templa
 
     val actualCount = allItems.count { item ->
         if (!item.isDone || item.completedAt == null) return@count false
-        if (item.templateId != template.id && !item.title.startsWith(template.title)) return@count false
+        if (item.templateId != template.id) return@count false
         val date = LocalDateTime.ofInstant(Instant.ofEpochMilli(item.completedAt), zone).toLocalDate()
         !date.isBefore(thirtyDaysAgo) && !date.isAfter(today)
     }
@@ -221,7 +221,7 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                         val completedDates = remember(allItems, template.id) {
                             allItems.filter {
                                 it.isDone &&
-                                (it.templateId == template.id || it.title.startsWith(template.title)) &&
+                                it.templateId == template.id &&
                                 it.completedAt != null
                             }.map {
                                 LocalDateTime.ofInstant(Instant.ofEpochMilli(it.completedAt!!), zone).toLocalDate()
@@ -787,7 +787,7 @@ fun EditPeriodicTaskBottomSheet(
     val completedDates = remember(allItems, template.id) {
         allItems.filter {
             it.isDone &&
-            (it.templateId == template.id || it.title.startsWith(template.title)) &&
+            it.templateId == template.id &&
             it.completedAt != null
         }.map {
             LocalDateTime.ofInstant(Instant.ofEpochMilli(it.completedAt!!), zone).toLocalDate()

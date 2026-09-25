@@ -14,8 +14,8 @@ interface TemplateDao {
     @Query("SELECT * FROM templates WHERE id = :id")
     suspend fun getById(id: Long): TemplateEntity?
 
-    @Query("SELECT * FROM templates WHERE type = :type ORDER BY displayOrder ASC, id ASC")
-    fun getByTypeFlow(type: String): Flow<List<TemplateEntity>>
+    @Query("DELETE FROM templates")
+    suspend fun deleteAll()
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(template: TemplateEntity): Long

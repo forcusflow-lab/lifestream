@@ -1,4 +1,4 @@
-﻿package com.forcusflow.lifestream.data
+package com.forcusflow.lifestream.data
 
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
@@ -23,6 +23,12 @@ interface TimelineItemDao {
     @Query("SELECT * FROM timeline_items WHERE title LIKE '%' || :query || '%' OR note LIKE '%' || :query || '%' ORDER BY COALESCE(completedAt, scheduledAt, id) DESC")
     fun searchFlow(query: String): Flow<List<TimelineItemEntity>>
 
+    @Query("SELECT * FROM timeline_items WHERE templateId = :templateId AND completedAt IS NOT NULL AND completedAt BETWEEN :start AND :end")
+    suspend fun getCompletedByTemplateAndRange(templateId: Long, start: Long, end: Long): List<TimelineItemEntity>
+
+    @Query("SELECT * FROM timeline_items WHERE templateId = :templateId AND completedAt IS NOT NULL ORDER BY completedAt DESC")
+    suspend fun getCompletedByTemplate(templateId: Long): List<TimelineItemEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(item: TimelineItemEntity): Long
 
@@ -35,6 +41,6 @@ interface TimelineItemDao {
     @Delete
     suspend fun delete(item: TimelineItemEntity)
 
-    @Query("DELETE FROM timeline_items WHERE id = :id")
-    suspend fun deleteById(id: Long)
+    @Query("DELETE FROM timeline_items")
+    suspend fun deleteAll()
 }

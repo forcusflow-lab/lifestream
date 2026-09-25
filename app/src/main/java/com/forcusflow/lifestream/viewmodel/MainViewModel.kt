@@ -83,9 +83,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val calendarYearMonth = MutableStateFlow(YearMonth.from(LocalDate.now()))
     val selectedCalendarDate = MutableStateFlow(LocalDate.now())
 
-    // Segment in Tab 3 (0: 周期タスク一覧, 1: 週マトリクス表)
-    val cycleMatrixSegment = MutableStateFlow(0)
-
     // Last deleted / added item for Undo snackbar
     val undoItem = MutableStateFlow<TimelineItemEntity?>(null)
 
@@ -144,15 +141,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun updateTimelineItem(item: TimelineItemEntity) {
         viewModelScope.launch(Dispatchers.IO) {
             itemDao.update(item)
-        }
-    }
-
-    fun getTodayTemplateCount(template: TemplateEntity): Int {
-        val today = LocalDate.now()
-        val (start, end) = getDayRange(today)
-        return allItems.value.count { item ->
-            val t = item.completedAt ?: item.scheduledAt
-            t != null && t in start..end && (item.templateId == template.id || item.title.startsWith(template.title))
         }
     }
 
@@ -231,10 +219,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val (start, end) = getDayRange(today)
                     val currentCount = allItems.value.count { item ->
                         val t = item.completedAt ?: item.scheduledAt
-                        t != null && t in start..end && (item.templateId == template.id || item.title.startsWith(template.title))
+                        t != null && t in start..end && item.templateId == template.id
                     }
                     val nextCount = currentCount + template.stepValue
-                    val unitStr = if (template.unit.isNotBlank()) template.unit else "杯"
+                    val unitStr = if (template.unit.isNotBlank()) template.unit else "回"
                     Pair("${template.title} (${nextCount}${unitStr}目)", null)
                 }
                 else -> {
@@ -256,25 +244,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             templateDao.recordCompletion(template.id, now)
             undoItem.value = savedItem
             onRecorded(savedItem)
-        }
-    }
-
-    fun recordWaterIntake() {
-        val waterTemplate = templates.value.find { it.id == 1L || it.title.contains("水") }
-        if (waterTemplate != null) {
-            quickRecordTemplate(waterTemplate) {}
-        } else {
-            val now = System.currentTimeMillis()
-            viewModelScope.launch(Dispatchers.IO) {
-                itemDao.insert(
-                    TimelineItemEntity(
-                        title = "水を飲む (1杯目)",
-                        isDone = true,
-                        completedAt = now,
-                        note = "デイリー水分補給"
-                    )
-                )
-            }
         }
     }
 
@@ -347,17 +316,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             val startOfDay = targetDate.atStartOfDay(zone).toInstant().toEpochMilli()
             val endOfDay = targetDate.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
-            val all = itemDao.getAll()
-            val existing = all.find { item ->
-                item.isDone &&
-                (item.templateId == template.id || item.title.startsWith(template.title)) &&
-                item.completedAt != null &&
-                item.completedAt in startOfDay..endOfDay
-            }
+            val existing = itemDao.getCompletedByTemplateAndRange(template.id, startOfDay, endOfDay).firstOrNull()
             if (existing != null) {
                 itemDao.delete(existing)
-                val remaining = all.filter { it.id != existing.id && it.isDone && (it.templateId == template.id || it.title.startsWith(template.title)) && it.completedAt != null }
-                val newLast = remaining.maxOfOrNull { it.completedAt!! }
+                val remaining = itemDao.getCompletedByTemplate(template.id)
+                val newLast = remaining.firstOrNull { it.id != existing.id }?.completedAt
                 templateDao.update(template.copy(lastCompletedAt = newLast))
             } else {
                 recordCycleTask(template, targetDate)
@@ -483,10 +446,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun reloadSampleData() {
         viewModelScope.launch(Dispatchers.IO) {
-            val all = itemDao.getAll()
-            all.forEach { itemDao.delete(it) }
-            val tList = templateDao.getAll()
-            tList.forEach { templateDao.delete(it) }
+            itemDao.deleteAll()
+            templateDao.deleteAll()
             DatabaseSeeder.seed(templateDao, itemDao)
         }
     }
