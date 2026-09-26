@@ -236,6 +236,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
                     val isTimer = t.actionType == "TIMER"
                     val isTimerActive = isTimer && activeTimerTemplate?.id == t.id
                     val isCount = t.actionType == "COUNT"
+                    val tItemsToday = todayItems.filter { it.templateId == t.id }
 
                     val chipLabel = when {
                         isTimerActive -> {
@@ -243,9 +244,31 @@ fun TimelineScreen(viewModel: MainViewModel) {
                             val secs = timerSeconds % 60
                             "${t.iconKey ?: "⏱️"} %02d:%02d 計測中".format(mins, secs)
                         }
-                        isTimer -> "${t.iconKey ?: "⏱️"} ${t.title}"
-                        isCount -> "${t.iconKey ?: "💧"} ${t.title}"
-                        else -> "${t.iconKey ?: "📌"} ${t.title}"
+                        isTimer -> {
+                            val todayTimerSec = tItemsToday.mapNotNull { it.durationSeconds }.sum()
+                            val todayMins = (todayTimerSec + 30) / 60
+                            if (todayMins > 0) {
+                                "${t.iconKey ?: "⏱️"} ${t.title} (${todayMins}分)"
+                            } else {
+                                "${t.iconKey ?: "⏱️"} ${t.title}"
+                            }
+                        }
+                        isCount -> {
+                            val count = tItemsToday.sumOf { it.countValue ?: 1 }
+                            if (count > 0) {
+                                val unitStr = if (t.unit.isNotBlank()) t.unit else "杯"
+                                "${t.iconKey ?: "💧"} ${t.title} (${count}${unitStr})"
+                            } else {
+                                "${t.iconKey ?: "💧"} ${t.title}"
+                            }
+                        }
+                        else -> {
+                            if (tItemsToday.any { it.isDone }) {
+                                "${t.iconKey ?: "📌"} ${t.title} (済)"
+                            } else {
+                                "${t.iconKey ?: "📌"} ${t.title}"
+                            }
+                        }
                     }
 
                     val chipBorderColor = when {

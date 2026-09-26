@@ -72,18 +72,62 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Theme 1: Classic Warm
+                // Theme 1: Frosted Glass
+                ThemeSelectionCard(
+                    title = "フロステッド・グラス (Glass)",
+                    subtitle = "最新すりガラス調・インディゴ＆アイススレートの透明感",
+                    previewColor = Color(0xFFF1F5F9),
+                    previewDot = Color(0xFF6366F1),
+                    isSelected = currentTheme == AppThemeMode.FROSTED_GLASS,
+                    onClick = { viewModel.setTheme(AppThemeMode.FROSTED_GLASS) }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Theme 2: Nordic Clean
+                ThemeSelectionCard(
+                    title = "ノルディック・スノー",
+                    subtitle = "北欧ミニマリズム・純白＆クリーンなスカイブルー",
+                    previewColor = Color(0xFFFAFAFA),
+                    previewDot = Color(0xFF0284C7),
+                    isSelected = currentTheme == AppThemeMode.NORDIC_CLEAN,
+                    onClick = { viewModel.setTheme(AppThemeMode.NORDIC_CLEAN) }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Theme 3: Tokyo Minimal
+                ThemeSelectionCard(
+                    title = "トーキョー・モダン (Flat)",
+                    subtitle = "Notion/Linear風の研ぎ澄まされたソリッドモノトーン",
+                    previewColor = Color(0xFFF4F4F5),
+                    previewDot = Color(0xFF18181B),
+                    isSelected = currentTheme == AppThemeMode.TOKYO_MINIMAL,
+                    onClick = { viewModel.setTheme(AppThemeMode.TOKYO_MINIMAL) }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Theme 4: Sage & Linen
+                ThemeSelectionCard(
+                    title = "セージ＆リネン (Organic)",
+                    subtitle = "くすみグリーンと生成りリネンが心地よい癒やし系",
+                    previewColor = Color(0xFFF5F4EE),
+                    previewDot = Color(0xFF2E6F52),
+                    isSelected = currentTheme == AppThemeMode.SAGE_LINEN,
+                    onClick = { viewModel.setTheme(AppThemeMode.SAGE_LINEN) }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Theme 5: Classic Warm
                 ThemeSelectionCard(
                     title = "クラシック・ウォーム",
                     subtitle = "旧Wunderlist調の紙の温もりと木目調アクセント",
-                    previewColor = Color(0xFF8C5A3C),
+                    previewColor = Color(0xFFF4F1EA),
                     previewDot = Color(0xFF8C5A3C),
                     isSelected = currentTheme == AppThemeMode.CLASSIC_WARM,
                     onClick = { viewModel.setTheme(AppThemeMode.CLASSIC_WARM) }
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Theme 2: Deep Slate
+                // Theme 6: Deep Slate
                 ThemeSelectionCard(
                     title = "ディープ・スレート (Dark)",
                     subtitle = "Taskito風の洗練されたダークスレート & スカイブルー",
@@ -94,7 +138,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Theme 3: Pure Minimal OLED
+                // Theme 7: Pure Minimal OLED
                 ThemeSelectionCard(
                     title = "ピュア・ミニマル (OLED Black)",
                     subtitle = "Niagara風の完全純黒・エメラルドグリーン (省電力)",
