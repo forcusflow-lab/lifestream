@@ -70,7 +70,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     fontWeight = FontWeight.Bold,
                     color = colors.textSecondary
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // Theme 1: Classic Warm
                 ThemeSelectionCard(
@@ -81,7 +81,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     isSelected = currentTheme == AppThemeMode.CLASSIC_WARM,
                     onClick = { viewModel.setTheme(AppThemeMode.CLASSIC_WARM) }
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // Theme 2: Deep Slate
                 ThemeSelectionCard(
@@ -92,7 +92,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     isSelected = currentTheme == AppThemeMode.DEEP_SLATE,
                     onClick = { viewModel.setTheme(AppThemeMode.DEEP_SLATE) }
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // Theme 3: Pure Minimal OLED
                 ThemeSelectionCard(
@@ -115,7 +115,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     fontWeight = FontWeight.Bold,
                     color = colors.textSecondary
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // Item 1: Cutoff Hour
                 SettingActionCard(
@@ -124,7 +124,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     actionLabel = "変更 >",
                     onClick = { showCutoffDialog = true }
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // Item 2: Quick Records (Templates)
                 val quickCount = templates.count { it.type != "INTERVAL" }
@@ -134,7 +134,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     actionLabel = "管理 >",
                     onClick = { showTemplatesDialog = true }
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // Item 3: Data Export
                 SettingActionCard(
@@ -163,7 +163,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         }
                     }
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // Item 3.5: Data Import
                 SettingActionCard(
@@ -175,7 +175,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         showImportDialog = true
                     }
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // Item 4: Notifications
                 SettingActionCard(
@@ -188,7 +188,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         }
                     }
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // Item 5: Reset / Sample Data
                 SettingActionCard(

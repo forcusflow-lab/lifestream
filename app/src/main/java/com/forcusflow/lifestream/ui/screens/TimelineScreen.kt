@@ -244,15 +244,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
                             "${t.iconKey ?: "⏱️"} %02d:%02d 計測中".format(mins, secs)
                         }
                         isTimer -> "${t.iconKey ?: "⏱️"} ${t.title}"
-                        isCount -> {
-                            val count = todayItems.count { it.templateId == t.id }
-                            if (count > 0) {
-                                val unitStr = if (t.unit.isNotBlank()) t.unit else "回"
-                                "${t.iconKey ?: "💧"} ${t.title} (${count}${unitStr})"
-                            } else {
-                                "${t.iconKey ?: "💧"} ${t.title}"
-                            }
-                        }
+                        isCount -> "${t.iconKey ?: "💧"} ${t.title}"
                         else -> "${t.iconKey ?: "📌"} ${t.title}"
                     }
 

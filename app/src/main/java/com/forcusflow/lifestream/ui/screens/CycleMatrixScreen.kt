@@ -45,6 +45,10 @@ import java.time.LocalDateTime
 import java.time.YearMonth
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+
+private val DAY_OF_WEEK_FORMATTER = DateTimeFormatter.ofPattern("M/d(E)", Locale.JAPANESE)
 
 /**
  * Calculates the current streak for a periodic template.
@@ -122,24 +126,6 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
         templates.filter { it.type == "INTERVAL" && (it.intervalDays == null || it.intervalDays <= 0) }
     }
 
-    // 7 days of current week (Monday to Sunday)
-    val currentWeekDays = remember(today) {
-        val monday = today.minusDays(today.dayOfWeek.value.toLong() - 1)
-        (0..6).map { monday.plusDays(it.toLong()) }
-    }
-
-    // This week's completed periodic tasks count
-    val thisWeekCompletedCount = remember(allItems, currentWeekDays, templates) {
-        val weekStart = currentWeekDays.first()
-        val weekEnd = currentWeekDays.last()
-        allItems.count { item ->
-            if (!item.isDone || item.completedAt == null || item.templateId == null) return@count false
-            val date = LocalDateTime.ofInstant(Instant.ofEpochMilli(item.completedAt), zone).toLocalDate()
-            val t = templates.find { it.id == item.templateId }
-            t?.type == "INTERVAL" && !date.isBefore(weekStart) && !date.isAfter(weekEnd)
-        }
-    }
-
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
@@ -161,45 +147,16 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                 .padding(padding)
         ) {
             AppHeader(
-                title = "周期・ルーティン"
+                title = "周期"
             )
-
-            // Weekly achievement banner
-            if (thisWeekCompletedCount > 0) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(colors.statusDone.copy(alpha = 0.10f))
-                        .border(1.dp, colors.statusDone.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("🎯", fontSize = 16.sp)
-                    Text(
-                        text = "今週の完了: $thisWeekCompletedCount 件",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.statusDone
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    Text(
-                        text = "よく頑張っています！",
-                        fontSize = 11.sp,
-                        color = colors.statusDone.copy(alpha = 0.7f)
-                    )
-                }
-            }
 
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
                     .padding(horizontal = 16.dp),
-                contentPadding = PaddingValues(top = 8.dp, bottom = 88.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                contentPadding = PaddingValues(top = 4.dp, bottom = 88.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (periodicTemplates.isEmpty() && somedayTemplates.isEmpty()) {
                     item {
@@ -438,10 +395,10 @@ fun MainTaskStyleCycleCard(
     val nextDueDate = if (lastDoneDate != null) lastDoneDate.plusDays(interval.toLong()) else today
 
     val timingText = when {
-        isSomeday -> if (lastDoneDate != null) "前回 ${lastDoneDate.monthValue}/${lastDoneDate.dayOfMonth}" else "日付未定 · いつでも"
-        isOverdue -> "${-daysUntilDue}日超過 · 前回 ${lastDoneDate!!.monthValue}/${lastDoneDate.dayOfMonth}"
+        isSomeday -> if (lastDoneDate != null) "前回 ${lastDoneDate.format(DAY_OF_WEEK_FORMATTER)}" else "日付未定 · いつでも"
+        isOverdue -> "${-daysUntilDue}日超過 · 前回 ${lastDoneDate!!.format(DAY_OF_WEEK_FORMATTER)}"
         isDueToday -> if (lastDoneDate == null) "今日から開始予定" else "今日予定"
-        else -> "あと${daysUntilDue}日 · ${nextDueDate.monthValue}/${nextDueDate.dayOfMonth}"
+        else -> "あと${daysUntilDue}日 · ${nextDueDate.format(DAY_OF_WEEK_FORMATTER)}"
     }
 
     val timingColor = when {
@@ -462,7 +419,7 @@ fun MainTaskStyleCycleCard(
     } ?: statusColor
 
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = colors.card),
         border = BorderStroke(1.dp, if (isOverdue) statusColor.copy(alpha = 0.45f) else colors.border),
         modifier = Modifier
@@ -472,35 +429,35 @@ fun MainTaskStyleCycleCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(vertical = 8.dp, horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Left Status Pill Indicator
             Box(
                 modifier = Modifier
-                    .width(4.dp)
-                    .height(38.dp)
+                    .width(3.5.dp)
+                    .height(28.dp)
                     .clip(RoundedCornerShape(2.dp))
                     .background(statusColor)
             )
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
             // Emoji / Icon circle
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(34.dp)
                     .clip(CircleShape)
                     .background(accentColor.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = template.iconKey ?: "🧹",
-                    fontSize = 20.sp
+                    fontSize = 17.sp
                 )
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
             // Info Column
             Column(modifier = Modifier.weight(1f)) {
@@ -509,7 +466,7 @@ fun MainTaskStyleCycleCard(
                 ) {
                     Text(
                         text = template.title,
-                        fontSize = 15.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = colors.textPrimary,
                         maxLines = 1,
@@ -527,7 +484,7 @@ fun MainTaskStyleCycleCard(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(3.dp))
+                Spacer(modifier = Modifier.height(2.dp))
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -535,18 +492,18 @@ fun MainTaskStyleCycleCard(
                 ) {
                     Text(
                         text = timingText,
-                        fontSize = 12.sp,
+                        fontSize = 11.5.sp,
                         fontWeight = FontWeight.Medium,
                         color = timingColor
                     )
                     Text(
                         text = "·",
-                        fontSize = 12.sp,
+                        fontSize = 11.5.sp,
                         color = colors.textSecondary.copy(alpha = 0.6f)
                     )
                     Text(
                         text = cycleText,
-                        fontSize = 11.sp,
+                        fontSize = 10.5.sp,
                         color = colors.textSecondary
                     )
                 }
@@ -559,24 +516,24 @@ fun MainTaskStyleCycleCard(
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         onSkip()
                     },
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(28.dp)
                 ) {
                     Text(
                         text = "↷",
-                        fontSize = 16.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                         color = colors.textSecondary
                     )
                 }
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(2.dp))
             } else {
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(2.dp))
             }
 
-            // Large Circular Checkbox
+            // Circular Checkbox
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(32.dp)
                     .clip(CircleShape)
                     .background(if (isDoneToday) Color(0xFF10B981) else Color.Transparent)
                     .border(
@@ -595,7 +552,7 @@ fun MainTaskStyleCycleCard(
                         Icons.Default.Check,
                         contentDescription = "本日完了",
                         tint = Color.White,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }

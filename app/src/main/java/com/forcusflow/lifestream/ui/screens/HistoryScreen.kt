@@ -17,6 +17,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -61,6 +63,7 @@ fun HistoryScreen(viewModel: MainViewModel) {
     val currentYearMonth by viewModel.calendarYearMonth.collectAsState()
 
     var itemToEdit by remember { mutableStateOf<TimelineItemEntity?>(null) }
+    var isMonthlySummaryExpanded by remember { mutableStateOf(false) }
 
     val currentMonthYearText = "${currentYearMonth.year}年 ${currentYearMonth.monthValue}月"
 
@@ -103,17 +106,28 @@ fun HistoryScreen(viewModel: MainViewModel) {
                 else -> "回"
             }
             val countValSum = items.mapNotNull { it.countValue }.sum()
-            val totalCount = if (countValSum > 0) countValSum else items.size
+            // If legacy data had cumulative sequence (1+2+3...), sanitize so totalCount is items.size
+            val totalCount = if (countValSum > items.size * 5 && items.size > 2) {
+                items.size
+            } else if (countValSum > 0) {
+                countValSum
+            } else {
+                items.size
+            }
             val durationSecSum = items.mapNotNull { it.durationSeconds }.sum()
 
             val achievementText = when (actionType) {
                 "TIMER" -> {
                     val mins = if (durationSecSum > 0) durationSecSum / 60 else items.size * 15
                     if (mins >= 60) "%.1f時間 (%d回)".format(mins / 60.0, items.size)
-                    else "${mins}分 (%d回)".format(items.size)
+                    else "${mins}分 (${items.size}回)"
                 }
                 "COUNT" -> {
-                    "$totalCount $unit (${items.size}回)"
+                    if (totalCount == items.size) {
+                        "$totalCount $unit"
+                    } else {
+                        "$totalCount $unit (${items.size}回)"
+                    }
                 }
                 else -> {
                     "${items.size} 回"
@@ -561,32 +575,60 @@ fun HistoryScreen(viewModel: MainViewModel) {
                         }
                     }
 
-                    // Option B: 今月の習慣・ルーティン実績（縦型ブレイクダウンリスト）
+                    // 今月の達成サマリー（アコーディオン開閉制御）
                     if (habitMonthlyStats.isNotEmpty()) {
                         item {
-                            Spacer(modifier = Modifier.height(24.dp))
-                            Row(
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Card(
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = colors.card),
+                                border = BorderStroke(1.dp, colors.border),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(bottom = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        isMonthlySummaryExpanded = !isMonthlySummaryExpanded
+                                    }
                             ) {
-                                Text(
-                                    text = "✨ ${currentYearMonth.monthValue}月の習慣・ルーティン実績",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.textPrimary
-                                )
-                                Text(
-                                    text = "計 ${habitMonthlyStats.size}種",
-                                    fontSize = 11.sp,
-                                    color = colors.textSecondary
-                                )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("📊", fontSize = 16.sp)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "今月の達成サマリー (${currentYearMonth.monthValue}月)",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = colors.textPrimary
+                                        )
+                                    }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "計 ${habitMonthlyStats.size}種",
+                                            fontSize = 12.sp,
+                                            color = colors.textSecondary
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Icon(
+                                            imageVector = if (isMonthlySummaryExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                            contentDescription = if (isMonthlySummaryExpanded) "閉じる" else "展開する",
+                                            tint = colors.textSecondary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
-                        items(habitMonthlyStats, key = { it.title }) { stat ->
-                            HabitMonthlyBreakdownRow(stat = stat)
+                        if (isMonthlySummaryExpanded) {
+                            items(habitMonthlyStats, key = { it.title }) { stat ->
+                                HabitMonthlyBreakdownRow(stat = stat)
+                            }
                         }
                     }
                 }
@@ -884,7 +926,7 @@ fun HabitMonthlyBreakdownRow(stat: HabitMonthlyStatItem) {
         border = BorderStroke(1.dp, colors.border),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 3.dp)
+            .padding(vertical = 4.dp)
     ) {
         Row(
             modifier = Modifier

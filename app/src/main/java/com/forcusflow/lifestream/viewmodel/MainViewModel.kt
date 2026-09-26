@@ -219,15 +219,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             val now = System.currentTimeMillis()
             val countValue = when (template.actionType) {
-                "COUNT" -> {
-                    val today = LocalDate.now()
-                    val (start, end) = getDayRange(today)
-                    val currentCount = allItems.value.count { item ->
-                        val t = item.completedAt ?: item.scheduledAt
-                        t != null && t in start..end && item.templateId == template.id
-                    }
-                    currentCount + template.stepValue
-                }
+                "COUNT" -> template.stepValue.coerceAtLeast(1)
                 else -> null
             }
 
