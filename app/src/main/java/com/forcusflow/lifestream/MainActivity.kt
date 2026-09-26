@@ -35,38 +35,33 @@ class MainActivity : ComponentActivity() {
 
             LifeStreamTheme(themeMode = themeMode) {
                 val colors = LifeStreamTheme.colors
-                Box(modifier = Modifier.fillMaxSize()) {
-                    if (colors.wallpaperType != null) {
-                        com.forcusflow.lifestream.ui.theme.ThemeWallpaper(wallpaperType = colors.wallpaperType)
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    containerColor = colors.background,
+                    bottomBar = {
+                        BottomNavBar(
+                            selectedTab = currentTab,
+                            onTabSelected = { viewModel.currentTab.value = it }
+                        )
                     }
-                    Scaffold(
-                        modifier = Modifier.fillMaxSize(),
-                        containerColor = if (colors.wallpaperType != null) androidx.compose.ui.graphics.Color.Transparent else colors.background,
-                        bottomBar = {
-                            BottomNavBar(
-                                selectedTab = currentTab,
-                                onTabSelected = { viewModel.currentTab.value = it }
-                            )
-                        }
-                    ) { innerPadding ->
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(bottom = innerPadding.calculateBottomPadding())
-                        ) {
-                            AnimatedContent(
-                                targetState = currentTab,
-                                transitionSpec = {
-                                    fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(220))
-                                },
-                                label = "TabCrossfade"
-                            ) { tab ->
-                                when (tab) {
-                                    0 -> TimelineScreen(viewModel = viewModel)
-                                    1 -> HistoryScreen(viewModel = viewModel)
-                                    2 -> CycleMatrixScreen(viewModel = viewModel)
-                                    3 -> SettingsScreen(viewModel = viewModel)
-                                }
+                ) { innerPadding ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(bottom = innerPadding.calculateBottomPadding())
+                    ) {
+                        AnimatedContent(
+                            targetState = currentTab,
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(220))
+                            },
+                            label = "TabCrossfade"
+                        ) { tab ->
+                            when (tab) {
+                                0 -> TimelineScreen(viewModel = viewModel)
+                                1 -> HistoryScreen(viewModel = viewModel)
+                                2 -> CycleMatrixScreen(viewModel = viewModel)
+                                3 -> SettingsScreen(viewModel = viewModel)
                             }
                         }
                     }

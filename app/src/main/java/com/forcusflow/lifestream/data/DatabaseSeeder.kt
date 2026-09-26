@@ -21,14 +21,21 @@ object DatabaseSeeder {
                         templateDao.delete(tmpl)
                     }
                 }
-                // 同様に初期タイムラインアイテムの重複もクリーンアップ
+                // 同様に初期タイムラインアイテムの重複およびレガシーテストログのクリーンアップ
                 val existingItems = timelineItemDao.getAll()
                 val seenItemKeys = mutableSetOf<String>()
                 existingItems.forEach { item ->
-                    val key = "${item.title}_${item.note}_${item.templateId}"
-                    if (item.title in listOf("byLifeへようこそ！", "洗濯用洗剤をネットでポチる", "眉毛を整える 実施", "フェイスパック 実施")) {
-                        if (!seenItemKeys.add(key)) {
-                            timelineItemDao.delete(item)
+                    if (item.note?.contains("ルーティン完了") == true) {
+                        timelineItemDao.delete(item)
+                    } else if (item.title.endsWith(" 実施")) {
+                        val cleaned = item.copy(title = item.title.removeSuffix(" 実施").trim())
+                        timelineItemDao.update(cleaned)
+                    } else {
+                        val key = "${item.title}_${item.note}_${item.templateId}"
+                        if (item.title in listOf("byLifeへようこそ！", "洗濯用洗剤をネットでポチる", "眉毛を整える", "フェイスパック")) {
+                            if (!seenItemKeys.add(key)) {
+                                timelineItemDao.delete(item)
+                            }
                         }
                     }
                 }
