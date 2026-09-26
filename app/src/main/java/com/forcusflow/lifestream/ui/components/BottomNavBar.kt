@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.Icon
@@ -46,7 +47,8 @@ fun BottomNavBar(
         NavTabItem("今日", Icons.Default.Today, 0),
         NavTabItem("履歴", Icons.Default.CalendarMonth, 1),
         NavTabItem("周期", Icons.Default.Autorenew, 2),
-        NavTabItem("設定", Icons.Default.Settings, 3)
+        NavTabItem("メモ", Icons.Default.EditNote, 3),
+        NavTabItem("設定", Icons.Default.Settings, 4)
     )
 
     Box(
@@ -59,7 +61,7 @@ fun BottomNavBar(
                 shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
             )
             .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -91,7 +93,7 @@ fun BottomNavBar(
                                 onTabSelected(tab.index)
                             }
                         }
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(

@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import com.forcusflow.lifestream.ui.components.BottomNavBar
 import com.forcusflow.lifestream.ui.screens.CycleMatrixScreen
 import com.forcusflow.lifestream.ui.screens.HistoryScreen
+import com.forcusflow.lifestream.ui.screens.MemoScreen
 import com.forcusflow.lifestream.ui.screens.SettingsScreen
 import com.forcusflow.lifestream.ui.screens.TimelineScreen
 import com.forcusflow.lifestream.ui.theme.LifeStreamTheme
@@ -61,7 +62,8 @@ class MainActivity : ComponentActivity() {
                                 0 -> TimelineScreen(viewModel = viewModel)
                                 1 -> HistoryScreen(viewModel = viewModel)
                                 2 -> CycleMatrixScreen(viewModel = viewModel)
-                                3 -> SettingsScreen(viewModel = viewModel)
+                                3 -> MemoScreen(viewModel = viewModel)
+                                4 -> SettingsScreen(viewModel = viewModel)
                             }
                         }
                     }

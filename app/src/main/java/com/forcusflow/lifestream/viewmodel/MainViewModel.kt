@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.forcusflow.lifestream.data.AppDatabase
 import com.forcusflow.lifestream.data.DatabaseSeeder
+import com.forcusflow.lifestream.data.MemoEntity
 import com.forcusflow.lifestream.data.TemplateEntity
 import com.forcusflow.lifestream.data.TimelineItemEntity
 import com.forcusflow.lifestream.ui.theme.AppThemeMode
@@ -25,6 +26,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val db = AppDatabase.getInstance(application)
     private val itemDao = db.timelineItemDao()
     private val templateDao = db.templateDao()
+    private val memoDao = db.memoDao()
     private val zone = ZoneId.systemDefault()
 
     // Preferences state
@@ -32,7 +34,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val dayCutoffHour = MutableStateFlow(4) // 04:00 AM
 
     // Navigation state
-    val currentTab = MutableStateFlow(0) // 0: 今日, 1: 履歴, 2: 周期管理, 3: 設定
+    val currentTab = MutableStateFlow(0) // 0: 今日, 1: 履歴, 2: 周期, 3: メモ, 4: 設定
 
     // Data streams
     val templates: StateFlow<List<TemplateEntity>> = templateDao.getAllFlow()
@@ -50,6 +52,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val anytimePendingItems: StateFlow<List<TimelineItemEntity>> = itemDao.getAnytimePendingFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val memos: StateFlow<List<MemoEntity>> = memoDao.getAllFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Badge count for Today tab: pending ToDos + overdue periodic tasks
@@ -494,6 +499,112 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             Pair(importedTemplates, importedItems)
+        }
+    }
+
+    // === Memo Management ===
+    fun insertMemo(content: String, isPinned: Boolean = false) {
+        if (content.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            memoDao.insert(
+                MemoEntity(
+                    content = content.trim(),
+                    isPinned = isPinned,
+                    createdAt = now,
+                    updatedAt = now
+                )
+            )
+        }
+    }
+
+    fun updateMemo(memo: MemoEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            memoDao.update(memo.copy(updatedAt = System.currentTimeMillis()))
+        }
+    }
+
+    fun toggleMemoPin(memo: MemoEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            memoDao.update(memo.copy(isPinned = !memo.isPinned, updatedAt = System.currentTimeMillis()))
+        }
+    }
+
+    fun deleteMemo(memo: MemoEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            memoDao.delete(memo)
+        }
+    }
+
+    // === Memo Promotion Engine (Actionable Integration) ===
+    fun promoteMemoToTodo(memo: MemoEntity, scheduledAt: Long?, deleteMemoAfter: Boolean = true) {
+        viewModelScope.launch(Dispatchers.IO) {
+            itemDao.insert(
+                TimelineItemEntity(
+                    title = memo.content.trim(),
+                    isDone = false,
+                    scheduledAt = scheduledAt
+                )
+            )
+            if (deleteMemoAfter) {
+                memoDao.delete(memo)
+            }
+        }
+    }
+
+    fun promoteMemoToDone(memo: MemoEntity, completedAt: Long = System.currentTimeMillis(), deleteMemoAfter: Boolean = true) {
+        viewModelScope.launch(Dispatchers.IO) {
+            itemDao.insert(
+                TimelineItemEntity(
+                    title = memo.content.trim(),
+                    isDone = true,
+                    completedAt = completedAt
+                )
+            )
+            if (deleteMemoAfter) {
+                memoDao.delete(memo)
+            }
+        }
+    }
+
+    fun promoteMemoToPeriodic(memo: MemoEntity, intervalDays: Int, deleteMemoAfter: Boolean = false) {
+        viewModelScope.launch(Dispatchers.IO) {
+            templateDao.insert(
+                TemplateEntity(
+                    title = memo.content.trim(),
+                    type = "INTERVAL",
+                    intervalDays = intervalDays,
+                    iconKey = "🔄",
+                    colorHex = "#34C759",
+                    lastCompletedAt = System.currentTimeMillis()
+                )
+            )
+            if (deleteMemoAfter) {
+                memoDao.delete(memo)
+            }
+        }
+    }
+
+    fun promoteMemoToTemplate(memo: MemoEntity, iconKey: String = "⚡", colorHex: String = "#FF9500", deleteMemoAfter: Boolean = false) {
+        viewModelScope.launch(Dispatchers.IO) {
+            templateDao.insert(
+                TemplateEntity(
+                    title = memo.content.trim(),
+                    type = "CHECK",
+                    iconKey = iconKey,
+                    colorHex = colorHex
+                )
+            )
+            if (deleteMemoAfter) {
+                memoDao.delete(memo)
+            }
+        }
+    }
+
+    // === Reschedule Upcoming Item to Today ===
+    fun rescheduleItemToToday(item: TimelineItemEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            itemDao.update(item.copy(scheduledAt = null))
         }
     }
 }

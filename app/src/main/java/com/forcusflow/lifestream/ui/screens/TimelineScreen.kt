@@ -1,5 +1,10 @@
 package com.forcusflow.lifestream.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -107,6 +112,13 @@ fun TimelineScreen(viewModel: MainViewModel) {
             val t = item.completedAt ?: item.scheduledAt
             t != null && t in todayStart..todayEnd
         }.sortedBy { it.completedAt ?: it.scheduledAt ?: 0L }
+    }
+
+    // Future scheduled pending tasks (Upcoming)
+    val upcomingItems = remember(allItems, todayEnd) {
+        allItems.filter { item ->
+            !item.isDone && item.scheduledAt != null && item.scheduledAt > todayEnd
+        }.sortedBy { it.scheduledAt }
     }
 
     // Periodic tasks due today or overdue
@@ -516,6 +528,23 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                     }
                                 )
                             }
+                        }
+                    }
+
+                    if (upcomingItems.isNotEmpty()) {
+                        item {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            UpcomingSectionCard(
+                                upcomingItems = upcomingItems,
+                                onToggleDone = { viewModel.toggleItemDone(it) },
+                                onRescheduleToToday = {
+                                    viewModel.rescheduleItemToToday(it)
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar("「${it.title}」を今日に繰り上げました")
+                                    }
+                                },
+                                onClickItem = { itemToEdit = it }
+                            )
                         }
                     }
                 }
@@ -1675,6 +1704,184 @@ fun SearchBottomSheet(
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun UpcomingSectionCard(
+    upcomingItems: List<TimelineItemEntity>,
+    onToggleDone: (TimelineItemEntity) -> Unit,
+    onRescheduleToToday: (TimelineItemEntity) -> Unit,
+    onClickItem: (TimelineItemEntity) -> Unit
+) {
+    val colors = LifeStreamTheme.colors
+    val haptic = LocalHapticFeedback.current
+    var isExpanded by remember { mutableStateOf(true) }
+    val zone = ZoneId.systemDefault()
+
+    val groupedByDate = remember(upcomingItems) {
+        upcomingItems.groupBy { item ->
+            val epoch = item.scheduledAt ?: 0L
+            LocalDateTime.ofInstant(Instant.ofEpochMilli(epoch), zone).toLocalDate()
+        }.toSortedMap()
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .border(1.dp, colors.border, RoundedCornerShape(14.dp))
+            .background(colors.card)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            // Header
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { isExpanded = !isExpanded },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "📅",
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "近日・今後の予定",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.textPrimary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(colors.primary.copy(alpha = 0.15f))
+                            .padding(horizontal = 7.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "${upcomingItems.size}件",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.primary
+                        )
+                    }
+                }
+
+                Text(
+                    text = if (isExpanded) "折りたたむ ▲" else "開く ▼",
+                    fontSize = 11.sp,
+                    color = colors.textSecondary
+                )
+            }
+
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column(modifier = Modifier.padding(top = 10.dp)) {
+                    val today = LocalDate.now()
+                    groupedByDate.forEach { (date, items) ->
+                        val dateLabel = when {
+                            date == today.plusDays(1) -> "明日 (${date.monthValue}/${date.dayOfMonth})"
+                            date == today.plusDays(2) -> "明後日 (${date.monthValue}/${date.dayOfMonth})"
+                            else -> {
+                                val dayName = listOf("月", "火", "水", "木", "金", "土", "日")[date.dayOfWeek.value - 1]
+                                "${date.monthValue}月${date.dayOfMonth}日 ($dayName)"
+                            }
+                        }
+
+                        Text(
+                            text = dateLabel,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.primary,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+
+                        items.forEach { item ->
+                            val timeStr = item.scheduledAt?.let {
+                                LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone)
+                                    .format(DateTimeFormatter.ofPattern("HH:mm"))
+                            }
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 3.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(colors.background.copy(alpha = 0.5f))
+                                    .clickable { onClickItem(item) }
+                                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    // Check circle
+                                    Box(
+                                        modifier = Modifier
+                                            .size(20.dp)
+                                            .clip(CircleShape)
+                                            .border(1.5.dp, colors.border, CircleShape)
+                                            .clickable {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                onToggleDone(item)
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = item.title,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = colors.textPrimary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        if (timeStr != null && timeStr != "00:00") {
+                                            Text(
+                                                text = timeStr,
+                                                fontSize = 10.sp,
+                                                color = colors.textSecondary
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // "今日やる" action pill
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(colors.primary.copy(alpha = 0.12f))
+                                        .border(0.5.dp, colors.primary.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                                        .clickable {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            onRescheduleToToday(item)
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "今日やる",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.primary
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
                     }
                 }
             }
