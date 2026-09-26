@@ -208,21 +208,35 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                                 streak = streak,
                                 onClick = { editingTemplate = template },
                                 onToggleToday = {
-                                    if (isDoneInCycle && !isDoneToday) {
-                                        val interval = template.intervalDays ?: 7
-                                        val lastDoneDate = template.lastCompletedAt?.let {
-                                            LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
-                                        }
-                                        val nextDate = lastDoneDate?.plusDays(interval.toLong()) ?: today
-                                        coroutineScope.launch {
-                                            snackbarHostState.showSnackbar("「${template.title}」は今期達成済みです (次回: ${nextDate.format(DAY_OF_WEEK_FORMATTER)})")
-                                        }
-                                    } else {
+                                    if (isDoneToday) {
                                         viewModel.toggleCycleTask(template, today)
                                         coroutineScope.launch {
-                                            val msg = if (isDoneToday) "「${template.title}」の本日の達成を取り消しました"
-                                                      else "「${template.title}」を完了しました！🎉"
-                                            snackbarHostState.showSnackbar(msg)
+                                            snackbarHostState.showSnackbar("「${template.title}」の本日の達成を取り消しました")
+                                        }
+                                    } else {
+                                        val isUrgent = template.lastCompletedAt?.let {
+                                            val lastDate = LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
+                                            val el = ChronoUnit.DAYS.between(lastDate, today)
+                                            val iv = template.intervalDays ?: 7
+                                            el >= iv
+                                        } ?: true
+
+                                        viewModel.toggleCycleTask(template, today)
+                                        coroutineScope.launch {
+                                            val msg = if (isUrgent) {
+                                                "「${template.title}」を完了しました！🎉"
+                                            } else {
+                                                val nextDate = today.plusDays(template.intervalDays?.toLong() ?: 7L)
+                                                "「${template.title}」を前倒しで完了しました (次回: ${nextDate.format(DAY_OF_WEEK_FORMATTER)})"
+                                            }
+                                            val res = snackbarHostState.showSnackbar(
+                                                message = msg,
+                                                actionLabel = "元に戻す",
+                                                duration = SnackbarDuration.Short
+                                            )
+                                            if (res == SnackbarResult.ActionPerformed) {
+                                                viewModel.toggleCycleTask(template, today)
+                                            }
                                         }
                                     }
                                 },
@@ -395,8 +409,6 @@ fun MainTaskStyleCycleCard(
     val isDueToday = !isSomeday && ((elapsedDays != null && elapsedDays == interval) || lastDoneDate == null)
     val isSkippedToday = !isSomeday && elapsedDays != null && elapsedDays == 0 && !isDoneToday && !isDoneInCycle
 
-    val isChecked = if (isSomeday) isDoneToday else isDoneInCycle
-
     val statusColor = when {
         isSomeday -> Color(0xFF9CA3AF)
         isOverdue -> Color(0xFFEF4444)
@@ -409,13 +421,12 @@ fun MainTaskStyleCycleCard(
     val nextDueDate = if (lastDoneDate != null) lastDoneDate.plusDays(interval.toLong()) else today
 
     val timingText = when {
-        isSomeday -> if (lastDoneDate != null) "前回 ${lastDoneDate.format(DAY_OF_WEEK_FORMATTER)}" else "日付未定 · いつでも"
-        isDoneToday -> "本日完了 · 次回まであと${daysUntilDue}日 (${nextDueDate.format(DAY_OF_WEEK_FORMATTER)})"
-        isDoneInCycle -> "今期達成済 · 次回まであと${daysUntilDue}日 (${nextDueDate.format(DAY_OF_WEEK_FORMATTER)})"
+        isSomeday -> if (lastDoneDate != null) "前回 ${lastDoneDate.format(DAY_OF_WEEK_FORMATTER)}" else "日付未定"
+        isDoneToday -> "本日完了 · 次回 ${nextDueDate.format(DAY_OF_WEEK_FORMATTER)}"
         isSkippedToday -> "スキップ済 · 次回 ${nextDueDate.format(DAY_OF_WEEK_FORMATTER)}"
         isOverdue -> "${-daysUntilDue}日超過 · 前回 ${lastDoneDate!!.format(DAY_OF_WEEK_FORMATTER)}"
-        isDueToday -> if (lastDoneDate == null) "今日から開始予定" else "今日期日"
-        else -> "あと${daysUntilDue}日 · ${nextDueDate.format(DAY_OF_WEEK_FORMATTER)}"
+        isDueToday -> if (lastDoneDate == null) "今日開始予定" else "今日期日"
+        else -> "次回 ${nextDueDate.format(DAY_OF_WEEK_FORMATTER)} · あと${daysUntilDue}日"
     }
 
     val timingColor = when {
@@ -506,13 +517,17 @@ fun MainTaskStyleCycleCard(
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
                         text = timingText,
                         fontSize = 11.5.sp,
                         fontWeight = FontWeight.Medium,
-                        color = timingColor
+                        color = timingColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
                     Text(
                         text = "·",
@@ -522,7 +537,9 @@ fun MainTaskStyleCycleCard(
                     Text(
                         text = cycleText,
                         fontSize = 10.5.sp,
-                        color = colors.textSecondary
+                        color = colors.textSecondary,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }
@@ -548,21 +565,27 @@ fun MainTaskStyleCycleCard(
                 Spacer(modifier = Modifier.width(2.dp))
             }
 
-            // Circular Checkbox
-            val checkBorderColor = when {
-                isChecked -> Color.Transparent
+            // Circular Action Button
+            val isActionUrgent = isOverdue || isDueToday
+            val buttonBorderColor = when {
+                isDoneToday -> Color.Transparent
                 isOverdue -> Color(0xFFEF4444)
                 isDueToday -> Color(0xFFF59E0B)
-                else -> colors.border
+                else -> colors.border.copy(alpha = 0.6f)
             }
+            val buttonBgColor = when {
+                isDoneToday -> Color(0xFF10B981)
+                else -> Color.Transparent
+            }
+
             Box(
                 modifier = Modifier
                     .size(32.dp)
                     .clip(CircleShape)
-                    .background(if (isChecked) Color(0xFF10B981) else Color.Transparent)
+                    .background(buttonBgColor)
                     .border(
-                        width = if (isChecked) 0.dp else 2.dp,
-                        color = checkBorderColor,
+                        width = if (isDoneToday) 0.dp else if (isActionUrgent) 2.dp else 1.dp,
+                        color = buttonBorderColor,
                         shape = CircleShape
                     )
                     .clickable {
@@ -571,12 +594,19 @@ fun MainTaskStyleCycleCard(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                if (isChecked) {
+                if (isDoneToday) {
                     Icon(
                         Icons.Default.Check,
-                        contentDescription = if (isDoneToday) "本日完了" else "今期達成済",
+                        contentDescription = "本日完了（タップで取消）",
                         tint = Color.White,
                         modifier = Modifier.size(18.dp)
+                    )
+                } else if (!isActionUrgent && !isSomeday) {
+                    Icon(
+                        Icons.Default.Check,
+                        contentDescription = "前倒し完了",
+                        tint = colors.textSecondary.copy(alpha = 0.35f),
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }

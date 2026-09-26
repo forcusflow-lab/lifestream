@@ -297,12 +297,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             val time = LocalTime.now()
             val millis = LocalDateTime.of(targetDate, time).atZone(zone).toInstant().toEpochMilli()
-            val interval = template.intervalDays ?: 7
             val item = TimelineItemEntity(
-                title = "${template.title} 実施",
+                title = template.title,
                 isDone = true,
                 completedAt = millis,
-                note = "${interval}日周期ルーティン完了",
+                note = null,
                 templateId = template.id
             )
             itemDao.insert(item)

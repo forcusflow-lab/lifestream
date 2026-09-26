@@ -175,7 +175,7 @@ object DatabaseSeeder {
         // Previous cycle completions (for periodic tracking reference)
         items.add(
             TimelineItemEntity(
-                title = "眉毛を整える 実施",
+                title = "眉毛を整える",
                 isDone = true,
                 completedAt = millis(fiveDaysAgo, 19, 0),
                 templateId = 5
@@ -183,7 +183,7 @@ object DatabaseSeeder {
         )
         items.add(
             TimelineItemEntity(
-                title = "フェイスパック 実施",
+                title = "フェイスパック",
                 isDone = true,
                 completedAt = millis(twoDaysAgo, 21, 0),
                 templateId = 6
