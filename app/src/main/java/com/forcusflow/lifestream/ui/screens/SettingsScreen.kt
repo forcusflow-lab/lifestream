@@ -147,6 +147,39 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     isSelected = currentTheme == AppThemeMode.PURE_MINIMAL_OLED,
                     onClick = { viewModel.setTheme(AppThemeMode.PURE_MINIMAL_OLED) }
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Theme 8: Misty Forest
+                ThemeSelectionCard(
+                    title = "アルプスの大自然 (Photo)",
+                    subtitle = "朝霧漂う深緑の針葉樹林と大自然の静寂 (すりガラス調)",
+                    previewColor = Color(0xFF426856),
+                    previewDot = Color(0xFF86EFAC),
+                    isSelected = currentTheme == AppThemeMode.MISTY_FOREST,
+                    onClick = { viewModel.setTheme(AppThemeMode.MISTY_FOREST) }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Theme 9: Paris Dusk
+                ThemeSelectionCard(
+                    title = "黄昏のヨーロッパ街並み (Photo)",
+                    subtitle = "夕暮れのパリ・温かな街灯とセピアトワイライト (すりガラス調)",
+                    previewColor = Color(0xFF8B3E45),
+                    previewDot = Color(0xFFFBBF24),
+                    isSelected = currentTheme == AppThemeMode.PARIS_DUSK,
+                    onClick = { viewModel.setTheme(AppThemeMode.PARIS_DUSK) }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Theme 10: Tokyo Night
+                ThemeSelectionCard(
+                    title = "煌めく夜景・メトロポリス (Photo)",
+                    subtitle = "深夜の都会の光彩・サイバーグラス＆ネオン (すりガラス調)",
+                    previewColor = Color(0xFF0F1A34),
+                    previewDot = Color(0xFF38BDF8),
+                    isSelected = currentTheme == AppThemeMode.TOKYO_NIGHT,
+                    onClick = { viewModel.setTheme(AppThemeMode.TOKYO_NIGHT) }
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))

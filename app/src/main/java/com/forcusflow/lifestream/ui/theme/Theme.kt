@@ -6,6 +6,12 @@ import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
+enum class WallpaperType {
+    MISTY_FOREST,
+    PARIS_DUSK,
+    TOKYO_NIGHT
+}
+
 enum class AppThemeMode(val displayName: String, val description: String) {
     CLASSIC_WARM("クラシック・ウォーム", "旧Wunderlist調の紙の温もりと木目調アクセント"),
     FROSTED_GLASS("フロステッド・グラス (Glass)", "最新すりガラス調・インディゴ＆アイススレートの透明感"),
@@ -13,7 +19,10 @@ enum class AppThemeMode(val displayName: String, val description: String) {
     TOKYO_MINIMAL("トーキョー・モダン (Flat)", "Notion/Linear風の研ぎ澄まされたソリッドモノトーン"),
     SAGE_LINEN("セージ＆リネン (Organic)", "くすみグリーンと生成りリネンが心地よい癒やし系"),
     DEEP_SLATE("ディープ・スレート (Dark)", "Taskito風の洗練されたダークスレート & スカイブルー"),
-    PURE_MINIMAL_OLED("ピュア・ミニマル (OLED Black)", "Niagara風の完全純黒・エメラルドグリーン (省電力)")
+    PURE_MINIMAL_OLED("ピュア・ミニマル (OLED Black)", "Niagara風の完全純黒・エメラルドグリーン (省電力)"),
+    MISTY_FOREST("アルプスの大自然 (Photo)", "朝霧漂う深緑の針葉樹林と大自然の静寂"),
+    PARIS_DUSK("黄昏のヨーロッパ街並み (Photo)", "夕暮れのパリ・温かな街灯とセピアトワイライト"),
+    TOKYO_NIGHT("煌めく夜景・メトロポリス (Photo)", "深夜の都会の光彩・サイバーグラス＆ネオン")
 }
 
 data class LifeStreamColors(
@@ -32,7 +41,8 @@ data class LifeStreamColors(
     val statusWarning: Color,
     val statusTarget: Color,
     val waterBlue: Color,
-    val isDark: Boolean
+    val isDark: Boolean,
+    val wallpaperType: WallpaperType? = null
 )
 
 val ClassicWarmColors = LifeStreamColors(
@@ -168,6 +178,66 @@ val PureMinimalOledColors = LifeStreamColors(
     isDark = true
 )
 
+val MistyForestColors = LifeStreamColors(
+    background = Color.Transparent,
+    surface = Color(0xF2F0FDF4),
+    card = Color(0xF2FFFFFF),
+    primary = Color(0xFF15803D),
+    onPrimary = Color(0xFFFFFFFF),
+    textPrimary = Color(0xFF143022),
+    textSecondary = Color(0xFF3F6250),
+    border = Color(0x6686EFAC),
+    divider = Color(0x44BBF7D0),
+    nowLine = Color(0xFFDC2626),
+    statusDone = Color(0xFF15803D),
+    statusOverdue = Color(0xFFDC2626),
+    statusWarning = Color(0xFFD97706),
+    statusTarget = Color(0xFF047857),
+    waterBlue = Color(0xFF0284C7),
+    isDark = false,
+    wallpaperType = WallpaperType.MISTY_FOREST
+)
+
+val ParisDuskColors = LifeStreamColors(
+    background = Color.Transparent,
+    surface = Color(0xF2FFFBEB),
+    card = Color(0xF2FFFFFF),
+    primary = Color(0xFFC2410C),
+    onPrimary = Color(0xFFFFFFFF),
+    textPrimary = Color(0xFF2E1908),
+    textSecondary = Color(0xFF6C4830),
+    border = Color(0x66FED7AA),
+    divider = Color(0x44FFEDD5),
+    nowLine = Color(0xFFE11D48),
+    statusDone = Color(0xFF16A34A),
+    statusOverdue = Color(0xFFDC2626),
+    statusWarning = Color(0xFFD97706),
+    statusTarget = Color(0xFFC2410C),
+    waterBlue = Color(0xFF0284C7),
+    isDark = false,
+    wallpaperType = WallpaperType.PARIS_DUSK
+)
+
+val TokyoNightColors = LifeStreamColors(
+    background = Color.Transparent,
+    surface = Color(0xEE1E293B),
+    card = Color(0xEE1E293B),
+    primary = Color(0xFF38BDF8),
+    onPrimary = Color(0xFF0F172A),
+    textPrimary = Color(0xFFF8FAFC),
+    textSecondary = Color(0xFF94A3B8),
+    border = Color(0x4438BDF8),
+    divider = Color(0x33334155),
+    nowLine = Color(0xFFF43F5E),
+    statusDone = Color(0xFF34D399),
+    statusOverdue = Color(0xFFF87171),
+    statusWarning = Color(0xFFFBBF24),
+    statusTarget = Color(0xFFA78BFA),
+    waterBlue = Color(0xFF38BDF8),
+    isDark = true,
+    wallpaperType = WallpaperType.TOKYO_NIGHT
+)
+
 val LocalLifeStreamColors = staticCompositionLocalOf { ClassicWarmColors }
 
 @Composable
@@ -183,6 +253,9 @@ fun LifeStreamTheme(
         AppThemeMode.SAGE_LINEN -> SageLinenColors
         AppThemeMode.DEEP_SLATE -> DeepSlateColors
         AppThemeMode.PURE_MINIMAL_OLED -> PureMinimalOledColors
+        AppThemeMode.MISTY_FOREST -> MistyForestColors
+        AppThemeMode.PARIS_DUSK -> ParisDuskColors
+        AppThemeMode.TOKYO_NIGHT -> TokyoNightColors
     }
 
     CompositionLocalProvider(

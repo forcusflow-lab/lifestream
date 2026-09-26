@@ -183,15 +183,18 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                     if (periodicTemplates.isNotEmpty()) {
                         items(periodicTemplates, key = { it.id }) { template ->
                             val isDoneToday = remember(allItems, template.id, today) {
-                                val lastDoneDate = template.lastCompletedAt?.let {
-                                    LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
+                                allItems.any {
+                                    it.isDone && it.templateId == template.id && it.completedAt != null &&
+                                    LocalDateTime.ofInstant(Instant.ofEpochMilli(it.completedAt), zone).toLocalDate() == today
                                 }
-                                if (lastDoneDate == today) true
-                                else {
-                                    allItems.any {
-                                        it.isDone && it.templateId == template.id && it.completedAt != null &&
-                                        LocalDateTime.ofInstant(Instant.ofEpochMilli(it.completedAt), zone).toLocalDate() == today
-                                    }
+                            }
+                            val isDoneInCycle = remember(allItems, template.id, today) {
+                                val interval = template.intervalDays ?: 7
+                                allItems.any { item ->
+                                    if (!item.isDone || item.templateId != template.id || item.completedAt == null) return@any false
+                                    val itemDate = LocalDateTime.ofInstant(Instant.ofEpochMilli(item.completedAt), zone).toLocalDate()
+                                    val days = ChronoUnit.DAYS.between(itemDate, today)
+                                    days in 0 until interval
                                 }
                             }
                             val streak = remember(allItems, template.id) {
@@ -201,14 +204,26 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                                 template = template,
                                 today = today,
                                 isDoneToday = isDoneToday,
+                                isDoneInCycle = isDoneInCycle,
                                 streak = streak,
                                 onClick = { editingTemplate = template },
                                 onToggleToday = {
-                                    viewModel.toggleCycleTask(template, today)
-                                    coroutineScope.launch {
-                                        val msg = if (isDoneToday) "「${template.title}」の本日の達成を取り消しました"
-                                                  else "「${template.title}」を完了しました！🎉"
-                                        snackbarHostState.showSnackbar(msg)
+                                    if (isDoneInCycle && !isDoneToday) {
+                                        val interval = template.intervalDays ?: 7
+                                        val lastDoneDate = template.lastCompletedAt?.let {
+                                            LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
+                                        }
+                                        val nextDate = lastDoneDate?.plusDays(interval.toLong()) ?: today
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar("「${template.title}」は今期達成済みです (次回: ${nextDate.format(DAY_OF_WEEK_FORMATTER)})")
+                                        }
+                                    } else {
+                                        viewModel.toggleCycleTask(template, today)
+                                        coroutineScope.launch {
+                                            val msg = if (isDoneToday) "「${template.title}」の本日の達成を取り消しました"
+                                                      else "「${template.title}」を完了しました！🎉"
+                                            snackbarHostState.showSnackbar(msg)
+                                        }
                                     }
                                 },
                                 onSkip = {
@@ -258,15 +273,9 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                         }
                         items(somedayTemplates, key = { it.id }) { template ->
                             val isDoneToday = remember(allItems, template.id, today) {
-                                val lastDoneDate = template.lastCompletedAt?.let {
-                                    LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
-                                }
-                                if (lastDoneDate == today) true
-                                else {
-                                    allItems.any {
-                                        it.isDone && it.templateId == template.id && it.completedAt != null &&
-                                        LocalDateTime.ofInstant(Instant.ofEpochMilli(it.completedAt), zone).toLocalDate() == today
-                                    }
+                                allItems.any {
+                                    it.isDone && it.templateId == template.id && it.completedAt != null &&
+                                    LocalDateTime.ofInstant(Instant.ofEpochMilli(it.completedAt), zone).toLocalDate() == today
                                 }
                             }
                             MainTaskStyleCycleCard(
@@ -364,6 +373,7 @@ fun MainTaskStyleCycleCard(
     template: TemplateEntity,
     today: LocalDate,
     isDoneToday: Boolean,
+    isDoneInCycle: Boolean = isDoneToday,
     streak: Int = 0,
     onClick: () -> Unit,
     onToggleToday: () -> Unit,
@@ -383,11 +393,15 @@ fun MainTaskStyleCycleCard(
 
     val isOverdue = !isSomeday && elapsedDays != null && elapsedDays > interval
     val isDueToday = !isSomeday && ((elapsedDays != null && elapsedDays == interval) || lastDoneDate == null)
+    val isSkippedToday = !isSomeday && elapsedDays != null && elapsedDays == 0 && !isDoneToday && !isDoneInCycle
+
+    val isChecked = if (isSomeday) isDoneToday else isDoneInCycle
 
     val statusColor = when {
         isSomeday -> Color(0xFF9CA3AF)
         isOverdue -> Color(0xFFEF4444)
         isDueToday -> Color(0xFFF59E0B)
+        isSkippedToday -> Color(0xFF6B7280)
         else -> Color(0xFF10B981)
     }
 
@@ -396,13 +410,17 @@ fun MainTaskStyleCycleCard(
 
     val timingText = when {
         isSomeday -> if (lastDoneDate != null) "前回 ${lastDoneDate.format(DAY_OF_WEEK_FORMATTER)}" else "日付未定 · いつでも"
+        isDoneToday -> "本日完了 · 次回まであと${daysUntilDue}日 (${nextDueDate.format(DAY_OF_WEEK_FORMATTER)})"
+        isDoneInCycle -> "今期達成済 · 次回まであと${daysUntilDue}日 (${nextDueDate.format(DAY_OF_WEEK_FORMATTER)})"
+        isSkippedToday -> "スキップ済 · 次回 ${nextDueDate.format(DAY_OF_WEEK_FORMATTER)}"
         isOverdue -> "${-daysUntilDue}日超過 · 前回 ${lastDoneDate!!.format(DAY_OF_WEEK_FORMATTER)}"
-        isDueToday -> if (lastDoneDate == null) "今日から開始予定" else "今日予定"
+        isDueToday -> if (lastDoneDate == null) "今日から開始予定" else "今日期日"
         else -> "あと${daysUntilDue}日 · ${nextDueDate.format(DAY_OF_WEEK_FORMATTER)}"
     }
 
     val timingColor = when {
         isSomeday -> colors.textSecondary
+        isSkippedToday -> colors.textSecondary
         isOverdue -> Color(0xFFEF4444)
         isDueToday -> Color(0xFFF59E0B)
         else -> Color(0xFF10B981)
@@ -531,14 +549,20 @@ fun MainTaskStyleCycleCard(
             }
 
             // Circular Checkbox
+            val checkBorderColor = when {
+                isChecked -> Color.Transparent
+                isOverdue -> Color(0xFFEF4444)
+                isDueToday -> Color(0xFFF59E0B)
+                else -> colors.border
+            }
             Box(
                 modifier = Modifier
                     .size(32.dp)
                     .clip(CircleShape)
-                    .background(if (isDoneToday) Color(0xFF10B981) else Color.Transparent)
+                    .background(if (isChecked) Color(0xFF10B981) else Color.Transparent)
                     .border(
-                        width = if (isDoneToday) 0.dp else 2.dp,
-                        color = if (isDoneToday) Color.Transparent else colors.border,
+                        width = if (isChecked) 0.dp else 2.dp,
+                        color = checkBorderColor,
                         shape = CircleShape
                     )
                     .clickable {
@@ -547,10 +571,10 @@ fun MainTaskStyleCycleCard(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                if (isDoneToday) {
+                if (isChecked) {
                     Icon(
                         Icons.Default.Check,
-                        contentDescription = "本日完了",
+                        contentDescription = if (isDoneToday) "本日完了" else "今期達成済",
                         tint = Color.White,
                         modifier = Modifier.size(18.dp)
                     )

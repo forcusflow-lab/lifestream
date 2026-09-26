@@ -117,8 +117,8 @@ fun TimelineScreen(viewModel: MainViewModel) {
             }
             val elapsed = if (lastDoneDate != null) ChronoUnit.DAYS.between(lastDoneDate, today) else 999L
             val interval = tmpl.intervalDays ?: 7
-            if (elapsed >= (interval - 1)) {
-                Triple(tmpl, elapsed >= interval, elapsed)
+            if (elapsed >= interval) {
+                Triple(tmpl, elapsed > interval, elapsed)
             } else null
         }
     }
@@ -245,10 +245,23 @@ fun TimelineScreen(viewModel: MainViewModel) {
                             "${t.iconKey ?: "⏱️"} %02d:%02d 計測中".format(mins, secs)
                         }
                         isTimer -> {
-                            val todayTimerSec = tItemsToday.mapNotNull { it.durationSeconds }.sum()
-                            val todayMins = (todayTimerSec + 30) / 60
-                            if (todayMins > 0) {
-                                "${t.iconKey ?: "⏱️"} ${t.title} (${todayMins}分)"
+                            val todayTimerSec = tItemsToday.sumOf { item ->
+                                item.durationSeconds
+                                    ?: "\\((\\d+)分\\)".toRegex().find(item.title)?.groupValues?.get(1)?.toIntOrNull()?.times(60)
+                                    ?: "\\((\\d+)秒\\)".toRegex().find(item.title)?.groupValues?.get(1)?.toIntOrNull()
+                                    ?: 0
+                            }
+                            if (todayTimerSec > 0) {
+                                val timeText = when {
+                                    todayTimerSec < 60 -> "${todayTimerSec}秒"
+                                    todayTimerSec < 3600 -> "${(todayTimerSec + 30) / 60}分"
+                                    else -> {
+                                        val hrs = todayTimerSec / 3600
+                                        val mins = (todayTimerSec % 3600) / 60
+                                        if (mins > 0) "${hrs}時間${mins}分" else "${hrs}時間"
+                                    }
+                                }
+                                "${t.iconKey ?: "⏱️"} ${t.title} (${timeText})"
                             } else {
                                 "${t.iconKey ?: "⏱️"} ${t.title}"
                             }
@@ -939,7 +952,7 @@ fun TaskitoPeriodicSurfacedRow(
 ) {
     val colors = LifeStreamTheme.colors
     val badgeColor = if (isOverdue) colors.statusOverdue else colors.statusTarget
-    val badgeText = if (isOverdue) "期限超過" else "本日推奨"
+    val badgeText = if (isOverdue) "期限超過" else "今日期日"
 
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
