@@ -5,6 +5,8 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+val autoVersionCode = (System.currentTimeMillis() / 1000).toInt()
+
 android {
     namespace = "com.forcusflow.lifestream"
     compileSdk = 34
@@ -13,7 +15,7 @@ android {
         applicationId = "com.forcusflow.lifestream"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
+        versionCode = autoVersionCode
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

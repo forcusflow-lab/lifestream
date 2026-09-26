@@ -3,11 +3,13 @@ package com.forcusflow.lifestream.ui.screens
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -74,6 +76,58 @@ fun HistoryScreen(viewModel: MainViewModel) {
 
     val totalAmount = remember(selectedDateItems) {
         selectedDateItems.mapNotNull { it.amount }.sum()
+    }
+
+    val monthStart = remember(currentYearMonth) { currentYearMonth.atDay(1) }
+    val monthEnd = remember(currentYearMonth) { currentYearMonth.atEndOfMonth() }
+    val thisMonthItems = remember(allItems, monthStart, monthEnd) {
+        allItems.filter { item ->
+            val t = item.completedAt ?: item.scheduledAt ?: return@filter false
+            val date = LocalDateTime.ofInstant(Instant.ofEpochMilli(t), zone).toLocalDate()
+            !date.isBefore(monthStart) && !date.isAfter(monthEnd)
+        }
+    }
+    val habitMonthlyStats = remember(thisMonthItems, templates) {
+        val doneItems = thisMonthItems.filter { it.isDone }
+        val grouped = doneItems.groupBy { item ->
+            templates.find { it.id == item.templateId } ?: templates.find { it.title == item.title }
+        }
+        grouped.entries.mapNotNull { (template, items) ->
+            val title = template?.title ?: items.first().title
+            val icon = template?.iconKey ?: "📌"
+            val colorHex = template?.colorHex
+            val actionType = template?.actionType ?: "CHECK"
+            val unit = template?.unit?.ifBlank { null } ?: when (actionType) {
+                "COUNT" -> "杯"
+                "TIMER" -> "分"
+                else -> "回"
+            }
+            val countValSum = items.mapNotNull { it.countValue }.sum()
+            val totalCount = if (countValSum > 0) countValSum else items.size
+            val durationSecSum = items.mapNotNull { it.durationSeconds }.sum()
+
+            val achievementText = when (actionType) {
+                "TIMER" -> {
+                    val mins = if (durationSecSum > 0) durationSecSum / 60 else items.size * 15
+                    if (mins >= 60) "%.1f時間 (%d回)".format(mins / 60.0, items.size)
+                    else "${mins}分 (%d回)".format(items.size)
+                }
+                "COUNT" -> {
+                    "$totalCount $unit (${items.size}回)"
+                }
+                else -> {
+                    "${items.size} 回"
+                }
+            }
+
+            HabitMonthlyStatItem(
+                title = title,
+                icon = icon,
+                colorHex = colorHex,
+                achievementText = achievementText,
+                totalLogs = items.size
+            )
+        }.sortedByDescending { it.totalLogs }
     }
 
     Scaffold(
@@ -155,228 +209,78 @@ fun HistoryScreen(viewModel: MainViewModel) {
                         )
                     }
                 } else {
-                    // Calendar and stats items
+                    // Minimalist Monthly Summary Bar
                     item {
-                        // Monthly Life Insights Card
-                        val monthStart = remember(currentYearMonth) { currentYearMonth.atDay(1) }
-                        val monthEnd = remember(currentYearMonth) { currentYearMonth.atEndOfMonth() }
-                        val thisMonthItems = remember(allItems, monthStart, monthEnd) {
-                            allItems.filter { item ->
-                                val t = item.completedAt ?: item.scheduledAt ?: return@filter false
-                                val date = LocalDateTime.ofInstant(Instant.ofEpochMilli(t), zone).toLocalDate()
-                                !date.isBefore(monthStart) && !date.isAfter(monthEnd)
-                            }
-                        }
                         val thisMonthDoneCount = thisMonthItems.count { it.isDone }
                         val thisMonthSpend = thisMonthItems.mapNotNull { it.amount }.sum()
-                        val topHabits = remember(thisMonthItems) {
-                            thisMonthItems.filter { it.isDone }
-                                .groupBy { it.title }
-                                .entries
-                                .sortedByDescending { it.value.size }
-                                .take(3)
-                                .map { Pair(it.key, it.value.size) }
-                        }
+                        val thisMonthFocusSeconds = thisMonthItems.mapNotNull { it.durationSeconds }.sum()
 
-                        Box(
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(bottom = 12.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .border(1.dp, colors.border, RoundedCornerShape(16.dp))
-                                .background(colors.card)
-                                .padding(16.dp)
+                                .padding(bottom = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Column {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "📊 ${currentYearMonth.monthValue}月のライフインサイト",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.textPrimary
-                                    )
-                                    Text(
-                                        text = "${currentYearMonth.year}年",
-                                        fontSize = 11.sp,
-                                        color = colors.textSecondary
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    // Done count
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(colors.statusDone.copy(alpha = 0.08f))
-                                            .padding(10.dp)
-                                    ) {
-                                        Column {
-                                            Text(
-                                                text = "$thisMonthDoneCount",
-                                                fontSize = 20.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = colors.statusDone
-                                            )
-                                            Text("完了記録", fontSize = 11.sp, color = colors.textSecondary)
-                                        }
-                                    }
-                                    // Spending
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(colors.statusTarget.copy(alpha = 0.08f))
-                                            .padding(10.dp)
-                                    ) {
-                                        Column {
-                                            Text(
-                                                text = "¥%,d".format(thisMonthSpend),
-                                                fontSize = 20.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = colors.statusTarget
-                                            )
-                                            Text("今月の支出", fontSize = 11.sp, color = colors.textSecondary)
-                                        }
-                                    }
-                                }
-                                if (topHabits.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(10.dp))
-                                    Text(
-                                        text = "習慣化トップランキング",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = colors.textSecondary
-                                    )
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        val medals = listOf("🥇", "🥈", "🥉")
-                                        topHabits.forEachIndexed { idx, habit ->
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .background(colors.background)
-                                                    .border(0.5.dp, colors.border, RoundedCornerShape(8.dp))
-                                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                                            ) {
-                                                Text(
-                                                    text = "${medals.getOrElse(idx) { "•" }} ${habit.first} (${habit.second}回)",
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Medium,
-                                                    color = colors.textPrimary,
-                                                    maxLines = 1
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Weekly Activity Summary Card
-                        val weekStart = remember(today) {
-                            today.minusDays(today.dayOfWeek.value.toLong() - 1)
-                        }
-                        val weekEnd = remember(weekStart) { weekStart.plusDays(6) }
-                        val thisWeekItems = remember(allItems, weekStart, weekEnd) {
-                            allItems.filter { item ->
-                                val t = item.completedAt ?: item.scheduledAt ?: return@filter false
-                                val date = LocalDateTime.ofInstant(Instant.ofEpochMilli(t), zone).toLocalDate()
-                                !date.isBefore(weekStart) && !date.isAfter(weekEnd)
-                            }
-                        }
-                        val weekDoneCount = thisWeekItems.count { it.isDone }
-                        val weekTodoCount = thisWeekItems.count { !it.isDone }
-                        val weekTotalAmount = thisWeekItems.mapNotNull { it.amount }.sum()
-
-                        if (thisWeekItems.isNotEmpty()) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 12.dp)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .border(1.dp, colors.border, RoundedCornerShape(14.dp))
-                                    .background(colors.card)
-                                    .padding(14.dp)
+                            // 完了記録
+                            Card(
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = colors.card),
+                                border = BorderStroke(1.dp, colors.border),
+                                modifier = Modifier.weight(1f)
                             ) {
-                                Column {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = "📊 今週のサマリー",
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = colors.textPrimary
-                                        )
-                                        Text(
-                                            text = "${weekStart.monthValue}/${weekStart.dayOfMonth} 〜 ${weekEnd.monthValue}/${weekEnd.dayOfMonth}",
-                                            fontSize = 11.sp,
-                                            color = colors.textSecondary
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
-                                        // Done count
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = "$weekDoneCount",
-                                                fontSize = 22.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = colors.statusDone
-                                            )
-                                            Text(
-                                                text = "完了",
-                                                fontSize = 11.sp,
-                                                color = colors.textSecondary
-                                            )
-                                        }
-                                        // ToDo remaining
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = "$weekTodoCount",
-                                                fontSize = 22.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = colors.primary
-                                            )
-                                            Text(
-                                                text = "予定",
-                                                fontSize = 11.sp,
-                                                color = colors.textSecondary
-                                            )
-                                        }
-                                        // Spending
-                                        if (weekTotalAmount > 0) {
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = "¥$weekTotalAmount",
-                                                    fontSize = 18.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = colors.statusTarget
-                                                )
-                                                Text(
-                                                    text = "支出合計",
-                                                    fontSize = 11.sp,
-                                                    color = colors.textSecondary
-                                                )
-                                            }
-                                        }
-                                    }
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text(
+                                        text = "$thisMonthDoneCount 件",
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.statusDone
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text("完了記録", fontSize = 11.sp, color = colors.textSecondary)
+                                }
+                            }
+
+                            // 集中・作業時間
+                            val focusHours = thisMonthFocusSeconds / 3600.0
+                            val focusText = when {
+                                thisMonthFocusSeconds == 0 -> "0分"
+                                focusHours >= 1.0 -> "%.1f時間".format(focusHours)
+                                else -> "${thisMonthFocusSeconds / 60}分"
+                            }
+                            Card(
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = colors.card),
+                                border = BorderStroke(1.dp, colors.border),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text(
+                                        text = focusText,
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.primary
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text("集中・作業", fontSize = 11.sp, color = colors.textSecondary)
+                                }
+                            }
+
+                            // 今月の支出
+                            Card(
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = colors.card),
+                                border = BorderStroke(1.dp, colors.border),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text(
+                                        text = "¥%,d".format(thisMonthSpend),
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.statusTarget
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text("今月の支出", fontSize = 11.sp, color = colors.textSecondary)
                                 }
                             }
                         }
@@ -656,6 +560,35 @@ fun HistoryScreen(viewModel: MainViewModel) {
                             )
                         }
                     }
+
+                    // Option B: 今月の習慣・ルーティン実績（縦型ブレイクダウンリスト）
+                    if (habitMonthlyStats.isNotEmpty()) {
+                        item {
+                            Spacer(modifier = Modifier.height(24.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "✨ ${currentYearMonth.monthValue}月の習慣・ルーティン実績",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.textPrimary
+                                )
+                                Text(
+                                    text = "計 ${habitMonthlyStats.size}種",
+                                    fontSize = 11.sp,
+                                    color = colors.textSecondary
+                                )
+                            }
+                        }
+                        items(habitMonthlyStats, key = { it.title }) { stat ->
+                            HabitMonthlyBreakdownRow(stat = stat)
+                        }
+                    }
                 }
             }
         }
@@ -924,6 +857,75 @@ fun TaskitoHistoryStemRow(
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = colors.primary
+                )
+            }
+        }
+    }
+}
+
+data class HabitMonthlyStatItem(
+    val title: String,
+    val icon: String,
+    val colorHex: String?,
+    val achievementText: String,
+    val totalLogs: Int
+)
+
+@Composable
+fun HabitMonthlyBreakdownRow(stat: HabitMonthlyStatItem) {
+    val colors = LifeStreamTheme.colors
+    val accentColor = stat.colorHex?.let {
+        runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull()
+    } ?: colors.primary
+
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = colors.card),
+        border = BorderStroke(1.dp, colors.border),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(accentColor.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(stat.icon, fontSize = 17.sp)
+            }
+
+            Spacer(modifier = Modifier.width(10.dp))
+
+            Text(
+                text = stat.title,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.textPrimary,
+                modifier = Modifier.weight(1f)
+            )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(colors.background)
+                    .border(0.5.dp, colors.border, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
+            ) {
+                Text(
+                    text = stat.achievementText,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = accentColor
                 )
             }
         }

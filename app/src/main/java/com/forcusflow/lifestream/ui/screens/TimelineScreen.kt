@@ -523,8 +523,8 @@ fun TimelineScreen(viewModel: MainViewModel) {
         AddItemBottomSheet(
             templates = templates,
             onDismiss = { showAddSheet = false },
-            onSave = { title, isDone, scheduledAt, completedAt, amount, note, templateId ->
-                viewModel.addTimelineItem(title, isDone, scheduledAt, completedAt, amount, note, templateId)
+            onSave = { title, isDone, scheduledAt, completedAt, amount, note, templateId, durationSeconds, countValue ->
+                viewModel.addTimelineItem(title, isDone, scheduledAt, completedAt, amount, note, templateId, durationSeconds, countValue)
             }
         )
     }

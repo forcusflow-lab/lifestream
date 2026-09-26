@@ -107,14 +107,19 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
 
     // Sort periodic tasks: Overdue first, then Due Soon, then On Track
     val periodicTemplates = remember(templates, today) {
-        templates.filter { it.type == "INTERVAL" }.sortedByDescending { template ->
-            val lastDoneDate = template.lastCompletedAt?.let {
-                LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
+        templates.filter { it.type == "INTERVAL" && it.intervalDays != null && it.intervalDays > 0 }
+            .sortedByDescending { template ->
+                val lastDoneDate = template.lastCompletedAt?.let {
+                    LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
+                }
+                val elapsed = if (lastDoneDate != null) ChronoUnit.DAYS.between(lastDoneDate, today) else 999L
+                val interval = template.intervalDays ?: 7
+                elapsed - interval
             }
-            val elapsed = if (lastDoneDate != null) ChronoUnit.DAYS.between(lastDoneDate, today) else 999L
-            val interval = template.intervalDays ?: 7
-            elapsed - interval
-        }
+    }
+
+    val somedayTemplates = remember(templates) {
+        templates.filter { it.type == "INTERVAL" && (it.intervalDays == null || it.intervalDays <= 0) }
     }
 
     // 7 days of current week (Monday to Sunday)
@@ -194,9 +199,9 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                     .weight(1f)
                     .padding(horizontal = 16.dp),
                 contentPadding = PaddingValues(top = 8.dp, bottom = 88.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                if (periodicTemplates.isEmpty()) {
+                if (periodicTemplates.isEmpty() && somedayTemplates.isEmpty()) {
                     item {
                         Box(
                             modifier = Modifier
@@ -211,59 +216,119 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                                     text = "周期タスクがまだありません。\n右下の「＋」ボタンから追加してみましょう！",
                                     fontSize = 14.sp,
                                     color = colors.textSecondary,
-                                    lineHeight = 20.sp
+                                    lineHeight = 20.sp,
+                                    textAlign = TextAlign.Center
                                 )
                             }
                         }
                     }
                 } else {
-                    items(periodicTemplates, key = { it.id }) { template ->
-                        val completedDates = remember(allItems, template.id) {
-                            allItems.filter {
-                                it.isDone &&
-                                it.templateId == template.id &&
-                                it.completedAt != null
-                            }.map {
-                                LocalDateTime.ofInstant(Instant.ofEpochMilli(it.completedAt!!), zone).toLocalDate()
-                            }.toSet()
-                        }
-
-                        val streak = remember(allItems, template.id) {
-                            calculateStreak(allItems, template, zone)
-                        }
-
-                        val completionRate = remember(allItems, template.id) {
-                            calculateCompletionRate(allItems, template, zone)
-                        }
-
-                        CompactUnifiedCycleTaskCard(
-                            template = template,
-                            today = today,
-                            weekDays = currentWeekDays,
-                            completedDates = completedDates,
-                            streak = streak,
-                            completionRate = completionRate,
-                            onClick = { editingTemplate = template },
-                            onToggleDate = { date ->
-                                viewModel.toggleCycleTask(template, date)
-                                coroutineScope.launch {
-                                    val dStr = "${date.monthValue}/${date.dayOfMonth}"
-                                    if (completedDates.contains(date)) {
-                                        snackbarHostState.showSnackbar("「${template.title}」($dStr) の達成を取り消しました")
-                                    } else {
-                                        snackbarHostState.showSnackbar("「${template.title}」($dStr) の達成を記録しました")
+                    if (periodicTemplates.isNotEmpty()) {
+                        items(periodicTemplates, key = { it.id }) { template ->
+                            val isDoneToday = remember(allItems, template.id, today) {
+                                val lastDoneDate = template.lastCompletedAt?.let {
+                                    LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
+                                }
+                                if (lastDoneDate == today) true
+                                else {
+                                    allItems.any {
+                                        it.isDone && it.templateId == template.id && it.completedAt != null &&
+                                        LocalDateTime.ofInstant(Instant.ofEpochMilli(it.completedAt), zone).toLocalDate() == today
                                     }
                                 }
-                            },
-                            onSkip = {
-                                viewModel.skipCycleTask(template)
-                                coroutineScope.launch {
-                                    val interval = template.intervalDays ?: 7
-                                    val nextDate = today.plusDays(interval.toLong())
-                                    snackbarHostState.showSnackbar("「${template.title}」をスキップしました (次回: ${nextDate.monthValue}/${nextDate.dayOfMonth})")
+                            }
+                            val streak = remember(allItems, template.id) {
+                                calculateStreak(allItems, template, zone)
+                            }
+                            MainTaskStyleCycleCard(
+                                template = template,
+                                today = today,
+                                isDoneToday = isDoneToday,
+                                streak = streak,
+                                onClick = { editingTemplate = template },
+                                onToggleToday = {
+                                    viewModel.toggleCycleTask(template, today)
+                                    coroutineScope.launch {
+                                        val msg = if (isDoneToday) "「${template.title}」の本日の達成を取り消しました"
+                                                  else "「${template.title}」を完了しました！🎉"
+                                        snackbarHostState.showSnackbar(msg)
+                                    }
+                                },
+                                onSkip = {
+                                    viewModel.skipCycleTask(template)
+                                    coroutineScope.launch {
+                                        val interval = template.intervalDays ?: 7
+                                        val nextDate = today.plusDays(interval.toLong())
+                                        snackbarHostState.showSnackbar("「${template.title}」をスキップしました (次回: ${nextDate.monthValue}/${nextDate.dayOfMonth})")
+                                    }
+                                }
+                            )
+                        }
+                    }
+
+                    if (somedayTemplates.isNotEmpty()) {
+                        item {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 4.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "SOMEDAY (日付未定 · いつか)",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.textSecondary,
+                                    letterSpacing = 0.5.sp
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(colors.card)
+                                        .border(0.5.dp, colors.border, RoundedCornerShape(10.dp))
+                                        .padding(horizontal = 6.dp, vertical = 1.dp)
+                                ) {
+                                    Text(
+                                        text = "${somedayTemplates.size}",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.textSecondary
+                                    )
                                 }
                             }
-                        )
+                        }
+                        items(somedayTemplates, key = { it.id }) { template ->
+                            val isDoneToday = remember(allItems, template.id, today) {
+                                val lastDoneDate = template.lastCompletedAt?.let {
+                                    LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
+                                }
+                                if (lastDoneDate == today) true
+                                else {
+                                    allItems.any {
+                                        it.isDone && it.templateId == template.id && it.completedAt != null &&
+                                        LocalDateTime.ofInstant(Instant.ofEpochMilli(it.completedAt), zone).toLocalDate() == today
+                                    }
+                                }
+                            }
+                            MainTaskStyleCycleCard(
+                                template = template,
+                                today = today,
+                                isDoneToday = isDoneToday,
+                                streak = 0,
+                                onClick = { editingTemplate = template },
+                                onToggleToday = {
+                                    viewModel.toggleCycleTask(template, today)
+                                    coroutineScope.launch {
+                                        val msg = if (isDoneToday) "「${template.title}」の本日の達成を取り消しました"
+                                                  else "「${template.title}」を完了しました！🎉"
+                                        snackbarHostState.showSnackbar(msg)
+                                    }
+                                },
+                                onSkip = {}
+                            )
+                        }
                     }
                 }
             }
@@ -334,87 +399,114 @@ val DEFAULT_COLOR_OPTIONS = listOf(
 )
 
 /**
- * 1行超コンパクト周期カード (高さ ~60dp) — 商用レベル拡張版
- * ストリーク表示 + 達成率インジケーター + 24dp×28dp 曜日直接トグル
+ * MainTaskスタイルの周期・習慣カード
+ * 16dp角丸、左側カラーインジケーターバー、残日数・予定表示、右側ワンタップ達成トグル
  */
 @Composable
-fun CompactUnifiedCycleTaskCard(
+fun MainTaskStyleCycleCard(
     template: TemplateEntity,
     today: LocalDate,
-    weekDays: List<LocalDate>,
-    completedDates: Set<LocalDate>,
+    isDoneToday: Boolean,
     streak: Int = 0,
-    completionRate: Float = 0f,
     onClick: () -> Unit,
-    onToggleDate: (LocalDate) -> Unit,
+    onToggleToday: () -> Unit,
     onSkip: () -> Unit
 ) {
     val colors = LifeStreamTheme.colors
     val zone = ZoneId.systemDefault()
     val haptic = LocalHapticFeedback.current
 
+    val isSomeday = template.intervalDays == null || template.intervalDays <= 0
+    val interval = template.intervalDays ?: 7
+
     val lastDoneDate = template.lastCompletedAt?.let {
         LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
     }
     val elapsedDays = if (lastDoneDate != null) ChronoUnit.DAYS.between(lastDoneDate, today).toInt() else null
-    val interval = template.intervalDays ?: 7
-    val isOverdue = elapsedDays != null && elapsedDays >= interval
-    val isDueToday = elapsedDays != null && elapsedDays == (interval - 1)
 
-    val statusBadgeColor = when {
-        isOverdue -> colors.statusOverdue
-        isDueToday -> colors.statusWarning
-        lastDoneDate != null -> colors.statusDone
-        else -> colors.textSecondary
+    val isOverdue = !isSomeday && elapsedDays != null && elapsedDays > interval
+    val isDueToday = !isSomeday && ((elapsedDays != null && elapsedDays == interval) || lastDoneDate == null)
+
+    val statusColor = when {
+        isSomeday -> Color(0xFF9CA3AF)
+        isOverdue -> Color(0xFFEF4444)
+        isDueToday -> Color(0xFFF59E0B)
+        else -> Color(0xFF10B981)
     }
 
-    val statusSubtitle = when {
-        isOverdue -> "${elapsedDays!! - interval}日超過"
-        isDueToday -> "今日予定"
-        lastDoneDate != null && elapsedDays != null -> "前回 ${lastDoneDate.monthValue}/${lastDoneDate.dayOfMonth}"
-        else -> "未着手"
+    val daysUntilDue = if (elapsedDays != null) interval - elapsedDays else 0
+    val nextDueDate = if (lastDoneDate != null) lastDoneDate.plusDays(interval.toLong()) else today
+
+    val timingText = when {
+        isSomeday -> if (lastDoneDate != null) "前回 ${lastDoneDate.monthValue}/${lastDoneDate.dayOfMonth}" else "日付未定 · いつでも"
+        isOverdue -> "${-daysUntilDue}日超過 · 前回 ${lastDoneDate!!.monthValue}/${lastDoneDate.dayOfMonth}"
+        isDueToday -> if (lastDoneDate == null) "今日から開始予定" else "今日予定"
+        else -> "あと${daysUntilDue}日 · ${nextDueDate.monthValue}/${nextDueDate.dayOfMonth}"
+    }
+
+    val timingColor = when {
+        isSomeday -> colors.textSecondary
+        isOverdue -> Color(0xFFEF4444)
+        isDueToday -> Color(0xFFF59E0B)
+        else -> Color(0xFF10B981)
+    }
+
+    val cycleText = if (isSomeday) {
+        "Someday"
+    } else {
+        if (interval % 7 == 0) "${interval / 7}週間ごと" else "${interval}日ごと"
     }
 
     val accentColor = template.colorHex?.let {
         runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull()
-    } ?: statusBadgeColor
+    } ?: statusColor
 
     Card(
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = colors.card),
-        border = BorderStroke(1.dp, if (isOverdue) statusBadgeColor.copy(alpha = 0.5f) else colors.border),
+        border = BorderStroke(1.dp, if (isOverdue) statusColor.copy(alpha = 0.45f) else colors.border),
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Column(
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Left Status Pill Indicator
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                    .width(4.dp)
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(statusColor)
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Emoji / Icon circle
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(accentColor.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
             ) {
-                // === 1行目: アイコン + タイトル(広々表示) + 周期・ストリークバッジ + スキップボタン ===
+                Text(
+                    text = template.iconKey ?: "🧹",
+                    fontSize = 20.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Info Column
+            Column(modifier = Modifier.weight(1f)) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // アイコン (32dp)
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(accentColor.copy(alpha = 0.12f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = template.iconKey ?: "🧹",
-                            fontSize = 17.sp
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(10.dp))
-
-                    // タイトル（十分な幅を確保）
                     Text(
                         text = template.title,
                         fontSize = 15.sp,
@@ -422,189 +514,88 @@ fun CompactUnifiedCycleTaskCard(
                         color = colors.textPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f, fill = false)
                     )
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    // 周期バッジ
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(colors.background)
-                            .border(0.5.dp, colors.border, RoundedCornerShape(6.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = "${interval}日ごと",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = colors.textSecondary
-                        )
-                    }
-
-                    // 連続達成ストリーク (2回以上なら表示)
-                    if (streak >= 2) {
+                    if (streak >= 2 && !isSomeday) {
                         Spacer(modifier = Modifier.width(6.dp))
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0xFFF59E0B).copy(alpha = 0.15f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = "🔥${streak}",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFF59E0B)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    // スキップボタン [↷]
-                    IconButton(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onSkip()
-                        },
-                        modifier = Modifier.size(28.dp)
-                    ) {
                         Text(
-                            text = "↷",
-                            fontSize = 15.sp,
+                            text = "🔥$streak",
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = colors.textSecondary
+                            color = Color(0xFFF59E0B)
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(3.dp))
 
-                // === 2行目: ステータス説明（左） ＋ 7曜日直接チェックピル（右） ===
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 42.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    // 左側: ステータス
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(statusBadgeColor.copy(alpha = 0.15f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = when {
-                                    isOverdue -> "期限超過"
-                                    isDueToday -> "今日予定"
-                                    else -> "順調"
-                                },
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = statusBadgeColor
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = statusSubtitle,
-                            fontSize = 11.sp,
-                            color = if (isOverdue) statusBadgeColor else colors.textSecondary
-                        )
-                    }
-
-                    // 右側: 7曜日 インタラクティブ・チェックピル (24dp×28dp, 11sp Bold)
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(3.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        val dayInitial = listOf("月", "火", "水", "木", "金", "土", "日")
-                        weekDays.forEachIndexed { idx, date ->
-                            val isDone = completedDates.contains(date) || (lastDoneDate == date)
-                            val isCurDay = (date == today)
-                            val isFuture = date.isAfter(today)
-
-                            Box(
-                                modifier = Modifier
-                                    .width(24.dp)
-                                    .height(28.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(
-                                        when {
-                                            isDone -> Color(0xFF16A34A)
-                                            isCurDay -> colors.primary.copy(alpha = 0.15f)
-                                            else -> colors.background
-                                        }
-                                    )
-                                    .border(
-                                        width = if (isCurDay) 1.5.dp else if (isDone) 1.dp else 0.5.dp,
-                                        color = when {
-                                            isDone -> Color(0xFF16A34A)
-                                            isCurDay -> colors.primary
-                                            isFuture -> colors.border.copy(alpha = 0.3f)
-                                            else -> colors.border
-                                        },
-                                        shape = RoundedCornerShape(6.dp)
-                                    )
-                                    .clickable(enabled = !isFuture) {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        onToggleDate(date)
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center
-                                ) {
-                                    Text(
-                                        text = dayInitial[idx],
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isCurDay || isDone) FontWeight.Bold else FontWeight.Medium,
-                                        color = when {
-                                            isDone -> Color.White
-                                            isCurDay -> colors.primary
-                                            isFuture -> colors.textSecondary.copy(alpha = 0.4f)
-                                            else -> colors.textPrimary
-                                        }
-                                    )
-                                    if (isDone) {
-                                        Text(
-                                            text = "✓",
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = Color.White
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    Text(
+                        text = timingText,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = timingColor
+                    )
+                    Text(
+                        text = "·",
+                        fontSize = 12.sp,
+                        color = colors.textSecondary.copy(alpha = 0.6f)
+                    )
+                    Text(
+                        text = cycleText,
+                        fontSize = 11.sp,
+                        color = colors.textSecondary
+                    )
                 }
             }
 
-            // Completion rate bar (thin, at bottom of card)
-            if (completionRate > 0f) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(3.dp)
-                        .background(colors.border.copy(alpha = 0.4f))
+            // Quick Actions: Skip & Complete Checkbox
+            if (!isSomeday) {
+                IconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onSkip()
+                    },
+                    modifier = Modifier.size(32.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(completionRate)
-                            .fillMaxHeight()
-                            .background(
-                                when {
-                                    completionRate >= 0.8f -> colors.statusDone
-                                    completionRate >= 0.5f -> colors.statusWarning
-                                    else -> colors.statusOverdue.copy(alpha = 0.6f)
-                                }
-                            )
+                    Text(
+                        text = "↷",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.textSecondary
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+            } else {
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+
+            // Large Circular Checkbox
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(if (isDoneToday) Color(0xFF10B981) else Color.Transparent)
+                    .border(
+                        width = if (isDoneToday) 0.dp else 2.dp,
+                        color = if (isDoneToday) Color.Transparent else colors.border,
+                        shape = CircleShape
+                    )
+                    .clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onToggleToday()
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                if (isDoneToday) {
+                    Icon(
+                        Icons.Default.Check,
+                        contentDescription = "本日完了",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
@@ -614,31 +605,33 @@ fun CompactUnifiedCycleTaskCard(
 
 /**
  * 実施周期セレクター（ステッパー ＋ プリセットピル ＋ 自然言語プレビュー）
- * 人気習慣管理アプリの定石に準拠し、直感的に間隔を設定できるUI
+ * 日付未定 (Someday) の設定にも完全対応
  */
 @Composable
 fun PeriodicIntervalSelector(
-    intervalDays: Int,
-    onIntervalChange: (Int) -> Unit
+    intervalDays: Int?,
+    onIntervalChange: (Int?) -> Unit
 ) {
     val colors = LifeStreamTheme.colors
     val haptic = LocalHapticFeedback.current
 
-    val presets = listOf(
+    val presets = listOf<Pair<Int?, String>>(
+        Pair(null, "日付未定 (Someday)"),
+        Pair(1, "1日 (毎日)"),
         Pair(2, "2日"),
         Pair(3, "3日"),
-        Pair(5, "5日"),
         Pair(7, "7日 (毎週)"),
-        Pair(10, "10日"),
         Pair(14, "14日 (隔週)"),
         Pair(30, "30日 (毎月)")
     )
 
-    val explanation = when (intervalDays) {
-        1 -> "毎日（1日ごと）に推奨されます"
-        7 -> "毎週（前回完了から7日後）に自動で今日タブに推奨・浮上します"
-        14 -> "隔週（前回完了から14日後）に自動で今日タブに推奨・浮上します"
-        30 -> "毎月（前回完了から30日後）に自動で今日タブに推奨・浮上します"
+    val isSomeday = intervalDays == null || intervalDays <= 0
+    val explanation = when {
+        isSomeday -> "周期を設定せず、空いた時間や気が向いた時にやるタスク（Someday）として管理します"
+        intervalDays == 1 -> "毎日（1日ごと）に推奨されます"
+        intervalDays == 7 -> "毎週（前回完了から7日後）に自動で今日タブに推奨・浮上します"
+        intervalDays == 14 -> "隔週（前回完了から14日後）に自動で今日タブに推奨・浮上します"
+        intervalDays == 30 -> "毎月（前回完了から30日後）に自動で今日タブに推奨・浮上します"
         else -> "前回完了から【${intervalDays}日後】に自動で今日タブに推奨・浮上します"
     }
 
@@ -664,12 +657,14 @@ fun PeriodicIntervalSelector(
         ) {
             FilledTonalIconButton(
                 onClick = {
-                    if (intervalDays > 1) {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    if (intervalDays != null && intervalDays > 1) {
                         onIntervalChange(intervalDays - 1)
+                    } else {
+                        onIntervalChange(null)
                     }
                 },
-                enabled = intervalDays > 1,
+                enabled = !isSomeday,
                 modifier = Modifier.size(36.dp)
             ) {
                 Text("−", fontSize = 20.sp, fontWeight = FontWeight.Bold)
@@ -677,13 +672,13 @@ fun PeriodicIntervalSelector(
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "${intervalDays} 日ごと",
-                    fontSize = 17.sp,
+                    text = if (isSomeday) "日付未定 (Someday)" else "${intervalDays} 日ごと",
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     color = colors.textPrimary
                 )
                 Text(
-                    text = if (intervalDays % 7 == 0) "${intervalDays / 7}週間ごと" else "サイクル: ${intervalDays}日間",
+                    text = if (isSomeday) "いつでも取り組める" else if (intervalDays!! % 7 == 0) "${intervalDays / 7}週間ごと" else "サイクル: ${intervalDays}日間",
                     fontSize = 11.sp,
                     color = colors.textSecondary
                 )
@@ -691,12 +686,14 @@ fun PeriodicIntervalSelector(
 
             FilledTonalIconButton(
                 onClick = {
-                    if (intervalDays < 365) {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    if (isSomeday) {
+                        onIntervalChange(1)
+                    } else if (intervalDays != null && intervalDays < 365) {
                         onIntervalChange(intervalDays + 1)
                     }
                 },
-                enabled = intervalDays < 365,
+                enabled = isSomeday || (intervalDays != null && intervalDays < 365),
                 modifier = Modifier.size(36.dp)
             ) {
                 Text("＋", fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -713,7 +710,7 @@ fun PeriodicIntervalSelector(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             presets.forEach { (days, label) ->
-                val isSelected = intervalDays == days
+                val isSelected = if (days == null) isSomeday else intervalDays == days
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
@@ -778,7 +775,7 @@ fun EditPeriodicTaskBottomSheet(
     val today = LocalDate.now()
 
     var title by remember { mutableStateOf(template.title) }
-    var intervalDays by remember { mutableStateOf(template.intervalDays ?: 7) }
+    var intervalDays by remember { mutableStateOf<Int?>(template.intervalDays) }
     var iconKey by remember { mutableStateOf(template.iconKey ?: "🧹") }
     var selectedColorHex by remember { mutableStateOf(template.colorHex ?: "#10B981") }
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
@@ -826,7 +823,7 @@ fun EditPeriodicTaskBottomSheet(
                     onClick = {
                         val updated = template.copy(
                             title = title.trim(),
-                            intervalDays = intervalDays,
+                            intervalDays = if (intervalDays != null && intervalDays!! > 0) intervalDays else null,
                             iconKey = iconKey,
                             colorHex = selectedColorHex
                         )
@@ -1116,11 +1113,11 @@ fun EditPeriodicTaskBottomSheet(
 @Composable
 fun AddPeriodicTaskDialog(
     onDismiss: () -> Unit,
-    onAdd: (title: String, intervalDays: Int, iconKey: String, colorHex: String) -> Unit
+    onAdd: (title: String, intervalDays: Int?, iconKey: String, colorHex: String) -> Unit
 ) {
     val colors = LifeStreamTheme.colors
     var title by remember { mutableStateOf("") }
-    var intervalDays by remember { mutableStateOf(7) }
+    var intervalDays by remember { mutableStateOf<Int?>(7) }
     var iconKey by remember { mutableStateOf("🧹") }
     var selectedColorHex by remember { mutableStateOf("#8C5A3C") }
     val iconOptions = DEFAULT_ICON_OPTIONS
@@ -1239,7 +1236,12 @@ fun AddPeriodicTaskDialog(
             Button(
                 onClick = {
                     if (title.isNotBlank()) {
-                        onAdd(title.trim(), intervalDays, iconKey, selectedColorHex)
+                        onAdd(
+                            title.trim(),
+                            if (intervalDays != null && intervalDays!! > 0) intervalDays else null,
+                            iconKey,
+                            selectedColorHex
+                        )
                     }
                 },
                 enabled = title.isNotBlank(),
