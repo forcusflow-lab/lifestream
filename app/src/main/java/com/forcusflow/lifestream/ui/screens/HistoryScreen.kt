@@ -69,6 +69,9 @@ fun HistoryScreen(viewModel: MainViewModel) {
 
     val currentMonthYearText = "${currentYearMonth.year}年 ${currentYearMonth.monthValue}月"
 
+    val selectedDateKey = remember(selectedDate) { selectedDate.toString() }
+    val selectedDateFocus by viewModel.getDailyFocus(selectedDateKey).collectAsState(initial = null)
+
 
     // Items for selected date sorted chronologically
     val selectedDateItems = remember(allItems, selectedDate, viewModel.dayCutoffHour.collectAsState().value) {
@@ -541,6 +544,30 @@ fun HistoryScreen(viewModel: MainViewModel) {
                                 fontWeight = FontWeight.Bold,
                                 color = colors.primary
                             )
+                        }
+
+                        if (!selectedDateFocus?.content.isNullOrBlank()) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 10.dp)
+                            ) {
+                                Text(
+                                    text = "🎯",
+                                    fontSize = 12.sp
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "“${selectedDateFocus!!.content}”",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                    color = colors.textPrimary.copy(alpha = 0.9f),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
 

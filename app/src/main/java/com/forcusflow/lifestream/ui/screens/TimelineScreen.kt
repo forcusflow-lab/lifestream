@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
@@ -46,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import com.forcusflow.lifestream.data.TemplateEntity
 import com.forcusflow.lifestream.data.TimelineItemEntity
 import com.forcusflow.lifestream.ui.components.AddItemBottomSheet
+import com.forcusflow.lifestream.ui.components.DailyFocusBottomSheet
 import com.forcusflow.lifestream.ui.components.ItemDetailBottomSheet
 import com.forcusflow.lifestream.ui.theme.LifeStreamTheme
 import com.forcusflow.lifestream.viewmodel.MainViewModel
@@ -85,6 +87,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
     var itemToEdit by remember { mutableStateOf<TimelineItemEntity?>(null) }
     var showTemplateManagerDialog by remember { mutableStateOf(false) }
     var showSearchSheet by remember { mutableStateOf(false) }
+    var showFocusSheet by remember { mutableStateOf(false) }
 
     val zone = ZoneId.systemDefault()
     var currentTime by remember { mutableStateOf(LocalDateTime.now()) }
@@ -97,13 +100,18 @@ fun TimelineScreen(viewModel: MainViewModel) {
     val nowMillis = currentTime.atZone(zone).toInstant().toEpochMilli()
     val nowTimeStr = currentTime.format(DateTimeFormatter.ofPattern("HH:mm"))
 
-    val today = LocalDate.now()
+    val cutoffHour by viewModel.dayCutoffHour.collectAsState()
+    val today = remember(currentTime, cutoffHour) {
+        viewModel.getLogicalDate(currentTime, cutoffHour)
+    }
     val todayDateFormatted = remember(today) {
         today.format(DateTimeFormatter.ofPattern("M月d日 (E)", Locale.JAPANESE))
     }
+    val todayDateKey = remember(today) { today.toString() }
+    val dailyFocus by viewModel.getDailyFocus(todayDateKey).collectAsState(initial = null)
 
-    val (todayStart, todayEnd) = remember(today, viewModel.dayCutoffHour.collectAsState().value) {
-        viewModel.getDayRange(today)
+    val (todayStart, todayEnd) = remember(today, cutoffHour) {
+        viewModel.getDayRange(today, cutoffHour)
     }
 
     // Today's scheduled or completed items
@@ -207,7 +215,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 6.dp),
+                    .padding(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -234,6 +242,50 @@ fun TimelineScreen(viewModel: MainViewModel) {
                 }
             }
 
+            // Editorial Today's Focus (Click to edit)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, end = 20.dp, top = 0.dp, bottom = 8.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            showFocusSheet = true
+                        }
+                        .padding(vertical = 4.dp, horizontal = 2.dp)
+                ) {
+                    val focusText = dailyFocus?.content
+                    if (focusText.isNullOrBlank()) {
+                        Text(
+                            text = "+ 今日のフォーカスを設定...",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = colors.textSecondary.copy(alpha = 0.7f),
+                            letterSpacing = 0.2.sp
+                        )
+                    } else {
+                        Text(
+                            text = "🎯",
+                            fontSize = 13.sp
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "“$focusText”",
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            fontStyle = FontStyle.Italic,
+                            color = colors.textPrimary.copy(alpha = 0.95f),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            letterSpacing = 0.2.sp
+                        )
+                    }
+                }
+            }
 
             // Quick Record Bar (ActionTypes: COUNT, TIMER, CHECK)
 
@@ -582,6 +634,23 @@ fun TimelineScreen(viewModel: MainViewModel) {
             onDismiss = { showAddSheet = false },
             onSave = { title, isDone, scheduledAt, completedAt, amount, note, templateId, durationSeconds, countValue ->
                 viewModel.addTimelineItem(title, isDone, scheduledAt, completedAt, amount, note, templateId, durationSeconds, countValue)
+            }
+        )
+    }
+
+    // Daily Focus Bottom Sheet
+    if (showFocusSheet) {
+        DailyFocusBottomSheet(
+            initialFocus = dailyFocus?.content ?: "",
+            dateFormatted = todayDateFormatted,
+            onDismiss = { showFocusSheet = false },
+            onSave = { newFocus ->
+                viewModel.setDailyFocus(todayDateKey, newFocus)
+                showFocusSheet = false
+            },
+            onClear = {
+                viewModel.clearDailyFocus(todayDateKey)
+                showFocusSheet = false
             }
         )
     }

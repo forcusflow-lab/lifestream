@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.forcusflow.lifestream.data.AppDatabase
+import com.forcusflow.lifestream.data.DailyFocusEntity
 import com.forcusflow.lifestream.data.DatabaseSeeder
 import com.forcusflow.lifestream.data.MemoEntity
 import com.forcusflow.lifestream.data.TemplateEntity
@@ -27,6 +28,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val itemDao = db.timelineItemDao()
     private val templateDao = db.templateDao()
     private val memoDao = db.memoDao()
+    private val dailyFocusDao = db.dailyFocusDao()
     private val zone = ZoneId.systemDefault()
 
     // Preferences state
@@ -104,6 +106,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Determine Day boundaries taking cutoff hour into account
+    fun getLogicalDate(now: LocalDateTime = LocalDateTime.now(), cutoffHour: Int = dayCutoffHour.value): LocalDate {
+        return if (now.hour < cutoffHour) {
+            now.toLocalDate().minusDays(1)
+        } else {
+            now.toLocalDate()
+        }
+    }
+
     fun getDayRange(date: LocalDate, cutoffHour: Int = dayCutoffHour.value): Pair<Long, Long> {
         val startDateTime = LocalDateTime.of(date, LocalTime.of(cutoffHour, 0))
         val endDateTime = startDateTime.plusDays(1).minusNanos(1)
@@ -605,6 +615,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun rescheduleItemToToday(item: TimelineItemEntity) {
         viewModelScope.launch(Dispatchers.IO) {
             itemDao.update(item.copy(scheduledAt = null))
+        }
+    }
+
+    // === Daily Focus Management ===
+    fun getDailyFocus(date: String): Flow<DailyFocusEntity?> = dailyFocusDao.getFocusByDate(date)
+
+    fun setDailyFocus(date: String, content: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val trimmed = content.trim()
+            if (trimmed.isBlank()) {
+                dailyFocusDao.deleteByDate(date)
+            } else {
+                dailyFocusDao.insertOrUpdate(
+                    DailyFocusEntity(
+                        date = date,
+                        content = trimmed,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+            }
+        }
+    }
+
+    fun clearDailyFocus(date: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            dailyFocusDao.deleteByDate(date)
         }
     }
 }
