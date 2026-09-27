@@ -206,100 +206,111 @@ fun MemoScreen(viewModel: MainViewModel) {
                             }
                         }
 
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .border(
-                                    width = if (memo.isPinned) 1.5.dp else 1.dp,
-                                    color = if (memo.isPinned) colors.primary.copy(alpha = 0.6f) else colors.border,
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-                                .background(colors.card)
-                                .clickable {
-                                    editText = memo.content
-                                    memoToEdit = memo
+                        val dismissState = rememberSwipeToDismissBoxState(
+                            confirmValueChange = { value ->
+                                if (value == SwipeToDismissBoxValue.EndToStart) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    viewModel.deleteMemo(memo)
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar("メモを削除しました")
+                                    }
+                                    true
+                                } else false
+                            }
+                        )
+
+                        SwipeToDismissBox(
+                            state = dismissState,
+                            enableDismissFromStartToEnd = false,
+                            backgroundContent = {
+                                if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(colors.statusOverdue.copy(alpha = 0.85f))
+                                            .padding(horizontal = 16.dp),
+                                        contentAlignment = Alignment.CenterEnd
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            contentDescription = "削除",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
-                                .padding(12.dp)
+                            }
                         ) {
-                            Column {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.Top
-                                ) {
-                                    Text(
-                                        text = memo.content,
-                                        fontSize = 14.sp,
-                                        color = colors.textPrimary,
-                                        lineHeight = 20.sp,
-                                        modifier = Modifier.weight(1f)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .border(
+                                        width = if (memo.isPinned) 1.5.dp else 0.5.dp,
+                                        color = if (memo.isPinned) colors.primary.copy(alpha = 0.6f) else colors.border.copy(alpha = 0.6f),
+                                        shape = RoundedCornerShape(12.dp)
                                     )
-
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        IconButton(
-                                            onClick = {
-                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                viewModel.toggleMemoPin(memo)
-                                            },
-                                            modifier = Modifier.size(28.dp)
-                                        ) {
+                                    .background(colors.card)
+                                    .clickable {
+                                        editText = memo.content
+                                        memoToEdit = memo
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                            ) {
+                                Column {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        Text(
+                                            text = memo.content,
+                                            fontSize = 14.sp,
+                                            color = colors.textPrimary,
+                                            lineHeight = 20.sp,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        if (memo.isPinned) {
+                                            Spacer(modifier = Modifier.width(6.dp))
                                             Text(
-                                                text = if (memo.isPinned) "📌" else "📍",
-                                                fontSize = 13.sp
-                                            )
-                                        }
-
-                                        IconButton(
-                                            onClick = {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                viewModel.deleteMemo(memo)
-                                                coroutineScope.launch {
-                                                    snackbarHostState.showSnackbar("メモを削除しました")
-                                                }
-                                            },
-                                            modifier = Modifier.size(28.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Default.DeleteOutline,
-                                                contentDescription = "削除",
-                                                tint = colors.textSecondary.copy(alpha = 0.6f),
-                                                modifier = Modifier.size(16.dp)
+                                                text = "📌",
+                                                fontSize = 11.sp,
+                                                modifier = Modifier.padding(top = 2.dp)
                                             )
                                         }
                                     }
-                                }
 
-                                Spacer(modifier = Modifier.height(8.dp))
+                                    Spacer(modifier = Modifier.height(6.dp))
 
-                                // Footer: Date & "アクション化" Button
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = timeStr,
-                                        fontSize = 11.sp,
-                                        color = colors.textSecondary
-                                    )
-
-                                    // Action Promotion Button
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(colors.primary.copy(alpha = 0.12f))
-                                            .border(0.5.dp, colors.primary.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                                            .clickable {
-                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                memoToPromote = memo
-                                            }
-                                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                                    // Footer: Date & [ ↗ ] Minimal Circular Button
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = timeStr,
+                                            fontSize = 11.sp,
+                                            color = colors.textSecondary
+                                        )
+
+                                        // Minimal circular [ ↗ ] button
+                                        Box(
+                                            modifier = Modifier
+                                                .size(28.dp)
+                                                .clip(CircleShape)
+                                                .background(colors.primary.copy(alpha = 0.12f))
+                                                .border(0.5.dp, colors.primary.copy(alpha = 0.3f), CircleShape)
+                                                .clickable {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                    memoToPromote = memo
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
                                             Text(
-                                                text = "⚡ アクション化",
-                                                fontSize = 11.sp,
+                                                text = "↗",
+                                                fontSize = 13.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = colors.primary
                                             )
@@ -314,49 +325,111 @@ fun MemoScreen(viewModel: MainViewModel) {
         }
     }
 
-    // Memo Edit Dialog
+    // Memo Edit Modal Bottom Sheet
     if (memoToEdit != null) {
-        AlertDialog(
+        val editing = memoToEdit!!
+        ModalBottomSheet(
             onDismissRequest = { memoToEdit = null },
-            title = {
-                Text(
-                    text = "メモを編集",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.textPrimary
-                )
-            },
-            text = {
-                OutlinedTextField(
-                    value = editText,
-                    onValueChange = { editText = it },
+            containerColor = colors.card,
+            dragHandle = { BottomSheetDefaults.DragHandle(color = colors.border) }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .padding(bottom = 28.dp)
+            ) {
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
-                    maxLines = 6
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (editText.isNotBlank()) {
-                            viewModel.updateMemo(memoToEdit!!.copy(content = editText.trim()))
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = { memoToEdit = null }) {
+                        Text("キャンセル", color = colors.textSecondary)
+                    }
+                    Text(
+                        text = "メモを編集",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.textPrimary
+                    )
+                    TextButton(
+                        onClick = {
+                            if (editText.isNotBlank()) {
+                                viewModel.updateMemo(editing.copy(content = editText.trim()))
+                                memoToEdit = null
+                            }
+                        },
+                        enabled = editText.isNotBlank()
+                    ) {
+                        Text(
+                            text = "保存",
+                            color = if (editText.isNotBlank()) colors.primary else colors.textSecondary.copy(alpha = 0.4f),
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(colors.background.copy(alpha = 0.6f))
+                        .border(0.5.dp, colors.border.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                ) {
+                    OutlinedTextField(
+                        value = editText,
+                        onValueChange = { editText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color.Transparent,
+                            unfocusedBorderColor = Color.Transparent,
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent
+                        ),
+                        maxLines = 8
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
+                        onClick = {
+                            viewModel.toggleMemoPin(editing)
                             memoToEdit = null
                         }
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = colors.primary,
-                        contentColor = colors.onPrimary
-                    )
-                ) {
-                    Text("保存")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { memoToEdit = null }) {
-                    Text("キャンセル", color = colors.textSecondary)
+                    ) {
+                        Text(
+                            text = if (editing.isPinned) "📌 ピン留めを解除" else "📌 ピン留めする",
+                            fontSize = 13.sp,
+                            color = colors.textPrimary
+                        )
+                    }
+
+                    TextButton(
+                        onClick = {
+                            viewModel.deleteMemo(editing)
+                            memoToEdit = null
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("メモを削除しました")
+                            }
+                        }
+                    ) {
+                        Text("このメモを削除", color = colors.statusOverdue, fontSize = 13.sp)
+                    }
                 }
             }
-        )
+        }
     }
 
     // Memo Promotion Bottom Sheet (Actionable Converter)
@@ -370,8 +443,9 @@ fun MemoScreen(viewModel: MainViewModel) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .padding(bottom = 36.dp)
+                    .padding(horizontal = 24.dp)
+                    .navigationBarsPadding()
+                    .padding(bottom = 32.dp)
             ) {
                 Text(
                     text = "「${targetMemo.content.take(20)}${if (targetMemo.content.length > 20) "..." else ""}」を変換",

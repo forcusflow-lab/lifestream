@@ -33,6 +33,7 @@ import com.forcusflow.lifestream.data.TemplateEntity
 import com.forcusflow.lifestream.ui.theme.LifeStreamTheme
 import com.forcusflow.lifestream.viewmodel.MainViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TemplateManagerDialog(
     viewModel: MainViewModel,
@@ -50,26 +51,44 @@ fun TemplateManagerDialog(
         templates.filter { it.type != "INTERVAL" }
     }
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = colors.card,
-        title = {
-            Column {
-                Text(
-                    text = "クイック記録の管理",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    color = colors.textPrimary
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "今日タブの上部バーや＋登録で使う日常アクション",
-                    fontSize = 11.sp,
-                    color = colors.textSecondary
-                )
+        dragHandle = { BottomSheetDefaults.DragHandle(color = colors.border) }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .navigationBarsPadding()
+                .padding(bottom = 32.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "クイック記録の管理",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = colors.textPrimary
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "今日タブの上部バーや＋登録で使う日常アクション",
+                        fontSize = 11.sp,
+                        color = colors.textSecondary
+                    )
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("完了", fontWeight = FontWeight.Bold, color = colors.primary, fontSize = 15.sp)
+                }
             }
-        },
-        text = {
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -254,13 +273,8 @@ fun TemplateManagerDialog(
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("閉じる")
-            }
         }
-    )
+    }
 
     // Create New Quick Record Dialog
     if (showCreateDialog) {
@@ -312,47 +326,64 @@ fun TemplateManagerDialog(
         )
     }
 
-    // Delete Confirmation Dialog
+    // Delete Confirmation Bottom Sheet
     templateToDelete?.let { t ->
-        AlertDialog(
+        ModalBottomSheet(
             onDismissRequest = { templateToDelete = null },
-            title = {
+            containerColor = colors.card,
+            dragHandle = { BottomSheetDefaults.DragHandle(color = colors.border) }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .navigationBarsPadding()
+                    .padding(bottom = 32.dp)
+            ) {
                 Text(
                     text = "クイック記録の削除",
                     fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
+                    fontSize = 18.sp,
+                    color = colors.textPrimary
                 )
-            },
-            text = {
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "「${t.title}」を削除してもよろしいですか？\n※これまでに記録したログデータは削除されません。",
-                    fontSize = 13.sp
+                    fontSize = 13.sp,
+                    color = colors.textSecondary,
+                    lineHeight = 18.sp
                 )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        viewModel.deleteTemplate(t)
-                        templateToDelete = null
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.statusOverdue)
+                Spacer(modifier = Modifier.height(20.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("削除する")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { templateToDelete = null }) {
-                    Text("キャンセル")
+                    TextButton(onClick = { templateToDelete = null }) {
+                        Text("キャンセル", color = colors.textSecondary)
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Button(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            viewModel.deleteTemplate(t)
+                            templateToDelete = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.statusOverdue),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("削除する", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
-        )
+        }
     }
 }
 
 /**
  * 新規作成・編集 兼用のクイック記録エディター
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TemplateEditorDialog(
     templateToEdit: TemplateEntity? = null,
@@ -396,23 +427,64 @@ fun TemplateEditorDialog(
         mutableStateOf(templateToEdit?.colorHex ?: "#3B82F6")
     }
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = colors.card,
-        title = {
-            Text(
-                text = if (templateToEdit != null) "クイック記録の編集" else "新規クイック記録の作成",
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-                color = colors.textPrimary
-            )
-        },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
+        dragHandle = { BottomSheetDefaults.DragHandle(color = colors.border) }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .imePadding()
+                .padding(bottom = 32.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                TextButton(onClick = onDismiss) {
+                    Text("キャンセル", color = colors.textSecondary)
+                }
+                Text(
+                    text = if (templateToEdit != null) "クイック記録の編集" else "新規クイック記録の作成",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp,
+                    color = colors.textPrimary
+                )
+                TextButton(
+                    onClick = {
+                        if (title.isNotBlank()) {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            val step = stepValueText.toIntOrNull() ?: 1
+                            val amt = amountText.toLongOrNull()
+                            onSave(
+                                title.trim(),
+                                selectedActionType,
+                                unit.trim(),
+                                step,
+                                amt,
+                                selectedIcon,
+                                selectedColor,
+                                isPinned
+                            )
+                        }
+                    },
+                    enabled = title.isNotBlank()
+                ) {
+                    Text(
+                        text = if (templateToEdit != null) "保存" else "作成",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = if (title.isNotBlank()) colors.primary else colors.textSecondary.copy(alpha = 0.4f)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
                 // ActionType Selector (CHECK, COUNT, TIMER)
                 Text(
                     text = "アクションタイプ:",
@@ -663,36 +735,5 @@ fun TemplateEditorDialog(
                     )
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (title.isNotBlank()) {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        val step = stepValueText.toIntOrNull() ?: 1
-                        val amt = amountText.toLongOrNull()
-                        onSave(
-                            title.trim(),
-                            selectedActionType,
-                            unit.trim(),
-                            step,
-                            amt,
-                            selectedIcon,
-                            selectedColor,
-                            isPinned
-                        )
-                    }
-                },
-                enabled = title.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
-            ) {
-                Text(if (templateToEdit != null) "変更を保存" else "作成")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("キャンセル")
-            }
         }
-    )
-}
+    }

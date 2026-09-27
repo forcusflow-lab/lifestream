@@ -811,8 +811,10 @@ fun EditPeriodicTaskBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
+                .padding(horizontal = 24.dp)
                 .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .imePadding()
                 .padding(bottom = 32.dp)
         ) {
             // Header
@@ -830,7 +832,7 @@ fun EditPeriodicTaskBottomSheet(
                     fontWeight = FontWeight.Bold,
                     color = colors.textPrimary
                 )
-                Button(
+                TextButton(
                     onClick = {
                         val updated = template.copy(
                             title = title.trim(),
@@ -840,12 +842,9 @@ fun EditPeriodicTaskBottomSheet(
                         )
                         onSave(updated)
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
                     enabled = title.isNotBlank()
                 ) {
-                    Text("保存", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("保存", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = if (title.isNotBlank()) colors.primary else colors.textSecondary.copy(alpha = 0.5f))
                 }
             }
 
@@ -1097,30 +1096,68 @@ fun EditPeriodicTaskBottomSheet(
     }
 
     if (showDeleteConfirmDialog) {
-        AlertDialog(
+        ModalBottomSheet(
             onDismissRequest = { showDeleteConfirmDialog = false },
-            title = { Text("周期タスクの削除", fontWeight = FontWeight.Bold) },
-            text = { Text("「${template.title}」を削除しますか？\n過去に記録されたログはそのまま残りますが、周期一覧からは削除されます。") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showDeleteConfirmDialog = false
-                        onDelete(template)
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.statusOverdue)
+            containerColor = colors.card,
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .navigationBarsPadding()
+                    .padding(bottom = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "周期タスクの削除",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                Text(
+                    text = "「${template.title}」を削除しますか？\n過去に記録されたログはそのまま残りますが、周期一覧からは削除されます。",
+                    fontSize = 14.sp,
+                    color = colors.textSecondary,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 20.sp,
+                    modifier = Modifier.padding(bottom = 24.dp)
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text("削除する", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirmDialog = false }) {
-                    Text("キャンセル")
+                    OutlinedButton(
+                        onClick = { showDeleteConfirmDialog = false },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, colors.border)
+                    ) {
+                        Text("キャンセル", color = colors.textPrimary)
+                    }
+                    Button(
+                        onClick = {
+                            showDeleteConfirmDialog = false
+                            onDelete(template)
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.statusOverdue)
+                    ) {
+                        Text("削除する", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
-        )
+        }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddPeriodicTaskDialog(
     onDismiss: () -> Unit,
@@ -1134,140 +1171,176 @@ fun AddPeriodicTaskDialog(
     val iconOptions = DEFAULT_ICON_OPTIONS
     val colorOptions = DEFAULT_COLOR_OPTIONS
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = colors.card,
-        title = {
-            Text(
-                text = "新しい周期タスクを追加",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = colors.textPrimary
-            )
-        },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .imePadding()
+                .padding(bottom = 32.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "アイコンを選択:",
-                    fontSize = 12.sp,
-                    color = colors.textSecondary,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    iconOptions.forEach { ic ->
-                        Box(
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .border(
-                                    1.5.dp,
-                                    if (iconKey == ic) colors.primary else colors.border,
-                                    RoundedCornerShape(8.dp)
-                                )
-                                .background(if (iconKey == ic) colors.primary.copy(alpha = 0.15f) else colors.card)
-                                .clickable { iconKey = ic },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(text = ic, fontSize = 18.sp)
-                        }
-                    }
+                TextButton(onClick = onDismiss) {
+                    Text("キャンセル", color = colors.textSecondary, fontSize = 15.sp)
                 }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
                 Text(
-                    text = "カラー:",
-                    fontSize = 12.sp,
-                    color = colors.textSecondary,
-                    fontWeight = FontWeight.SemiBold
+                    text = "新しい周期タスクを追加",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary
                 )
-                Spacer(modifier = Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    colorOptions.forEach { (hex, _) ->
-                        val parsedColor = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrElse { colors.primary }
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(parsedColor)
-                                .border(
-                                    width = if (selectedColorHex == hex) 2.5.dp else 0.dp,
-                                    color = if (selectedColorHex == hex) colors.textPrimary else Color.Transparent,
-                                    shape = CircleShape
-                                )
-                                .clickable { selectedColorHex = hex },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (selectedColorHex == hex) {
-                                Icon(
-                                    Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                            }
+                TextButton(
+                    onClick = {
+                        if (title.isNotBlank()) {
+                            onAdd(
+                                title.trim(),
+                                if (intervalDays != null && intervalDays!! > 0) intervalDays else null,
+                                iconKey,
+                                selectedColorHex
+                            )
                         }
-                    }
+                    },
+                    enabled = title.isNotBlank()
+                ) {
+                    Text(
+                        "追加",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = if (title.isNotBlank()) colors.primary else colors.textSecondary.copy(alpha = 0.5f)
+                    )
                 }
+            }
 
-                Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
+            // タスク名入力
+            Text(
+                text = "タスク名",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.textSecondary
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = colors.card,
+                border = BorderStroke(0.5.dp, colors.border.copy(alpha = 0.35f)),
+                shadowElevation = 1.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
-                    label = { Text("タスク名 (例: エアコン清掃)") },
+                    placeholder = { Text("例: エアコン清掃、布団干し...", color = colors.textSecondary.copy(alpha = 0.5f)) },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                PeriodicIntervalSelector(
-                    intervalDays = intervalDays,
-                    onIntervalChange = { intervalDays = it }
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent
+                    )
                 )
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (title.isNotBlank()) {
-                        onAdd(
-                            title.trim(),
-                            if (intervalDays != null && intervalDays!! > 0) intervalDays else null,
-                            iconKey,
-                            selectedColorHex
-                        )
-                    }
-                },
-                enabled = title.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = colors.primary,
-                    contentColor = colors.onPrimary
-                )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // 周期設定セレクター
+            PeriodicIntervalSelector(
+                intervalDays = intervalDays,
+                onIntervalChange = { intervalDays = it }
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // アイコン
+            Text(
+                text = "アイコン",
+                fontSize = 13.sp,
+                color = colors.textSecondary,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("追加")
+                iconOptions.forEach { ic ->
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .border(
+                                1.5.dp,
+                                if (iconKey == ic) colors.primary else colors.border.copy(alpha = 0.5f),
+                                RoundedCornerShape(10.dp)
+                            )
+                            .background(if (iconKey == ic) colors.primary.copy(alpha = 0.15f) else colors.card)
+                            .clickable { iconKey = ic },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = ic, fontSize = 20.sp)
+                    }
+                }
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("キャンセル")
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // カラー
+            Text(
+                text = "テーマカラー",
+                fontSize = 13.sp,
+                color = colors.textSecondary,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                colorOptions.forEach { (hex, _) ->
+                    val parsedColor = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrElse { colors.primary }
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(parsedColor)
+                            .border(
+                                width = if (selectedColorHex == hex) 2.5.dp else 0.dp,
+                                color = if (selectedColorHex == hex) colors.textPrimary else Color.Transparent,
+                                shape = CircleShape
+                            )
+                            .clickable { selectedColorHex = hex },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (selectedColorHex == hex) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
             }
         }
-    )
+    }
 }

@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.forcusflow.lifestream.ui.components.AppHeader
@@ -30,6 +32,7 @@ import com.forcusflow.lifestream.ui.theme.LifeStreamTheme
 import com.forcusflow.lifestream.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(viewModel: MainViewModel) {
     val colors = LifeStreamTheme.colors
@@ -249,23 +252,55 @@ fun SettingsScreen(viewModel: MainViewModel) {
 
     // Cutoff Dialog
     if (showCutoffDialog) {
-        AlertDialog(
+        ModalBottomSheet(
             onDismissRequest = { showCutoffDialog = false },
             containerColor = colors.card,
-            title = { Text("日付リセット境界時刻", fontWeight = FontWeight.Bold, color = colors.textPrimary) },
-            text = {
-                Column {
-                    Text("深夜何時までを「今日」として集計するか選択してください：", fontSize = 13.sp, color = colors.textSecondary)
-                    Spacer(modifier = Modifier.height(10.dp))
-                    listOf(0, 3, 4, 5, 6).forEach { hour ->
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .navigationBarsPadding()
+                    .padding(bottom = 32.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "日付リセット境界時刻",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.textPrimary
+                    )
+                    TextButton(onClick = { showCutoffDialog = false }) {
+                        Text("完了", fontWeight = FontWeight.Bold, color = colors.primary, fontSize = 15.sp)
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "深夜何時までを「今日」として集計するか選択してください：",
+                    fontSize = 13.sp,
+                    color = colors.textSecondary
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                listOf(0, 3, 4, 5, 6).forEach { hour ->
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (cutoffHour == hour) colors.primary.copy(alpha = 0.08f) else Color.Transparent,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                viewModel.setDayCutoff(hour)
+                                showCutoffDialog = false
+                            }
+                    ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    viewModel.setDayCutoff(hour)
-                                    showCutoffDialog = false
-                                }
-                                .padding(vertical = 8.dp),
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             RadioButton(
@@ -276,17 +311,17 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                 }
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("午前 %02d:00".format(hour), fontSize = 14.sp, color = colors.textPrimary)
+                            Text(
+                                "午前 %02d:00".format(hour),
+                                fontSize = 15.sp,
+                                fontWeight = if (cutoffHour == hour) FontWeight.Bold else FontWeight.Normal,
+                                color = colors.textPrimary
+                            )
                         }
                     }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { showCutoffDialog = false }) {
-                    Text("閉じる")
-                }
             }
-        )
+        }
     }
 
     // Templates Dialog
@@ -299,112 +334,174 @@ fun SettingsScreen(viewModel: MainViewModel) {
 
     // Reset Sample Data Confirm Dialog
     if (showResetConfirmDialog) {
-        AlertDialog(
+        ModalBottomSheet(
             onDismissRequest = { showResetConfirmDialog = false },
             containerColor = colors.card,
-            title = { Text("サンプルデータの復元", fontWeight = FontWeight.Bold, color = colors.textPrimary) },
-            text = {
-                Text("データベースを初期化し、初期デフォルトデータ（クイック記録4種、周期2種）を再投入します。よろしいですか？", fontSize = 13.sp, color = colors.textPrimary)
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.reloadSampleData()
-                        showResetConfirmDialog = false
-                        coroutineScope.launch {
-                            snackbarHostState.showSnackbar("サンプルデータを復元しました")
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .navigationBarsPadding()
+                    .padding(bottom = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "サンプルデータの復元",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                Text(
+                    text = "データベースを初期化し、初期デフォルトデータ（クイック記録4種、周期2種）を再投入します。よろしいですか？",
+                    fontSize = 14.sp,
+                    color = colors.textSecondary,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 20.sp,
+                    modifier = Modifier.padding(bottom = 24.dp)
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text("復元する")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showResetConfirmDialog = false }) {
-                    Text("キャンセル")
+                    OutlinedButton(
+                        onClick = { showResetConfirmDialog = false },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, colors.border)
+                    ) {
+                        Text("キャンセル", color = colors.textPrimary)
+                    }
+                    Button(
+                        onClick = {
+                            viewModel.reloadSampleData()
+                            showResetConfirmDialog = false
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("サンプルデータを復元しました")
+                            }
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
+                    ) {
+                        Text("復元する", color = colors.onPrimary, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
-        )
+        }
     }
 
     // Import JSON Dialog
     if (showImportDialog) {
-        AlertDialog(
+        ModalBottomSheet(
             onDismissRequest = { showImportDialog = false },
             containerColor = colors.card,
-            title = {
-                Text("データ取り込み (JSONインポート)", fontWeight = FontWeight.Bold, color = colors.textPrimary)
-            },
-            text = {
-                Column(modifier = Modifier.fillMaxWidth()) {
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .verticalScroll(rememberScrollState())
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .padding(bottom = 32.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = { showImportDialog = false }) {
+                        Text("キャンセル", color = colors.textSecondary, fontSize = 15.sp)
+                    }
                     Text(
-                        "エクスポートしたバックアップJSONを貼り付けて復元します：",
-                        fontSize = 13.sp,
-                        color = colors.textSecondary
+                        text = "データ取り込み",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.textPrimary
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    OutlinedButton(
+                    TextButton(
                         onClick = {
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            val clipText = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
-                            if (clipText.isNotBlank()) {
-                                importJsonText = clipText
-                            } else {
+                            if (importJsonText.isNotBlank()) {
                                 coroutineScope.launch {
-                                    snackbarHostState.showSnackbar("クリップボードが空です")
+                                    val (tCount, iCount) = viewModel.importJson(importJsonText)
+                                    if (tCount >= 0) {
+                                        showImportDialog = false
+                                        snackbarHostState.showSnackbar("復元完了: テンプレート${tCount}件、タイムライン記録${iCount}件を取り込みました")
+                                    } else {
+                                        snackbarHostState.showSnackbar("JSONの解析に失敗しました。フォーマットをご確認ください")
+                                    }
                                 }
                             }
                         },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp)
+                        enabled = importJsonText.isNotBlank()
                     ) {
-                        Text("📋 クリップボードから貼り付け", fontSize = 12.sp)
+                        Text(
+                            "取り込む",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = if (importJsonText.isNotBlank()) colors.primary else colors.textSecondary.copy(alpha = 0.5f)
+                        )
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "エクスポートしたバックアップJSONを貼り付けて復元します：",
+                    fontSize = 13.sp,
+                    color = colors.textSecondary
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clipText = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+                        if (clipText.isNotBlank()) {
+                            importJsonText = clipText
+                        } else {
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("クリップボードが空です")
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("📋 クリップボードから貼り付け", fontSize = 13.sp)
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = colors.card,
+                    border = BorderStroke(0.5.dp, colors.border.copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     OutlinedTextField(
                         value = importJsonText,
                         onValueChange = { importJsonText = it },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(150.dp),
-                        placeholder = { Text("ここにJSONテキストを貼り付け...", fontSize = 12.sp) },
-                        shape = RoundedCornerShape(8.dp),
+                            .height(180.dp),
+                        placeholder = { Text("ここにJSONテキストを貼り付け...", fontSize = 12.sp, color = colors.textSecondary.copy(alpha = 0.5f)) },
+                        shape = RoundedCornerShape(12.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = colors.primary,
-                            unfocusedBorderColor = colors.border,
+                            focusedBorderColor = Color.Transparent,
+                            unfocusedBorderColor = Color.Transparent,
                             focusedTextColor = colors.textPrimary,
                             unfocusedTextColor = colors.textPrimary
                         )
                     )
                 }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (importJsonText.isNotBlank()) {
-                            coroutineScope.launch {
-                                val (tCount, iCount) = viewModel.importJson(importJsonText)
-                                if (tCount >= 0) {
-                                    showImportDialog = false
-                                    snackbarHostState.showSnackbar("復元完了: テンプレート${tCount}件、タイムライン記録${iCount}件を取り込みました")
-                                } else {
-                                    snackbarHostState.showSnackbar("JSONの解析に失敗しました。フォーマットをご確認ください")
-                                }
-                            }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
-                ) {
-                    Text("取り込む")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showImportDialog = false }) {
-                    Text("キャンセル")
-                }
             }
-        )
+        }
     }
 }
 

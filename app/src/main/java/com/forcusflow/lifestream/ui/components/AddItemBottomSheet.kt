@@ -104,9 +104,11 @@ fun AddItemBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
+                .padding(horizontal = 24.dp)
                 .verticalScroll(rememberScrollState())
-                .padding(bottom = 36.dp)
+                .navigationBarsPadding()
+                .imePadding()
+                .padding(bottom = 32.dp)
         ) {
             // === 1. Top Bar: Cancel, Segment Toggle, Save Button ===
             Row(
@@ -172,7 +174,7 @@ fun AddItemBottomSheet(
                     }
                 }
 
-                Button(
+                TextButton(
                     onClick = {
                         if (title.isNotBlank()) {
                             val zone = ZoneId.systemDefault()
@@ -211,44 +213,50 @@ fun AddItemBottomSheet(
                             onDismiss()
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = colors.primary,
-                        contentColor = colors.onPrimary
-                    ),
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                     enabled = title.isNotBlank()
                 ) {
                     Text(
                         text = if (isDone) "記録" else "保存",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp
+                        fontSize = 15.sp,
+                        color = if (title.isNotBlank()) colors.primary else colors.textSecondary.copy(alpha = 0.4f)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
-            // === 2. Main Title Input (広々・明瞭) ===
-            OutlinedTextField(
-                value = title,
-                onValueChange = { title = it },
-                placeholder = {
-                    Text(
-                        if (isDone) "何ができましたか？ (例: 読書, 散歩, 掃除)"
-                        else "何をしますか？ (例: 洗濯, レポート提出)"
+            // === 2. Main Title Input (白背景角丸カード・薄い境界線スタイル) ===
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(colors.card)
+                    .border(0.5.dp, colors.border.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 12.dp, vertical = 2.dp)
+            ) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    placeholder = {
+                        Text(
+                            if (isDone) "何ができましたか？ (例: 読書, 散歩, 掃除)"
+                            else "何をしますか？ (例: 洗濯, レポート提出)",
+                            fontSize = 14.sp,
+                            color = colors.textSecondary
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent
                     )
-                },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = colors.primary,
-                    unfocusedBorderColor = colors.border,
-                    focusedContainerColor = colors.background.copy(alpha = 0.5f),
-                    unfocusedContainerColor = colors.background.copy(alpha = 0.5f)
                 )
-            )
+            }
 
             // Dynamic Stepper for COUNT / TIMER Templates
             if (selectedTemplate?.actionType == "COUNT") {
@@ -534,72 +542,95 @@ fun AddItemBottomSheet(
                 }
             }
 
-            // Material 3 Date Picker Dialog
+            // Material 3 Date Picker Modal Bottom Sheet
             if (showDatePicker) {
                 val datePickerState = rememberDatePickerState(
                     initialSelectedDateMillis = System.currentTimeMillis()
                 )
-                DatePickerDialog(
+                ModalBottomSheet(
                     onDismissRequest = { showDatePicker = false },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            val epoch = datePickerState.selectedDateMillis
-                            if (epoch != null) {
-                                tempPickedDate = Instant.ofEpochMilli(epoch).atZone(ZoneId.of("UTC")).toLocalDate()
-                                showDatePicker = false
-                                showTimePicker = true
-                            } else {
-                                showDatePicker = false
-                            }
-                        }) {
-                            Text("次へ (時刻)", color = colors.primary, fontWeight = FontWeight.Bold)
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showDatePicker = false }) {
-                            Text("キャンセル", color = colors.textSecondary)
-                        }
-                    }
+                    containerColor = colors.card,
+                    dragHandle = { BottomSheetDefaults.DragHandle(color = colors.border) }
                 ) {
-                    DatePicker(state = datePickerState)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp)
+                            .navigationBarsPadding()
+                            .padding(bottom = 24.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(onClick = { showDatePicker = false }) {
+                                Text("キャンセル", color = colors.textSecondary)
+                            }
+                            Text("日付を選択", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = colors.textPrimary)
+                            TextButton(onClick = {
+                                val epoch = datePickerState.selectedDateMillis
+                                if (epoch != null) {
+                                    tempPickedDate = Instant.ofEpochMilli(epoch).atZone(ZoneId.of("UTC")).toLocalDate()
+                                    showDatePicker = false
+                                    showTimePicker = true
+                                } else {
+                                    showDatePicker = false
+                                }
+                            }) {
+                                Text("次へ (時刻)", color = colors.primary, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        DatePicker(state = datePickerState)
+                    }
                 }
             }
 
-            // Material 3 Time Picker Dialog
+            // Material 3 Time Picker Modal Bottom Sheet
             if (showTimePicker) {
                 val timePickerState = rememberTimePickerState(
                     initialHour = 10,
                     initialMinute = 0,
                     is24Hour = true
                 )
-                AlertDialog(
+                ModalBottomSheet(
                     onDismissRequest = { showTimePicker = false },
-                    title = {
-                        Text("時刻を指定", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = colors.textPrimary)
-                    },
-                    text = {
-                        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                            TimePicker(state = timePickerState)
+                    containerColor = colors.card,
+                    dragHandle = { BottomSheetDefaults.DragHandle(color = colors.border) }
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp)
+                            .navigationBarsPadding()
+                            .padding(bottom = 24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(onClick = { showTimePicker = false }) {
+                                Text("キャンセル", color = colors.textSecondary)
+                            }
+                            Text("時刻を指定", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = colors.textPrimary)
+                            TextButton(onClick = {
+                                val time = LocalTime.of(timePickerState.hour, timePickerState.minute)
+                                val dt = LocalDateTime.of(tempPickedDate, time)
+                                customDateTime = dt
+                                val label = "📅 %d/%d %02d:%02d".format(dt.monthValue, dt.dayOfMonth, dt.hour, dt.minute)
+                                selectedTodoPreset = label
+                                showTimePicker = false
+                            }) {
+                                Text("決定", color = colors.primary, fontWeight = FontWeight.Bold)
+                            }
                         }
-                    },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            val time = LocalTime.of(timePickerState.hour, timePickerState.minute)
-                            val dt = LocalDateTime.of(tempPickedDate, time)
-                            customDateTime = dt
-                            val label = "📅 %d/%d %02d:%02d".format(dt.monthValue, dt.dayOfMonth, dt.hour, dt.minute)
-                            selectedTodoPreset = label
-                            showTimePicker = false
-                        }) {
-                            Text("決定", color = colors.primary, fontWeight = FontWeight.Bold)
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showTimePicker = false }) {
-                            Text("キャンセル", color = colors.textSecondary)
-                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        TimePicker(state = timePickerState)
                     }
-                )
+                }
             }
 
             // === 5. Quick Template Selector (記録モード時のみ表示) ===
