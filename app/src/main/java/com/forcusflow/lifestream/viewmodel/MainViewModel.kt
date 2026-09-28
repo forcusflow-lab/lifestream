@@ -607,6 +607,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun archiveMemo(memo: MemoEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            memoDao.update(memo.copy(isArchived = true, updatedAt = System.currentTimeMillis()))
+        }
+    }
+
+    fun unarchiveMemo(memo: MemoEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            memoDao.update(memo.copy(isArchived = false, updatedAt = System.currentTimeMillis()))
+        }
+    }
+
     // === Memo Promotion Engine (Actionable Integration) ===
     fun promoteMemoToTodo(memo: MemoEntity, scheduledAt: Long?, deleteMemoAfter: Boolean = true) {
         viewModelScope.launch(Dispatchers.IO) {

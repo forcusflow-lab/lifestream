@@ -91,6 +91,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
     var showSearchSheet by remember { mutableStateOf(false) }
     var showFocusSheet by remember { mutableStateOf(false) }
     var showDrawerSheet by remember { mutableStateOf(false) }
+    var isFutureTrayExpanded by remember { mutableStateOf(true) }
 
     val zone = ZoneId.systemDefault()
     var currentTime by remember { mutableStateOf(LocalDateTime.now()) }
@@ -512,237 +513,285 @@ fun TimelineScreen(viewModel: MainViewModel) {
                 item(key = "focus_tray") {
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // セクション見出し（件数テキストは削除して静かな佇まいに）
-                    Text(
-                        text = "これからの歩み",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.textPrimary,
-                        modifier = Modifier.padding(bottom = 6.dp)
-                    )
-
-                    // 統一トレイ（Surface: 余白を引き締め、手帳のような程よい密度感に）
-                    Surface(
-                        shape = RoundedCornerShape(18.dp),
-                        color = colors.card,
-                        border = BorderStroke(0.5.dp, colors.border.copy(alpha = 0.5f)),
-                        modifier = Modifier.fillMaxWidth()
+                    // セクション見出し（開閉アコーディオン・件数バッジは完全撤廃）
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                isFutureTrayExpanded = !isFutureTrayExpanded
+                            }
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(
+                        Text(
+                            text = "これからの歩み",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary
+                        )
+                        Text(
+                            text = if (isFutureTrayExpanded) "▲" else "▼",
+                            fontSize = 11.sp,
+                            color = colors.textSecondary.copy(alpha = 0.7f)
+                        )
+                    }
+
+                    // 統一トレイ（Surface: 開閉アニメーション対応）
+                    AnimatedVisibility(
+                        visible = isFutureTrayExpanded,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = colors.card,
+                            border = BorderStroke(0.5.dp, colors.border.copy(alpha = 0.5f)),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 6.dp)
+                                .padding(top = 4.dp)
                         ) {
-                            // 周期タスク（今日浮上したもの）
-                            dueOrOverduePeriodic.forEach { (tmpl, _, _) ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 3.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // 完了チェック丸ボタン（繊細な極細ボーダー）
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = Color.Transparent,
-                                        border = BorderStroke(1.dp, colors.border.copy(alpha = 0.7f)),
-                                        modifier = Modifier
-                                            .size(20.dp)
-                                            .clip(CircleShape)
-                                            .clickable {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                viewModel.recordCycleTask(tmpl, today)
-                                                coroutineScope.launch {
-                                                    snackbarHostState.showSnackbar("「${tmpl.title}」を完了しました！")
-                                                }
-                                            }
-                                    ) {}
-
-                                    Spacer(modifier = Modifier.width(8.dp))
-
-                                    // アイコン＋タスク名
-                                    Text(
-                                        text = "${tmpl.iconKey ?: "🔄"} ${tmpl.title}",
-                                        fontSize = 13.5.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = colors.textPrimary,
-                                        modifier = Modifier.weight(1f),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-
-                                    // スキップボタン
-                                    TextButton(
-                                        onClick = {
-                                            viewModel.skipCycleTask(tmpl)
-                                            coroutineScope.launch {
-                                                val interval = tmpl.intervalDays ?: 7
-                                                val nextDate = today.plusDays(interval.toLong())
-                                                snackbarHostState.showSnackbar("「${tmpl.title}」をスキップしました (次回: ${nextDate.monthValue}/${nextDate.dayOfMonth})")
-                                            }
-                                        },
-                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                                        modifier = Modifier.height(26.dp)
-                                    ) {
-                                        Text("スキップ", fontSize = 11.sp, color = colors.textSecondary.copy(alpha = 0.75f))
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 6.dp)
+                            ) {
+                                // 周期タスク（今日浮上したもの）
+                                dueOrOverduePeriodic.forEachIndexed { index, (tmpl, _, _) ->
+                                    if (index > 0) {
+                                        HorizontalDivider(
+                                            color = colors.border.copy(alpha = 0.18f),
+                                            thickness = 0.5.dp,
+                                            modifier = Modifier.padding(vertical = 1.dp)
+                                        )
                                     }
-                                }
-                            }
-
-                            // 手元タスク（未完了ToDo）
-                            todayPendingItems.forEach { item ->
-                                val isTimerRunning = activeTimerItem?.id == item.id
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .clickable { itemToEdit = item }
-                                        .padding(vertical = 3.dp, horizontal = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // A. 瞬間チェック系：円形チェック枠 (○: 繊細で背景に馴染む1.dp枠)
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = if (item.isDone) colors.statusDone else Color.Transparent,
-                                        border = BorderStroke(1.dp, if (item.isDone) colors.statusDone else colors.border.copy(alpha = 0.7f)),
-                                        modifier = Modifier
-                                            .size(20.dp)
-                                            .clip(CircleShape)
-                                            .clickable {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                viewModel.toggleItemDone(item)
-                                            }
-                                    ) {
-                                        if (item.isDone) {
-                                            Box(contentAlignment = Alignment.Center) {
-                                                Icon(
-                                                    Icons.Default.Check,
-                                                    contentDescription = null,
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(12.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.width(8.dp))
-
-                                    // タイトル ＋ 時刻指定表示
                                     Row(
-                                        modifier = Modifier.weight(1f),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 3.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
+                                        // 完了チェック丸ボタン（繊細な極細ボーダー）
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = Color.Transparent,
+                                            border = BorderStroke(1.dp, colors.border.copy(alpha = 0.7f)),
+                                            modifier = Modifier
+                                                .size(20.dp)
+                                                .clip(CircleShape)
+                                                .clickable {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    viewModel.recordCycleTask(tmpl, today)
+                                                    coroutineScope.launch {
+                                                        snackbarHostState.showSnackbar("「${tmpl.title}」を完了しました！")
+                                                    }
+                                                }
+                                        ) {}
+
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        // アイコン＋タスク名
                                         Text(
-                                            text = item.title,
+                                            text = "${tmpl.iconKey ?: "🔄"} ${tmpl.title}",
                                             fontSize = 13.5.sp,
                                             fontWeight = FontWeight.Medium,
                                             color = colors.textPrimary,
+                                            modifier = Modifier.weight(1f),
                                             maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f, fill = false)
+                                            overflow = TextOverflow.Ellipsis
                                         )
 
-                                        // 時刻指定がある場合のみ小さく添える
-                                        item.scheduledAt?.let { sched ->
-                                            val timeStr = LocalDateTime.ofInstant(Instant.ofEpochMilli(sched), zone)
-                                                .format(DateTimeFormatter.ofPattern("HH:mm"))
-                                            if (timeStr != "00:00") {
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Text(
-                                                    text = timeStr,
-                                                    fontSize = 11.sp,
-                                                    color = colors.textSecondary.copy(alpha = 0.65f),
-                                                    fontWeight = FontWeight.Normal
-                                                )
-                                            }
+                                        // スキップボタン
+                                        TextButton(
+                                            onClick = {
+                                                viewModel.skipCycleTask(tmpl)
+                                                coroutineScope.launch {
+                                                    val interval = tmpl.intervalDays ?: 7
+                                                    val nextDate = today.plusDays(interval.toLong())
+                                                    snackbarHostState.showSnackbar("「${tmpl.title}」をスキップしました (次回: ${nextDate.monthValue}/${nextDate.dayOfMonth})")
+                                                }
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                            modifier = Modifier.height(26.dp)
+                                        ) {
+                                            Text("スキップ", fontSize = 11.sp, color = colors.textSecondary.copy(alpha = 0.75f))
                                         }
                                     }
+                                }
 
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                // 周期タスクと手元タスクの間の罫線
+                                if (dueOrOverduePeriodic.isNotEmpty() && todayPendingItems.isNotEmpty()) {
+                                    HorizontalDivider(
+                                        color = colors.border.copy(alpha = 0.18f),
+                                        thickness = 0.5.dp,
+                                        modifier = Modifier.padding(vertical = 1.dp)
+                                    )
+                                }
 
-                                    // B. 時間カウント系（作業・没頭）：タイマー再生ボタン (▶: 主張を抑えた繊細なアイコン)
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = if (isTimerRunning) colors.primary.copy(alpha = 0.15f) else Color.Transparent,
+                                // 手元タスク（未完了ToDo）
+                                todayPendingItems.forEachIndexed { index, item ->
+                                    val isTimerRunning = activeTimerItem?.id == item.id
+                                    if (index > 0) {
+                                        HorizontalDivider(
+                                            color = colors.border.copy(alpha = 0.18f),
+                                            thickness = 0.5.dp,
+                                            modifier = Modifier.padding(vertical = 1.dp)
+                                        )
+                                    }
+                                    Row(
                                         modifier = Modifier
-                                            .size(24.dp)
-                                            .clip(CircleShape)
-                                            .clickable {
-                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                viewModel.startItemTimer(item)
-                                            }
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .clickable { itemToEdit = item }
+                                            .padding(vertical = 3.dp, horizontal = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            if (isTimerRunning) {
-                                                Text(
-                                                    text = "⏹",
-                                                    fontSize = 11.sp,
-                                                    color = colors.primary
-                                                )
-                                            } else {
-                                                Text(
-                                                    text = "▶",
-                                                    fontSize = 10.5.sp,
-                                                    color = colors.textSecondary.copy(alpha = 0.45f)
-                                                )
+                                        // A. 瞬間チェック系：円形チェック枠 (○: 繊細で背景に馴染む1.dp枠)
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = if (item.isDone) colors.statusDone else Color.Transparent,
+                                            border = BorderStroke(1.dp, if (item.isDone) colors.statusDone else colors.border.copy(alpha = 0.7f)),
+                                            modifier = Modifier
+                                                .size(20.dp)
+                                                .clip(CircleShape)
+                                                .clickable {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    viewModel.toggleItemDone(item)
+                                                }
+                                        ) {
+                                            if (item.isDone) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Icon(
+                                                        Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        tint = Color.White,
+                                                        modifier = Modifier.size(12.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        // タイトル ＋ 時刻指定表示
+                                        Row(
+                                            modifier = Modifier.weight(1f),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = item.title,
+                                                fontSize = 13.5.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = colors.textPrimary,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            )
+
+                                            // 時刻指定がある場合のみ小さく添える
+                                            item.scheduledAt?.let { sched ->
+                                                val timeStr = LocalDateTime.ofInstant(Instant.ofEpochMilli(sched), zone)
+                                                    .format(DateTimeFormatter.ofPattern("HH:mm"))
+                                                if (timeStr != "00:00") {
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        text = timeStr,
+                                                        fontSize = 11.sp,
+                                                        color = colors.textSecondary.copy(alpha = 0.65f),
+                                                        fontWeight = FontWeight.Normal
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.width(4.dp))
+
+                                        // B. 時間カウント系（作業・没頭）：タイマー再生ボタン (▶: 主張を抑えた繊細なアイコン)
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = if (isTimerRunning) colors.primary.copy(alpha = 0.15f) else Color.Transparent,
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .clip(CircleShape)
+                                                .clickable {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                    viewModel.startItemTimer(item)
+                                                }
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                if (isTimerRunning) {
+                                                    Text(
+                                                        text = "⏹",
+                                                        fontSize = 11.sp,
+                                                        color = colors.primary
+                                                    )
+                                                } else {
+                                                    Text(
+                                                        text = "▶",
+                                                        fontSize = 10.5.sp,
+                                                        color = colors.textSecondary.copy(alpha = 0.45f)
+                                                    )
+                                                }
                                             }
                                         }
                                     }
                                 }
-                            }
 
-                            // 手元タスクが0件のとき
-                            if (todayPendingItems.isEmpty() && dueOrOverduePeriodic.isEmpty()) {
-                                Box(
+                                // 手元タスクが0件のとき
+                                if (todayPendingItems.isEmpty() && dueOrOverduePeriodic.isEmpty()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 6.dp, horizontal = 4.dp),
+                                        contentAlignment = Alignment.CenterStart
+                                    ) {
+                                        Text(
+                                            text = "手元のタスクはありません。穏やかな時間をお過ごしください 🌿",
+                                            fontSize = 12.sp,
+                                            color = colors.textSecondary.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                }
+
+                                // 控えめな区切り線
+                                HorizontalDivider(
+                                    color = colors.border.copy(alpha = 0.25f),
+                                    thickness = 0.5.dp,
+                                    modifier = Modifier.padding(vertical = 4.dp)
+                                )
+
+                                // 最下部の「引き出し（ストック）」リンク
+                                Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(vertical = 6.dp, horizontal = 4.dp),
-                                    contentAlignment = Alignment.CenterStart
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            showDrawerSheet = true
+                                        }
+                                        .padding(vertical = 3.dp, horizontal = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = "手元のタスクはありません。穏やかな時間をお過ごしください 🌿",
-                                        fontSize = 12.sp,
-                                        color = colors.textSecondary.copy(alpha = 0.7f)
-                                    )
-                                }
-                            }
-
-                            // 控えめな区切り線
-                            HorizontalDivider(
-                                color = colors.border.copy(alpha = 0.25f),
-                                thickness = 0.5.dp,
-                                modifier = Modifier.padding(vertical = 4.dp)
-                            )
-
-                            // 最下部の「引き出し（ストック）」リンク
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable {
-                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        showDrawerSheet = true
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("📦", fontSize = 12.sp)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "引き出し（ストック ${upcomingItems.size}件）",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Normal,
+                                            color = colors.textSecondary
+                                        )
                                     }
-                                    .padding(vertical = 3.dp, horizontal = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("📦", fontSize = 12.sp)
-                                    Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = "引き出し（ストック ${upcomingItems.size}件）",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Normal,
-                                        color = colors.textSecondary
+                                        text = "開く ➔",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = colors.primary.copy(alpha = 0.85f)
                                     )
                                 }
-                                Text(
-                                    text = "開く ➔",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = colors.primary.copy(alpha = 0.85f)
-                                )
                             }
                         }
                     }

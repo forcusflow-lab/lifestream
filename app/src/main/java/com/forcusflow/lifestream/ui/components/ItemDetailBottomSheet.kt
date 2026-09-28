@@ -26,6 +26,12 @@ import androidx.compose.ui.unit.sp
 import com.forcusflow.lifestream.data.TemplateEntity
 import com.forcusflow.lifestream.data.TimelineItemEntity
 import com.forcusflow.lifestream.ui.theme.LifeStreamTheme
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 /**
  * 統一された広々とした詳細編集モーダルボトムシート
@@ -118,6 +124,28 @@ fun ItemDetailBottomSheet(
     }
     var countValue by remember { mutableStateOf(initialCount) }
 
+    val zone = ZoneId.systemDefault()
+    var selectedDonePreset by remember { mutableStateOf("今") }
+    var selectedTodoPreset by remember {
+        mutableStateOf(
+            if (item.scheduledAt == null) "今日中" else "📅"
+        )
+    }
+    var customDateTime by remember {
+        mutableStateOf(
+            if (item.isDone) {
+                item.completedAt?.let { LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone) }
+            } else {
+                item.scheduledAt?.let { LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone) }
+            }
+        )
+    }
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
+    var tempPickedDate by remember {
+        mutableStateOf(customDateTime?.toLocalDate() ?: LocalDate.now())
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -158,12 +186,42 @@ fun ItemDetailBottomSheet(
                         val parsedAmount = amountText.toLongOrNull()
                         val finalDurationSeconds = if (selectedActionType == "TIMER") durationMinutes * 60 else null
                         val finalCountValue = if (selectedActionType == "COUNT") countValue else null
+                        val now = LocalDateTime.now()
+
+                        val finalCompletedAt = if (isDone) {
+                            when {
+                                selectedDonePreset == "15分前" -> now.minusMinutes(15).atZone(zone).toInstant().toEpochMilli()
+                                selectedDonePreset == "1時間前" -> now.minusHours(1).atZone(zone).toInstant().toEpochMilli()
+                                selectedDonePreset == "昨晩" -> now.minusDays(1).withHour(23).withMinute(0).atZone(zone).toInstant().toEpochMilli()
+                                customDateTime != null -> customDateTime!!.atZone(zone).toInstant().toEpochMilli()
+                                else -> item.completedAt ?: System.currentTimeMillis()
+                            }
+                        } else null
+
+                        val finalScheduledAt = if (!isDone) {
+                            when {
+                                selectedTodoPreset == "今日中" -> null
+                                selectedTodoPreset == "明日" -> now.plusDays(1).withHour(9).withMinute(0).atZone(zone).toInstant().toEpochMilli()
+                                selectedTodoPreset == "今週末" -> {
+                                    val daysUntilWeekend = (6 - now.dayOfWeek.value).let { if (it <= 0) it + 7 else it }
+                                    now.plusDays(daysUntilWeekend.toLong()).withHour(10).withMinute(0).atZone(zone).toInstant().toEpochMilli()
+                                }
+                                selectedTodoPreset == "来週月曜" -> {
+                                    val daysUntilNextMonday = (8 - now.dayOfWeek.value).let { if (it <= 0) it + 7 else it }
+                                    now.plusDays(daysUntilNextMonday.toLong()).withHour(9).withMinute(0).atZone(zone).toInstant().toEpochMilli()
+                                }
+                                customDateTime != null -> customDateTime!!.atZone(zone).toInstant().toEpochMilli()
+                                else -> null
+                            }
+                        } else null
+
                         val updated = item.copy(
                             title = title.trim(),
                             note = note.trim().ifBlank { null },
                             amount = parsedAmount,
                             isDone = isDone,
-                            completedAt = if (isDone && item.completedAt == null) System.currentTimeMillis() else if (!isDone) null else item.completedAt,
+                            scheduledAt = finalScheduledAt,
+                            completedAt = finalCompletedAt,
                             durationSeconds = finalDurationSeconds,
                             countValue = finalCountValue
                         )
@@ -242,6 +300,77 @@ fun ItemDetailBottomSheet(
                 ),
                 modifier = Modifier.fillMaxWidth()
             )
+
+            // 2-A. タイミング設定（登録画面と完全統一）
+            Spacer(modifier = Modifier.height(14.dp))
+            Text(
+                text = if (isDone) "記録日時" else "予定日時",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.textSecondary
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+
+            val customPresetLabel = customDateTime?.let {
+                "📅 %d/%d %02d:%02d".format(it.monthValue, it.dayOfMonth, it.hour, it.minute)
+            } ?: "📅 日時指定..."
+
+            val timingPresets = if (isDone) {
+                listOf("今", "15分前", "1時間前", "昨晩", customPresetLabel)
+            } else {
+                listOf("今日中", "明日", "今週末", "来週月曜", customPresetLabel)
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                timingPresets.forEach { preset ->
+                    val isSelected = if (isDone) {
+                        selectedDonePreset == preset || (preset == customPresetLabel && customDateTime != null && selectedDonePreset.startsWith("📅"))
+                    } else {
+                        selectedTodoPreset == preset || (preset == customPresetLabel && customDateTime != null && selectedTodoPreset.startsWith("📅"))
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(
+                                1.dp,
+                                if (isSelected) colors.primary else colors.border,
+                                RoundedCornerShape(8.dp)
+                            )
+                            .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.background)
+                            .clickable {
+                                if (isDone) {
+                                    if (preset.startsWith("📅")) {
+                                        showDatePicker = true
+                                    } else {
+                                        selectedDonePreset = preset
+                                        customDateTime = null
+                                    }
+                                } else {
+                                    if (preset.startsWith("📅")) {
+                                        showDatePicker = true
+                                    } else {
+                                        selectedTodoPreset = preset
+                                        customDateTime = null
+                                    }
+                                }
+                            }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = preset,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) colors.primary else colors.textPrimary
+                        )
+                    }
+                }
+            }
 
             // 2-B. 記録タイプ（チェック / カウント / 時間）
             Spacer(modifier = Modifier.height(14.dp))
@@ -578,6 +707,103 @@ fun ItemDetailBottomSheet(
             }
 
             Spacer(modifier = Modifier.height(32.dp))
+        }
+
+        // Material 3 Date Picker Modal Bottom Sheet
+        if (showDatePicker) {
+            val datePickerState = rememberDatePickerState(
+                initialSelectedDateMillis = customDateTime?.atZone(zone)?.toInstant()?.toEpochMilli() ?: System.currentTimeMillis()
+            )
+            ModalBottomSheet(
+                onDismissRequest = { showDatePicker = false },
+                containerColor = colors.card,
+                dragHandle = { BottomSheetDefaults.DragHandle(color = colors.border) }
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .navigationBarsPadding()
+                        .padding(bottom = 24.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(onClick = { showDatePicker = false }) {
+                            Text("キャンセル", color = colors.textSecondary)
+                        }
+                        Text("日付を選択", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = colors.textPrimary)
+                        TextButton(onClick = {
+                            val epoch = datePickerState.selectedDateMillis
+                            if (epoch != null) {
+                                tempPickedDate = Instant.ofEpochMilli(epoch).atZone(ZoneId.of("UTC")).toLocalDate()
+                                showDatePicker = false
+                                showTimePicker = true
+                            } else {
+                                showDatePicker = false
+                            }
+                        }) {
+                            Text("次へ (時刻)", color = colors.primary, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    DatePicker(state = datePickerState)
+                }
+            }
+        }
+
+        // Material 3 Time Picker Modal Bottom Sheet
+        if (showTimePicker) {
+            val initialH = customDateTime?.hour ?: 10
+            val initialM = customDateTime?.minute ?: 0
+            val timePickerState = rememberTimePickerState(
+                initialHour = initialH,
+                initialMinute = initialM,
+                is24Hour = true
+            )
+            ModalBottomSheet(
+                onDismissRequest = { showTimePicker = false },
+                containerColor = colors.card,
+                dragHandle = { BottomSheetDefaults.DragHandle(color = colors.border) }
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .navigationBarsPadding()
+                        .padding(bottom = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(onClick = { showTimePicker = false }) {
+                            Text("キャンセル", color = colors.textSecondary)
+                        }
+                        Text("時刻を指定", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = colors.textPrimary)
+                        TextButton(onClick = {
+                            val time = LocalTime.of(timePickerState.hour, timePickerState.minute)
+                            val dt = LocalDateTime.of(tempPickedDate, time)
+                            customDateTime = dt
+                            val label = "📅 %d/%d %02d:%02d".format(dt.monthValue, dt.dayOfMonth, dt.hour, dt.minute)
+                            if (isDone) {
+                                selectedDonePreset = label
+                            } else {
+                                selectedTodoPreset = label
+                            }
+                            showTimePicker = false
+                        }) {
+                            Text("決定", color = colors.primary, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    TimePicker(state = timePickerState)
+                }
+            }
         }
     }
 }
