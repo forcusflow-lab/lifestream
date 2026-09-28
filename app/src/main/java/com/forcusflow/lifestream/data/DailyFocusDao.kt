@@ -11,6 +11,9 @@ interface DailyFocusDao {
     @Query("SELECT * FROM daily_focus WHERE date = :date LIMIT 1")
     fun getFocusByDate(date: String): Flow<DailyFocusEntity?>
 
+    @Query("SELECT * FROM daily_focus WHERE date = :date LIMIT 1")
+    suspend fun getByDate(date: String): DailyFocusEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdate(dailyFocus: DailyFocusEntity)
 

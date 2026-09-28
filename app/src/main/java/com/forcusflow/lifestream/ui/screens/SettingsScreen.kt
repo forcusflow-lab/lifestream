@@ -30,6 +30,9 @@ import com.forcusflow.lifestream.ui.components.AppHeader
 import com.forcusflow.lifestream.ui.theme.AppThemeMode
 import com.forcusflow.lifestream.ui.theme.LifeStreamTheme
 import com.forcusflow.lifestream.viewmodel.MainViewModel
+import com.forcusflow.lifestream.widget.TodayTimelineWidgetReceiver
+import com.forcusflow.lifestream.widget.WidgetFontSize
+import com.forcusflow.lifestream.widget.WidgetSettingsManager
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -43,6 +46,9 @@ fun SettingsScreen(viewModel: MainViewModel) {
     val currentTheme by viewModel.themeMode.collectAsState()
     val cutoffHour by viewModel.dayCutoffHour.collectAsState()
     val templates by viewModel.templates.collectAsState()
+
+    var widgetOpacity by remember { mutableStateOf(WidgetSettingsManager.getOpacity(context)) }
+    var widgetFontSize by remember { mutableStateOf(WidgetSettingsManager.getFontSize(context)) }
 
     var showCutoffDialog by remember { mutableStateOf(false) }
     var showTemplatesDialog by remember { mutableStateOf(false) }
@@ -150,6 +156,247 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     isSelected = currentTheme == AppThemeMode.PURE_MINIMAL_OLED,
                     onClick = { viewModel.setTheme(AppThemeMode.PURE_MINIMAL_OLED) }
                 )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Section: ホーム画面ウィジェット設定 (手帳ウィジェット)
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
+                Text(
+                    text = "ホーム画面ウィジェット設定 (手帳ウィジェット)",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textSecondary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = colors.card,
+                    border = BorderStroke(1.dp, colors.border)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "背景の透過率 (壁紙の透け感)",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.textPrimary
+                            )
+                            Text(
+                                text = "${(widgetOpacity * 100).toInt()}%",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.primary
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Slider(
+                            value = widgetOpacity,
+                            onValueChange = {
+                                widgetOpacity = it
+                                WidgetSettingsManager.setOpacity(context, it)
+                                TodayTimelineWidgetReceiver.updateAll(context)
+                            },
+                            valueRange = 0.0f..1.0f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = colors.primary,
+                                activeTrackColor = colors.primary,
+                                inactiveTrackColor = colors.border
+                            )
+                        )
+
+                        // Preset chips
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(
+                                1.0f to "100%",
+                                0.85f to "85% (推奨)",
+                                0.5f to "50% (半透明)",
+                                0.0f to "0% (透明)"
+                            ).forEach { (preset, label) ->
+                                val isSelected = kotlin.math.abs(widgetOpacity - preset) < 0.04f
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(8.dp))
+                                        .background(if (isSelected) colors.primary.copy(alpha = 0.15f) else Color.Transparent)
+                                        .clickable {
+                                            widgetOpacity = preset
+                                            WidgetSettingsManager.setOpacity(context, preset)
+                                            TodayTimelineWidgetReceiver.updateAll(context)
+                                        }
+                                        .padding(vertical = 6.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) colors.primary else colors.textSecondary,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                        HorizontalDivider(color = colors.border.copy(alpha = 0.5f), thickness = 0.5.dp)
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Text(
+                            text = "文字サイズ / 情報密度",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.textPrimary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            WidgetFontSize.values().forEach { size ->
+                                val isSelected = widgetFontSize == size
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(8.dp))
+                                        .background(if (isSelected) colors.primary.copy(alpha = 0.15f) else Color.Transparent)
+                                        .clickable {
+                                            widgetFontSize = size
+                                            WidgetSettingsManager.setFontSize(context, size)
+                                            TodayTimelineWidgetReceiver.updateAll(context)
+                                        }
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(
+                                            text = when(size) {
+                                                WidgetFontSize.COMPACT -> "コンパクト"
+                                                WidgetFontSize.STANDARD -> "標準"
+                                                WidgetFontSize.LARGE -> "大きめ"
+                                            },
+                                            fontSize = 12.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) colors.primary else colors.textPrimary
+                                        )
+                                        Text(
+                                            text = when(size) {
+                                                WidgetFontSize.COMPACT -> "手帳密度"
+                                                WidgetFontSize.STANDARD -> "おすすめ"
+                                                WidgetFontSize.LARGE -> "視認性重視"
+                                            },
+                                            fontSize = 10.sp,
+                                            color = colors.textSecondary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Mini Live Preview
+                        Text(
+                            text = "ウィジェット外観プレビュー",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.textSecondary
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = (if (colors.isDark) Color(0xFF1E293B) else Color.White).copy(alpha = widgetOpacity),
+                            border = BorderStroke(0.5.dp, colors.border.copy(alpha = 0.7f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "9月29日 (火)",
+                                        fontSize = (15 * widgetFontSize.scale).sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.textPrimary
+                                    )
+                                    Text(
+                                        text = "FocusFlow ↗",
+                                        fontSize = (10 * widgetFontSize.scale).sp,
+                                        color = colors.textSecondary.copy(alpha = 0.7f)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(3.dp))
+                                Text(
+                                    text = "🎯 “最重要タスクに没頭する”",
+                                    fontSize = (11.5f * widgetFontSize.scale).sp,
+                                    color = colors.primary
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                HorizontalDivider(color = colors.border.copy(alpha = 0.35f), thickness = 0.5.dp)
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "07:30",
+                                        fontSize = (10 * widgetFontSize.scale).sp,
+                                        color = colors.textSecondary,
+                                        modifier = Modifier.width(36.dp)
+                                    )
+                                    Text("✓ ", fontSize = (10 * widgetFontSize.scale).sp, color = colors.statusDone, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        text = "モーニングコーヒーで一息",
+                                        fontSize = (11 * widgetFontSize.scale).sp,
+                                        color = colors.textSecondary
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = colors.nowLine,
+                                        modifier = Modifier.padding(end = 6.dp)
+                                    ) {
+                                        Text(
+                                            text = "現在 07:45",
+                                            fontSize = (9 * widgetFontSize.scale).sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                    HorizontalDivider(
+                                        modifier = Modifier.weight(1f),
+                                        thickness = 1.dp,
+                                        color = colors.nowLine.copy(alpha = 0.7f)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("○ ", fontSize = (13 * widgetFontSize.scale).sp, color = colors.textSecondary, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        text = "手帳ウィジェットを実装・検証",
+                                        fontSize = (11.5f * widgetFontSize.scale).sp,
+                                        color = colors.textPrimary,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))

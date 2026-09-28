@@ -10,6 +10,8 @@ import com.forcusflow.lifestream.data.MemoEntity
 import com.forcusflow.lifestream.data.TemplateEntity
 import com.forcusflow.lifestream.data.TimelineItemEntity
 import com.forcusflow.lifestream.ui.theme.AppThemeMode
+import com.forcusflow.lifestream.widget.TodayTimelineWidgetReceiver
+import com.forcusflow.lifestream.widget.WidgetSettingsManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
@@ -32,8 +34,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val zone = ZoneId.systemDefault()
 
     // Preferences state
-    val themeMode = MutableStateFlow(AppThemeMode.CLASSIC_WARM)
-    val dayCutoffHour = MutableStateFlow(4) // 04:00 AM
+    val themeMode = MutableStateFlow(WidgetSettingsManager.getThemeMode(application))
+    val dayCutoffHour = MutableStateFlow(WidgetSettingsManager.getCutoffHour(application))
 
     // Navigation state
     val currentTab = MutableStateFlow(0) // 0: 今日, 1: 履歴, 2: 周期, 3: メモ, 4: 設定
@@ -104,6 +106,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             DatabaseSeeder.seed(templateDao, itemDao)
         }
+        viewModelScope.launch(Dispatchers.IO) {
+            combine(
+                allItems,
+                dailyFocusDao.getAll(),
+                templates
+            ) { _, _, _ -> Unit }
+                .drop(1)
+                .collectLatest {
+                    notifyWidgetUpdate()
+                }
+        }
+    }
+
+    fun notifyWidgetUpdate() {
+        TodayTimelineWidgetReceiver.updateAll(getApplication())
     }
 
     // Determine Day boundaries taking cutoff hour into account
@@ -528,10 +545,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setTheme(mode: AppThemeMode) {
         themeMode.value = mode
+        WidgetSettingsManager.setThemeMode(getApplication(), mode)
+        notifyWidgetUpdate()
     }
 
     fun setDayCutoff(hour: Int) {
         dayCutoffHour.value = hour
+        WidgetSettingsManager.setCutoffHour(getApplication(), hour)
+        notifyWidgetUpdate()
     }
 
     fun exportJson(): String {
