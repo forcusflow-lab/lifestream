@@ -95,6 +95,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // Active Timer state for actionType = "TIMER"
     val activeTimerTemplate = MutableStateFlow<TemplateEntity?>(null)
+    val activeTimerItem = MutableStateFlow<TimelineItemEntity?>(null)
     val timerElapsedSeconds = MutableStateFlow(0L)
     private var timerStartTimeMillis: Long? = null
     private var timerJob: kotlinx.coroutines.Job? = null
@@ -165,6 +166,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             stopAndSaveTimer {}
             return
         }
+        if (activeTimerItem.value != null) {
+            stopAndSaveItemTimer {}
+        }
         timerJob?.cancel()
         val start = System.currentTimeMillis()
         timerStartTimeMillis = start
@@ -217,6 +221,63 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         timerJob?.cancel()
         timerJob = null
         activeTimerTemplate.value = null
+        activeTimerItem.value = null
+        timerStartTimeMillis = null
+        timerElapsedSeconds.value = 0L
+    }
+
+    fun startItemTimer(item: TimelineItemEntity) {
+        if (activeTimerItem.value?.id == item.id) {
+            stopAndSaveItemTimer {}
+            return
+        }
+        if (activeTimerTemplate.value != null) {
+            stopAndSaveTimer {}
+        }
+        timerJob?.cancel()
+        val start = System.currentTimeMillis()
+        timerStartTimeMillis = start
+        activeTimerItem.value = item
+        timerElapsedSeconds.value = 0L
+        timerJob = viewModelScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(1000)
+                timerElapsedSeconds.value = ((System.currentTimeMillis() - start) / 1000).coerceAtLeast(0L)
+            }
+        }
+    }
+
+    fun stopAndSaveItemTimer(onRecorded: (TimelineItemEntity) -> Unit = {}) {
+        val item = activeTimerItem.value ?: return
+        val start = timerStartTimeMillis
+        val seconds = if (start != null) {
+            ((System.currentTimeMillis() - start) / 1000).coerceAtLeast(1L)
+        } else {
+            timerElapsedSeconds.value.coerceAtLeast(1L)
+        }
+        timerJob?.cancel()
+        timerJob = null
+        activeTimerItem.value = null
+        timerStartTimeMillis = null
+        timerElapsedSeconds.value = 0L
+
+        val now = System.currentTimeMillis()
+        viewModelScope.launch(Dispatchers.IO) {
+            val updated = item.copy(
+                isDone = true,
+                completedAt = now,
+                durationSeconds = (item.durationSeconds ?: 0) + seconds.toInt()
+            )
+            itemDao.update(updated)
+            undoItem.value = updated
+            onRecorded(updated)
+        }
+    }
+
+    fun cancelItemTimer() {
+        timerJob?.cancel()
+        timerJob = null
+        activeTimerItem.value = null
         timerStartTimeMillis = null
         timerElapsedSeconds.value = 0L
     }

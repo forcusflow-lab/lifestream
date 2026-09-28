@@ -49,6 +49,7 @@ import com.forcusflow.lifestream.data.TimelineItemEntity
 import com.forcusflow.lifestream.ui.components.AddItemBottomSheet
 import com.forcusflow.lifestream.ui.components.DailyFocusBottomSheet
 import com.forcusflow.lifestream.ui.components.ItemDetailBottomSheet
+import com.forcusflow.lifestream.ui.components.StockDrawerBottomSheet
 import com.forcusflow.lifestream.ui.theme.LifeStreamTheme
 import com.forcusflow.lifestream.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
@@ -79,6 +80,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
     val allItems by viewModel.allItems.collectAsState()
     val anytimePending by viewModel.anytimePendingItems.collectAsState()
     val activeTimerTemplate by viewModel.activeTimerTemplate.collectAsState()
+    val activeTimerItem by viewModel.activeTimerItem.collectAsState()
     val timerSeconds by viewModel.timerElapsedSeconds.collectAsState()
 
     val haptic = LocalHapticFeedback.current
@@ -88,6 +90,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
     var showTemplateManagerDialog by remember { mutableStateOf(false) }
     var showSearchSheet by remember { mutableStateOf(false) }
     var showFocusSheet by remember { mutableStateOf(false) }
+    var showDrawerSheet by remember { mutableStateOf(false) }
 
     val zone = ZoneId.systemDefault()
     var currentTime by remember { mutableStateOf(LocalDateTime.now()) }
@@ -97,7 +100,6 @@ fun TimelineScreen(viewModel: MainViewModel) {
             currentTime = LocalDateTime.now()
         }
     }
-    val nowMillis = currentTime.atZone(zone).toInstant().toEpochMilli()
     val nowTimeStr = currentTime.format(DateTimeFormatter.ofPattern("HH:mm"))
 
     val cutoffHour by viewModel.dayCutoffHour.collectAsState()
@@ -114,15 +116,33 @@ fun TimelineScreen(viewModel: MainViewModel) {
         viewModel.getDayRange(today, cutoffHour)
     }
 
-    // Today's scheduled or completed items
-    val todayItems = remember(allItems, todayStart, todayEnd) {
+    // 1. Today's Completed Items (DONE Logs: Always placed ABOVE the NOW line!)
+    val todayDoneItems = remember(allItems, todayStart, todayEnd) {
         allItems.filter { item ->
-            val t = item.completedAt ?: item.scheduledAt
-            t != null && t in todayStart..todayEnd
+            item.isDone && (
+                (item.completedAt != null && item.completedAt in todayStart..todayEnd) ||
+                (item.completedAt == null && item.scheduledAt != null && item.scheduledAt in todayStart..todayEnd)
+            )
         }.sortedBy { it.completedAt ?: it.scheduledAt ?: 0L }
     }
 
-    // Future scheduled pending tasks (Upcoming)
+    // 2. Today's Pending Hand Tasks (Focus Tray items)
+    val todayPendingItems = remember(allItems, anytimePending, todayStart, todayEnd) {
+        val scheduledToday = allItems.filter { item ->
+            !item.isDone && item.scheduledAt != null && item.scheduledAt in todayStart..todayEnd
+        }
+        (scheduledToday + anytimePending).distinctBy { it.id }.sortedWith(
+            compareBy<TimelineItemEntity> { it.scheduledAt == null }
+                .thenBy { it.scheduledAt ?: 0L }
+                .thenBy { it.id }
+        )
+    }
+
+    val todayItems = remember(todayDoneItems, todayPendingItems) {
+        todayDoneItems + todayPendingItems
+    }
+
+    // 3. Future scheduled pending tasks (Stock in drawer)
     val upcomingItems = remember(allItems, todayEnd) {
         allItems.filter { item ->
             !item.isDone && item.scheduledAt != null && item.scheduledAt > todayEnd
@@ -143,51 +163,13 @@ fun TimelineScreen(viewModel: MainViewModel) {
         }
     }
 
-    // Build timeline entries with NOW line, Anytime ToDos, and Surfaced periodic tasks
-    val timelineRowItems = remember(todayItems, nowMillis, nowTimeStr, anytimePending, dueOrOverduePeriodic) {
-        val list = mutableListOf<TimelineRowItem>()
-        var nowInserted = false
-
-        todayItems.forEach { item ->
-            val itemTime = item.completedAt ?: item.scheduledAt ?: 0L
-            if (!nowInserted && itemTime > nowMillis) {
-                list.add(TimelineRowItem.NowMarker(nowTimeStr))
-                // Anytime ToDos placed directly below NOW line
-                anytimePending.forEach {
-                    list.add(TimelineRowItem.AnytimeToDo(it))
-                }
-                // Periodic tasks surfaced right below NOW line
-                dueOrOverduePeriodic.forEach { (tmpl, isOverdue, elapsed) ->
-                    list.add(TimelineRowItem.PeriodicSurfaced(tmpl, isOverdue, elapsed))
-                }
-                nowInserted = true
-            }
-            list.add(TimelineRowItem.LogItem(item))
-        }
-
-        if (!nowInserted) {
-            list.add(TimelineRowItem.NowMarker(nowTimeStr))
-            anytimePending.forEach {
-                list.add(TimelineRowItem.AnytimeToDo(it))
-            }
-            dueOrOverduePeriodic.forEach { (tmpl, isOverdue, elapsed) ->
-                list.add(TimelineRowItem.PeriodicSurfaced(tmpl, isOverdue, elapsed))
-            }
-        }
-
-        list
-    }
-
     val listState = rememberLazyListState()
     var hasScrolledToNow by remember { mutableStateOf(false) }
 
-    LaunchedEffect(timelineRowItems.size) {
-        if (!hasScrolledToNow && timelineRowItems.isNotEmpty()) {
-            val nowIdx = timelineRowItems.indexOfFirst { it is TimelineRowItem.NowMarker }
-            if (nowIdx >= 0) {
-                listState.scrollToItem((nowIdx - 1).coerceAtLeast(0))
-                hasScrolledToNow = true
-            }
+    LaunchedEffect(todayDoneItems.size) {
+        if (!hasScrolledToNow && todayDoneItems.isNotEmpty()) {
+            listState.scrollToItem((todayDoneItems.size - 1).coerceAtLeast(0))
+            hasScrolledToNow = true
         }
     }
 
@@ -434,194 +416,381 @@ fun TimelineScreen(viewModel: MainViewModel) {
                     .padding(horizontal = 20.dp),
                 contentPadding = PaddingValues(top = 4.dp, bottom = 80.dp)
             ) {
-                if (timelineRowItems.isEmpty()) {
-                    item {
-                        TaskitoNowLineRow(
-                            timeStr = nowTimeStr,
-                            isFirst = true,
-                            isLast = true
+                // 1. 過去の実績ログ（DONEログ）：何があっても一律NOWラインの上に配置！
+                if (todayDoneItems.isNotEmpty()) {
+                    itemsIndexed(todayDoneItems, key = { _, item -> item.id }) { index, item ->
+                        TaskitoTimelineItemRow(
+                            item = item,
+                            templates = templates,
+                            isFirst = index == 0,
+                            isLast = false,
+                            onToggle = { viewModel.toggleItemDone(item) },
+                            onClick = { itemToEdit = item },
+                            onDelete = {
+                                viewModel.deleteItem(item)
+                                coroutineScope.launch {
+                                    val res = snackbarHostState.showSnackbar(
+                                        message = "${item.title} を削除しました",
+                                        actionLabel = "元に戻す",
+                                        duration = SnackbarDuration.Short
+                                    )
+                                    if (res == SnackbarResult.ActionPerformed) {
+                                        viewModel.restoreItem(item)
+                                    }
+                                }
+                            }
                         )
                     }
-                } else {
-                    itemsIndexed(timelineRowItems) { index, rowItem ->
-                        val isFirst = index == 0
-                        val isLast = index == timelineRowItems.size - 1
+                }
 
-                        when (rowItem) {
-                            is TimelineRowItem.NowMarker -> {
-                                TaskitoNowLineRow(
-                                    timeStr = rowItem.timeStr,
-                                    isFirst = isFirst,
-                                    isLast = isLast
+                // 2. NOWライン（現在時刻）
+                item(key = "now_line") {
+                    TaskitoNowLineRow(
+                        timeStr = nowTimeStr,
+                        isFirst = todayDoneItems.isEmpty(),
+                        isLast = false
+                    )
+
+                    if (todayDoneItems.isEmpty() && todayPendingItems.isEmpty() && dueOrOverduePeriodic.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp, bottom = 12.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(colors.card)
+                                .border(0.5.dp, colors.border, RoundedCornerShape(14.dp))
+                                .padding(18.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "🌿 清々しい1日のはじまり",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.textPrimary
                                 )
-                                if (todayItems.isEmpty() && anytimePending.isEmpty() && dueOrOverduePeriodic.isEmpty()) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(top = 16.dp, bottom = 12.dp)
-                                            .clip(RoundedCornerShape(14.dp))
-                                            .background(colors.card)
-                                            .border(0.5.dp, colors.border, RoundedCornerShape(14.dp))
-                                            .padding(18.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text(
-                                                text = "🌿 清々しい1日のはじまり",
-                                                fontSize = 15.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = colors.textPrimary
-                                            )
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text(
-                                                text = "今日の最初の行動をワンタップで記録しましょう",
-                                                fontSize = 12.sp,
-                                                color = colors.textSecondary
-                                            )
-                                            Spacer(modifier = Modifier.height(14.dp))
-                                            Row(
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                modifier = Modifier.horizontalScroll(rememberScrollState())
-                                            ) {
-                                                pinnedTemplates.take(4).forEach { t ->
-                                                    OutlinedButton(
-                                                        onClick = {
-                                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                            viewModel.quickRecordTemplate(t) { saved ->
-                                                                coroutineScope.launch {
-                                                                    snackbarHostState.showSnackbar("「${saved.title}」を記録しました！")
-                                                                }
-                                                            }
-                                                        },
-                                                        shape = RoundedCornerShape(8.dp),
-                                                        border = BorderStroke(1.dp, colors.border),
-                                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp)
-                                                    ) {
-                                                        Text(
-                                                            text = "${t.iconKey ?: "📌"} ${t.title}",
-                                                            fontSize = 12.sp,
-                                                            color = colors.textPrimary,
-                                                            fontWeight = FontWeight.SemiBold
-                                                        )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "今日の最初の行動をワンタップで記録しましょう",
+                                    fontSize = 12.sp,
+                                    color = colors.textSecondary
+                                )
+                                Spacer(modifier = Modifier.height(14.dp))
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.horizontalScroll(rememberScrollState())
+                                ) {
+                                    pinnedTemplates.take(4).forEach { t ->
+                                        OutlinedButton(
+                                            onClick = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                viewModel.quickRecordTemplate(t) { saved ->
+                                                    coroutineScope.launch {
+                                                        snackbarHostState.showSnackbar("「${saved.title}」を記録しました！")
                                                     }
                                                 }
+                                            },
+                                            shape = RoundedCornerShape(8.dp),
+                                            border = BorderStroke(1.dp, colors.border),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp)
+                                        ) {
+                                            Text(
+                                                text = "${t.iconKey ?: "📌"} ${t.title}",
+                                                fontSize = 12.sp,
+                                                color = colors.textPrimary,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 3. 「これからの歩み」統一トレイ
+                item(key = "focus_tray") {
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // セクション見出し
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "これからの歩み",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary
+                        )
+                        if (todayPendingItems.isNotEmpty() || dueOrOverduePeriodic.isNotEmpty()) {
+                            Text(
+                                text = "${todayPendingItems.size + dueOrOverduePeriodic.size}件",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.textSecondary
+                            )
+                        }
+                    }
+
+                    // 統一トレイ（Surface）
+                    Surface(
+                        shape = RoundedCornerShape(22.dp),
+                        color = colors.card,
+                        border = BorderStroke(0.5.dp, colors.border.copy(alpha = 0.5f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            // 周期タスク（今日浮上したもの）
+                            dueOrOverduePeriodic.forEach { (tmpl, _, _) ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // 完了チェック丸ボタン
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Color.Transparent,
+                                        border = BorderStroke(1.5.dp, colors.border),
+                                        modifier = Modifier
+                                            .size(22.dp)
+                                            .clip(CircleShape)
+                                            .clickable {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                viewModel.recordCycleTask(tmpl, today)
+                                                coroutineScope.launch {
+                                                    snackbarHostState.showSnackbar("「${tmpl.title}」を完了しました！")
+                                                }
+                                            }
+                                    ) {}
+
+                                    Spacer(modifier = Modifier.width(10.dp))
+
+                                    // アイコン＋タスク名
+                                    Text(
+                                        text = "${tmpl.iconKey ?: "🔄"} ${tmpl.title}",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = colors.textPrimary,
+                                        modifier = Modifier.weight(1f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+
+                                    // スキップボタン
+                                    TextButton(
+                                        onClick = {
+                                            viewModel.skipCycleTask(tmpl)
+                                            coroutineScope.launch {
+                                                val interval = tmpl.intervalDays ?: 7
+                                                val nextDate = today.plusDays(interval.toLong())
+                                                snackbarHostState.showSnackbar("「${tmpl.title}」をスキップしました (次回: ${nextDate.monthValue}/${nextDate.dayOfMonth})")
+                                            }
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                        modifier = Modifier.height(28.dp)
+                                    ) {
+                                        Text("スキップ", fontSize = 11.5.sp, color = colors.textSecondary)
+                                    }
+                                }
+                            }
+
+                            // 手元タスク（未完了ToDo）
+                            todayPendingItems.forEach { item ->
+                                val isTimerRunning = activeTimerItem?.id == item.id
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { itemToEdit = item }
+                                        .padding(vertical = 7.dp, horizontal = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // A. 瞬間チェック系：円形チェック枠 (○)
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = if (item.isDone) colors.statusDone else Color.Transparent,
+                                        border = BorderStroke(1.5.dp, if (item.isDone) colors.statusDone else colors.border),
+                                        modifier = Modifier
+                                            .size(22.dp)
+                                            .clip(CircleShape)
+                                            .clickable {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                viewModel.toggleItemDone(item)
+                                            }
+                                    ) {
+                                        if (item.isDone) {
+                                            Icon(
+                                                Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(10.dp))
+
+                                    // タイトル ＋ 時刻指定表示
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = item.title,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = colors.textPrimary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
+
+                                        // 時刻指定がある場合のみ小さく添える
+                                        item.scheduledAt?.let { sched ->
+                                            val timeStr = LocalDateTime.ofInstant(Instant.ofEpochMilli(sched), zone)
+                                                .format(DateTimeFormatter.ofPattern("HH:mm"))
+                                            if (timeStr != "00:00") {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = timeStr,
+                                                    fontSize = 11.5.sp,
+                                                    color = colors.textSecondary.copy(alpha = 0.75f),
+                                                    fontWeight = FontWeight.Normal
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(6.dp))
+
+                                    // B. 時間カウント系（作業・没頭）：タイマー再生ボタン (▶)
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = if (isTimerRunning) colors.primary.copy(alpha = 0.15f) else Color.Transparent,
+                                        modifier = Modifier
+                                            .size(30.dp)
+                                            .clip(CircleShape)
+                                            .clickable {
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                viewModel.startItemTimer(item)
+                                            },
+                                        contentColor = if (isTimerRunning) colors.primary else colors.textSecondary.copy(alpha = 0.6f)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            if (isTimerRunning) {
+                                                Text(
+                                                    text = "⏹",
+                                                    fontSize = 13.sp,
+                                                    color = colors.primary
+                                                )
+                                            } else {
+                                                Text(
+                                                    text = "▶",
+                                                    fontSize = 12.sp,
+                                                    color = colors.textSecondary.copy(alpha = 0.6f)
+                                                )
                                             }
                                         }
                                     }
                                 }
                             }
-                            is TimelineRowItem.AnytimeToDo -> {
-                                val item = rowItem.entity
-                                TaskitoAnytimeItemRow(
-                                    item = item,
-                                    isFirst = isFirst,
-                                    isLast = isLast,
-                                    onToggle = { viewModel.toggleItemDone(item) },
-                                    onClick = { itemToEdit = item },
-                                    onDelete = {
-                                        viewModel.deleteItem(item)
-                                        coroutineScope.launch {
-                                            val res = snackbarHostState.showSnackbar(
-                                                message = "${item.title} を削除しました",
-                                                actionLabel = "元に戻す",
-                                                duration = SnackbarDuration.Short
-                                            )
-                                            if (res == SnackbarResult.ActionPerformed) {
-                                                viewModel.restoreItem(item)
-                                            }
-                                        }
-                                    }
-                                )
-                            }
-                            is TimelineRowItem.PeriodicSurfaced -> {
-                                TaskitoPeriodicSurfacedRow(
-                                    template = rowItem.template,
-                                    isOverdue = rowItem.isOverdue,
-                                    elapsedDays = rowItem.elapsedDays,
-                                    isFirst = isFirst,
-                                    isLast = isLast,
-                                    onCompletedNow = {
-                                        viewModel.recordCycleTask(rowItem.template, today)
-                                        coroutineScope.launch {
-                                            snackbarHostState.showSnackbar("「${rowItem.template.title}」の完了を記録しました！")
-                                        }
-                                    },
-                                    onSkip = {
-                                        viewModel.skipCycleTask(rowItem.template)
-                                        coroutineScope.launch {
-                                            val interval = rowItem.template.intervalDays ?: 7
-                                            val nextDate = today.plusDays(interval.toLong())
-                                            snackbarHostState.showSnackbar("「${rowItem.template.title}」をスキップしました (次回: ${nextDate.monthValue}/${nextDate.dayOfMonth})")
-                                        }
-                                    }
-                                )
-                            }
-                            is TimelineRowItem.LogItem -> {
-                                val item = rowItem.entity
-                                TaskitoTimelineItemRow(
-                                    item = item,
-                                    templates = templates,
-                                    isFirst = isFirst,
-                                    isLast = isLast,
-                                    onToggle = { viewModel.toggleItemDone(item) },
-                                    onClick = { itemToEdit = item },
-                                    onDelete = {
-                                        viewModel.deleteItem(item)
-                                        coroutineScope.launch {
-                                            val res = snackbarHostState.showSnackbar(
-                                                message = "${item.title} を削除しました",
-                                                actionLabel = "元に戻す",
-                                                duration = SnackbarDuration.Short
-                                            )
-                                            if (res == SnackbarResult.ActionPerformed) {
-                                                viewModel.restoreItem(item)
-                                            }
-                                        }
-                                    }
-                                )
-                            }
-                        }
-                    }
 
-                    if (upcomingItems.isNotEmpty()) {
-                        item {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            UpcomingSectionCard(
-                                upcomingItems = upcomingItems,
-                                onToggleDone = { viewModel.toggleItemDone(it) },
-                                onRescheduleToToday = {
-                                    viewModel.rescheduleItemToToday(it)
-                                    coroutineScope.launch {
-                                        snackbarHostState.showSnackbar("「${it.title}」を今日に繰り上げました")
-                                    }
-                                },
-                                onClickItem = { itemToEdit = it }
+                            // 手元タスクが0件のとき
+                            if (todayPendingItems.isEmpty() && dueOrOverduePeriodic.isEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 12.dp, horizontal = 4.dp),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    Text(
+                                        text = "手元のタスクはありません。穏やかな時間をお過ごしください 🌿",
+                                        fontSize = 13.sp,
+                                        color = colors.textSecondary.copy(alpha = 0.75f)
+                                    )
+                                }
+                            }
+
+                            // 控えめな区切り線
+                            HorizontalDivider(
+                                color = colors.border.copy(alpha = 0.35f),
+                                thickness = 0.5.dp,
+                                modifier = Modifier.padding(vertical = 8.dp)
                             )
+
+                            // 最下部の「引き出し（ストック）」リンク
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        showDrawerSheet = true
+                                    }
+                                    .padding(vertical = 6.dp, horizontal = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("📦", fontSize = 14.sp)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "引き出し（ストック ${upcomingItems.size}件）",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = colors.textPrimary
+                                    )
+                                }
+                                Text(
+                                    text = "開く ➔",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.primary
+                                )
+                            }
                         }
                     }
                 }
             }
 
             // Fixed Active Timer Mini-Player at bottom (does not scroll with timeline)
-            if (activeTimerTemplate != null) {
+            if (activeTimerTemplate != null || activeTimerItem != null) {
                 ActiveTimerBottomBar(
-                    template = activeTimerTemplate!!,
+                    title = activeTimerTemplate?.title ?: activeTimerItem?.title ?: "",
+                    iconKey = activeTimerTemplate?.iconKey ?: "⏱️",
                     elapsedSeconds = timerSeconds,
                     onStop = {
-                        viewModel.stopAndSaveTimer { saved ->
-                            coroutineScope.launch {
-                                val res = snackbarHostState.showSnackbar(
-                                    message = "${saved.title} を記録しました",
-                                    actionLabel = "元に戻す",
-                                    duration = SnackbarDuration.Short
-                                )
-                                if (res == SnackbarResult.ActionPerformed) {
-                                    viewModel.undoLastItem()
+                        if (activeTimerTemplate != null) {
+                            viewModel.stopAndSaveTimer { saved ->
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("「${saved.title}」を記録しました")
+                                }
+                            }
+                        } else {
+                            viewModel.stopAndSaveItemTimer { saved ->
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("「${saved.title}」の実績を記録しました")
                                 }
                             }
                         }
                     },
-                    onCancel = { viewModel.cancelTimer() }
+                    onCancel = {
+                        if (activeTimerTemplate != null) {
+                            viewModel.cancelTimer()
+                        } else {
+                            viewModel.cancelItemTimer()
+                        }
+                    }
                 )
             }
         }
@@ -651,6 +820,26 @@ fun TimelineScreen(viewModel: MainViewModel) {
             onClear = {
                 viewModel.clearDailyFocus(todayDateKey)
                 showFocusSheet = false
+            }
+        )
+    }
+
+    // Stock Drawer Bottom Sheet (引き出し)
+    if (showDrawerSheet) {
+        StockDrawerBottomSheet(
+            upcomingItems = upcomingItems,
+            onDismiss = { showDrawerSheet = false },
+            onBringToToday = { item ->
+                viewModel.rescheduleItemToToday(item)
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("「${item.title}」を手元（今日）に引き出しました")
+                }
+            },
+            onToggleDone = { item ->
+                viewModel.toggleItemDone(item)
+            },
+            onSelectItem = { item ->
+                itemToEdit = item
             }
         )
     }
@@ -791,7 +980,8 @@ fun TaskitoNowLineRow(
 
 @Composable
 fun ActiveTimerBottomBar(
-    template: TemplateEntity,
+    title: String,
+    iconKey: String = "⏱️",
     elapsedSeconds: Long,
     onStop: () -> Unit,
     onCancel: () -> Unit
@@ -808,7 +998,7 @@ fun ActiveTimerBottomBar(
         shape = RoundedCornerShape(16.dp),
         color = colors.card,
         shadowElevation = 6.dp,
-        border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFFEF4444).copy(alpha = 0.6f))
+        border = BorderStroke(1.5.dp, colors.statusOverdue.copy(alpha = 0.6f))
     ) {
         Row(
             modifier = Modifier
@@ -818,11 +1008,11 @@ fun ActiveTimerBottomBar(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                Text(text = template.iconKey ?: "⏱️", fontSize = 22.sp)
+                Text(text = iconKey, fontSize = 22.sp)
                 Spacer(modifier = Modifier.width(10.dp))
                 Column {
                     Text(
-                        text = template.title,
+                        text = title,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = colors.textPrimary,
@@ -833,14 +1023,14 @@ fun ActiveTimerBottomBar(
                             modifier = Modifier
                                 .size(8.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFFEF4444))
+                                .background(colors.statusOverdue)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "$timerStr 計測中...",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFFEF4444)
+                            color = colors.statusOverdue
                         )
                     }
                 }
@@ -858,7 +1048,7 @@ fun ActiveTimerBottomBar(
                     onClick = onStop,
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF16A34A),
+                        containerColor = colors.statusDone,
                         contentColor = Color.White
                     ),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
