@@ -510,35 +510,20 @@ fun TimelineScreen(viewModel: MainViewModel) {
 
                 // 3. 「これからの歩み」統一トレイ
                 item(key = "focus_tray") {
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
-                    // セクション見出し
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "これからの歩み",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.textPrimary
-                        )
-                        if (todayPendingItems.isNotEmpty() || dueOrOverduePeriodic.isNotEmpty()) {
-                            Text(
-                                text = "${todayPendingItems.size + dueOrOverduePeriodic.size}件",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = colors.textSecondary
-                            )
-                        }
-                    }
+                    // セクション見出し（件数テキストは削除して静かな佇まいに）
+                    Text(
+                        text = "これからの歩み",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.textPrimary,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
 
-                    // 統一トレイ（Surface）
+                    // 統一トレイ（Surface: 余白を引き締め、手帳のような程よい密度感に）
                     Surface(
-                        shape = RoundedCornerShape(22.dp),
+                        shape = RoundedCornerShape(18.dp),
                         color = colors.card,
                         border = BorderStroke(0.5.dp, colors.border.copy(alpha = 0.5f)),
                         modifier = Modifier.fillMaxWidth()
@@ -546,23 +531,23 @@ fun TimelineScreen(viewModel: MainViewModel) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                                .padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 6.dp)
                         ) {
                             // 周期タスク（今日浮上したもの）
                             dueOrOverduePeriodic.forEach { (tmpl, _, _) ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(vertical = 6.dp),
+                                        .padding(vertical = 3.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // 完了チェック丸ボタン
+                                    // 完了チェック丸ボタン（繊細な極細ボーダー）
                                     Surface(
                                         shape = CircleShape,
                                         color = Color.Transparent,
-                                        border = BorderStroke(1.5.dp, colors.border),
+                                        border = BorderStroke(1.dp, colors.border.copy(alpha = 0.7f)),
                                         modifier = Modifier
-                                            .size(22.dp)
+                                            .size(20.dp)
                                             .clip(CircleShape)
                                             .clickable {
                                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -573,12 +558,12 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                             }
                                     ) {}
 
-                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
 
                                     // アイコン＋タスク名
                                     Text(
                                         text = "${tmpl.iconKey ?: "🔄"} ${tmpl.title}",
-                                        fontSize = 14.sp,
+                                        fontSize = 13.5.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = colors.textPrimary,
                                         modifier = Modifier.weight(1f),
@@ -596,10 +581,10 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                                 snackbarHostState.showSnackbar("「${tmpl.title}」をスキップしました (次回: ${nextDate.monthValue}/${nextDate.dayOfMonth})")
                                             }
                                         },
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                        modifier = Modifier.height(28.dp)
+                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                        modifier = Modifier.height(26.dp)
                                     ) {
-                                        Text("スキップ", fontSize = 11.5.sp, color = colors.textSecondary)
+                                        Text("スキップ", fontSize = 11.sp, color = colors.textSecondary.copy(alpha = 0.75f))
                                     }
                                 }
                             }
@@ -610,18 +595,18 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
+                                        .clip(RoundedCornerShape(6.dp))
                                         .clickable { itemToEdit = item }
-                                        .padding(vertical = 7.dp, horizontal = 2.dp),
+                                        .padding(vertical = 3.dp, horizontal = 2.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // A. 瞬間チェック系：円形チェック枠 (○)
+                                    // A. 瞬間チェック系：円形チェック枠 (○: 繊細で背景に馴染む1.dp枠)
                                     Surface(
                                         shape = CircleShape,
                                         color = if (item.isDone) colors.statusDone else Color.Transparent,
-                                        border = BorderStroke(1.5.dp, if (item.isDone) colors.statusDone else colors.border),
+                                        border = BorderStroke(1.dp, if (item.isDone) colors.statusDone else colors.border.copy(alpha = 0.7f)),
                                         modifier = Modifier
-                                            .size(22.dp)
+                                            .size(20.dp)
                                             .clip(CircleShape)
                                             .clickable {
                                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -629,16 +614,18 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                             }
                                     ) {
                                         if (item.isDone) {
-                                            Icon(
-                                                Icons.Default.Check,
-                                                contentDescription = null,
-                                                tint = Color.White,
-                                                modifier = Modifier.size(14.dp)
-                                            )
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    Icons.Default.Check,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                            }
                                         }
                                     }
 
-                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
 
                                     // タイトル ＋ 時刻指定表示
                                     Row(
@@ -647,7 +634,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                     ) {
                                         Text(
                                             text = item.title,
-                                            fontSize = 14.sp,
+                                            fontSize = 13.5.sp,
                                             fontWeight = FontWeight.Medium,
                                             color = colors.textPrimary,
                                             maxLines = 1,
@@ -663,41 +650,40 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                                 Spacer(modifier = Modifier.width(6.dp))
                                                 Text(
                                                     text = timeStr,
-                                                    fontSize = 11.5.sp,
-                                                    color = colors.textSecondary.copy(alpha = 0.75f),
+                                                    fontSize = 11.sp,
+                                                    color = colors.textSecondary.copy(alpha = 0.65f),
                                                     fontWeight = FontWeight.Normal
                                                 )
                                             }
                                         }
                                     }
 
-                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
 
-                                    // B. 時間カウント系（作業・没頭）：タイマー再生ボタン (▶)
+                                    // B. 時間カウント系（作業・没頭）：タイマー再生ボタン (▶: 主張を抑えた繊細なアイコン)
                                     Surface(
                                         shape = CircleShape,
                                         color = if (isTimerRunning) colors.primary.copy(alpha = 0.15f) else Color.Transparent,
                                         modifier = Modifier
-                                            .size(30.dp)
+                                            .size(24.dp)
                                             .clip(CircleShape)
                                             .clickable {
                                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                                 viewModel.startItemTimer(item)
-                                            },
-                                        contentColor = if (isTimerRunning) colors.primary else colors.textSecondary.copy(alpha = 0.6f)
+                                            }
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
                                             if (isTimerRunning) {
                                                 Text(
                                                     text = "⏹",
-                                                    fontSize = 13.sp,
+                                                    fontSize = 11.sp,
                                                     color = colors.primary
                                                 )
                                             } else {
                                                 Text(
                                                     text = "▶",
-                                                    fontSize = 12.sp,
-                                                    color = colors.textSecondary.copy(alpha = 0.6f)
+                                                    fontSize = 10.5.sp,
+                                                    color = colors.textSecondary.copy(alpha = 0.45f)
                                                 )
                                             }
                                         }
@@ -710,52 +696,52 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(vertical = 12.dp, horizontal = 4.dp),
+                                        .padding(vertical = 6.dp, horizontal = 4.dp),
                                     contentAlignment = Alignment.CenterStart
                                 ) {
                                     Text(
                                         text = "手元のタスクはありません。穏やかな時間をお過ごしください 🌿",
-                                        fontSize = 13.sp,
-                                        color = colors.textSecondary.copy(alpha = 0.75f)
+                                        fontSize = 12.sp,
+                                        color = colors.textSecondary.copy(alpha = 0.7f)
                                     )
                                 }
                             }
 
                             // 控えめな区切り線
                             HorizontalDivider(
-                                color = colors.border.copy(alpha = 0.35f),
+                                color = colors.border.copy(alpha = 0.25f),
                                 thickness = 0.5.dp,
-                                modifier = Modifier.padding(vertical = 8.dp)
+                                modifier = Modifier.padding(vertical = 4.dp)
                             )
 
                             // 最下部の「引き出し（ストック）」リンク
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .clip(RoundedCornerShape(8.dp))
                                     .clickable {
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                         showDrawerSheet = true
                                     }
-                                    .padding(vertical = 6.dp, horizontal = 4.dp),
+                                    .padding(vertical = 3.dp, horizontal = 4.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("📦", fontSize = 14.sp)
-                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("📦", fontSize = 12.sp)
+                                    Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = "引き出し（ストック ${upcomingItems.size}件）",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = colors.textPrimary
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Normal,
+                                        color = colors.textSecondary
                                     )
                                 }
                                 Text(
                                     text = "開く ➔",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.primary
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = colors.primary.copy(alpha = 0.85f)
                                 )
                             }
                         }
