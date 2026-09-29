@@ -45,6 +45,7 @@ fun AddItemBottomSheet(
     initialIsDone: Boolean = true,
     templates: List<TemplateEntity> = emptyList(),
     onDismiss: () -> Unit,
+    onManageTemplates: (() -> Unit)? = null,
     onSave: (
         title: String,
         isDone: Boolean,
@@ -702,11 +703,32 @@ fun AddItemBottomSheet(
             // === 5. Quick Template Selector (記録モード時のみ表示) ===
             if (isDone && templates.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "クイック選択:",
-                    fontSize = 11.5.sp,
-                    color = colors.textSecondary
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "クイック選択:",
+                        fontSize = 11.5.sp,
+                        color = colors.textSecondary
+                    )
+                    if (onManageTemplates != null) {
+                        Text(
+                            text = "⚙ テンプレート管理",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = colors.primary,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onManageTemplates()
+                                }
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     modifier = Modifier

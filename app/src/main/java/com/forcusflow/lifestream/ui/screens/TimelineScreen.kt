@@ -9,9 +9,11 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -69,7 +71,7 @@ sealed class TimelineRowItem {
     data class PeriodicSurfaced(val template: TemplateEntity, val isOverdue: Boolean, val elapsedDays: Long) : TimelineRowItem()
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TimelineScreen(viewModel: MainViewModel) {
     val colors = LifeStreamTheme.colors
@@ -404,21 +406,27 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                 shape = RoundedCornerShape(10.dp)
                             )
                             .background(chipBgColor)
-                            .clickable {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                viewModel.quickRecordTemplate(t) { savedItem ->
-                                    coroutineScope.launch {
-                                        val result = snackbarHostState.showSnackbar(
-                                            message = "${savedItem.title} を記録しました",
-                                            actionLabel = "元に戻す",
-                                            duration = SnackbarDuration.Short
-                                        )
-                                        if (result == SnackbarResult.ActionPerformed) {
-                                            viewModel.undoLastItem()
+                            .combinedClickable(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    viewModel.quickRecordTemplate(t) { savedItem ->
+                                        coroutineScope.launch {
+                                            val result = snackbarHostState.showSnackbar(
+                                                message = "${savedItem.title} を記録しました",
+                                                actionLabel = "元に戻す",
+                                                duration = SnackbarDuration.Short
+                                            )
+                                            if (result == SnackbarResult.ActionPerformed) {
+                                                viewModel.undoLastItem()
+                                            }
                                         }
                                     }
+                                },
+                                onLongClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    showTemplateManagerDialog = true
                                 }
-                            }
+                            )
                             .padding(horizontal = 13.dp, vertical = 7.dp)
                     ) {
                         Text(
@@ -427,6 +435,46 @@ fun TimelineScreen(viewModel: MainViewModel) {
                             fontWeight = FontWeight.SemiBold,
                             color = chipBorderColor
                         )
+                    }
+                }
+
+                // 洗練された控えめな「⚙」テンプレート管理ボタン
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .border(0.6.dp, colors.border.copy(alpha = 0.5f), CircleShape)
+                        .background(colors.card)
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            showTemplateManagerDialog = true
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "⚙",
+                        fontSize = 13.5.sp
+                    )
+                }
+
+                if (pinnedTemplates.isEmpty()) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = colors.card,
+                        border = BorderStroke(0.6.dp, colors.border.copy(alpha = 0.6f)),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                showTemplateManagerDialog = true
+                            }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                        ) {
+                            Text("＋ 記録テンプレートを設定", fontSize = 12.5.sp, color = colors.primary, fontWeight = FontWeight.Medium)
+                        }
                     }
                 }
             }
@@ -908,6 +956,10 @@ fun TimelineScreen(viewModel: MainViewModel) {
         AddItemBottomSheet(
             templates = templates,
             onDismiss = { showAddSheet = false },
+            onManageTemplates = {
+                showAddSheet = false
+                showTemplateManagerDialog = true
+            },
             onSave = { title, isDone, scheduledAt, completedAt, amount, note, templateId, durationSeconds, countValue, createdAt ->
                 viewModel.addTimelineItem(title, isDone, scheduledAt, completedAt, amount, note, templateId, durationSeconds, countValue, createdAt)
             }
