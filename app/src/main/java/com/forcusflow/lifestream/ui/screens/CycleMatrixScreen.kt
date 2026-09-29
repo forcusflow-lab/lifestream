@@ -181,80 +181,187 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                     }
                 } else {
                     if (periodicTemplates.isNotEmpty()) {
-                        items(periodicTemplates, key = { it.id }) { template ->
-                            val isDoneToday = remember(allItems, template.id, today) {
-                                allItems.any {
-                                    it.isDone && it.templateId == template.id && it.completedAt != null &&
-                                    LocalDateTime.ofInstant(Instant.ofEpochMilli(it.completedAt), zone).toLocalDate() == today
-                                }
-                            }
-                            val isDoneInCycle = remember(allItems, template.id, today) {
-                                val interval = template.intervalDays ?: 7
-                                allItems.any { item ->
-                                    if (!item.isDone || item.templateId != template.id || item.completedAt == null) return@any false
-                                    val itemDate = LocalDateTime.ofInstant(Instant.ofEpochMilli(item.completedAt), zone).toLocalDate()
-                                    val days = ChronoUnit.DAYS.between(itemDate, today)
-                                    days in 0 until interval
-                                }
-                            }
-                            val streak = remember(allItems, template.id) {
-                                calculateStreak(allItems, template, zone)
-                            }
-                            MainTaskStyleCycleCard(
-                                template = template,
-                                today = today,
-                                isDoneToday = isDoneToday,
-                                isDoneInCycle = isDoneInCycle,
-                                streak = streak,
-                                onClick = { editingTemplate = template },
-                                onToggleToday = {
-                                    if (isDoneToday) {
-                                        viewModel.toggleCycleTask(template, today)
-                                        coroutineScope.launch {
-                                            snackbarHostState.showSnackbar("「${template.title}」の本日の達成を取り消しました")
-                                        }
-                                    } else {
-                                        val isUrgent = template.lastCompletedAt?.let {
-                                            val lastDate = LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
-                                            val el = ChronoUnit.DAYS.between(lastDate, today)
-                                            val iv = template.intervalDays ?: 7
-                                            el >= iv
-                                        } ?: true
+                        val dueTemplates = mutableListOf<TemplateEntity>()
+                        val upcomingTemplates = mutableListOf<TemplateEntity>()
+                        val doneTodayTemplates = mutableListOf<TemplateEntity>()
 
+                        periodicTemplates.forEach { template ->
+                            val isDoneToday = allItems.any {
+                                it.isDone && it.templateId == template.id && it.completedAt != null &&
+                                LocalDateTime.ofInstant(Instant.ofEpochMilli(it.completedAt), zone).toLocalDate() == today
+                            }
+                            if (isDoneToday) {
+                                doneTodayTemplates.add(template)
+                            } else {
+                                val lastDoneDate = template.lastCompletedAt?.let {
+                                    LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
+                                }
+                                val elapsed = if (lastDoneDate != null) ChronoUnit.DAYS.between(lastDoneDate, today) else 999L
+                                val interval = template.intervalDays ?: 7
+                                if (elapsed >= interval) {
+                                    dueTemplates.add(template)
+                                } else {
+                                    upcomingTemplates.add(template)
+                                }
+                            }
+                        }
+
+                        // 1. そろそろ（おすすめ）ゾーン
+                        if (dueTemplates.isNotEmpty()) {
+                            item(key = "header_due") {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "🌿 そろそろ（おすすめ）",
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.primary,
+                                        letterSpacing = 0.3.sp
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "${dueTemplates.size}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = colors.primary.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                            items(dueTemplates, key = { it.id }) { template ->
+                                val streak = calculateStreak(allItems, template, zone)
+                                MainTaskStyleCycleCard(
+                                    template = template,
+                                    today = today,
+                                    isDoneToday = false,
+                                    isDoneInCycle = false,
+                                    streak = streak,
+                                    onClick = { editingTemplate = template },
+                                    onToggleToday = {
                                         viewModel.toggleCycleTask(template, today)
                                         coroutineScope.launch {
-                                            val msg = if (isUrgent) {
-                                                "「${template.title}」を完了しました！🎉"
-                                            } else {
-                                                val nextDate = today.plusDays(template.intervalDays?.toLong() ?: 7L)
-                                                "「${template.title}」を前倒しで完了しました (次回: ${nextDate.format(DAY_OF_WEEK_FORMATTER)})"
-                                            }
-                                            val res = snackbarHostState.showSnackbar(
-                                                message = msg,
-                                                actionLabel = "元に戻す",
-                                                duration = SnackbarDuration.Short
-                                            )
-                                            if (res == SnackbarResult.ActionPerformed) {
-                                                viewModel.toggleCycleTask(template, today)
-                                            }
+                                            snackbarHostState.showSnackbar("「${template.title}」を完了しました！ 🌿")
+                                        }
+                                    },
+                                    onSkip = {
+                                        viewModel.skipCycleTask(template)
+                                        coroutineScope.launch {
+                                            val interval = template.intervalDays ?: 7
+                                            val nextDate = today.plusDays(interval.toLong())
+                                            snackbarHostState.showSnackbar("「${template.title}」をスキップしました (次回: ${nextDate.monthValue}/${nextDate.dayOfMonth})")
                                         }
                                     }
-                                },
-                                onSkip = {
-                                    viewModel.skipCycleTask(template)
-                                    coroutineScope.launch {
-                                        val interval = template.intervalDays ?: 7
-                                        val nextDate = today.plusDays(interval.toLong())
-                                        snackbarHostState.showSnackbar("「${template.title}」をスキップしました (次回: ${nextDate.monthValue}/${nextDate.dayOfMonth})")
-                                    }
+                                )
+                            }
+                        }
+
+                        // 2. まだ先（おだやかに準備）ゾーン
+                        if (upcomingTemplates.isNotEmpty()) {
+                            item(key = "header_upcoming") {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "☕ まだ先（おだやかに準備）",
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.textSecondary,
+                                        letterSpacing = 0.3.sp
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "${upcomingTemplates.size}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = colors.textSecondary.copy(alpha = 0.7f)
+                                    )
                                 }
-                            )
+                            }
+                            items(upcomingTemplates, key = { it.id }) { template ->
+                                val streak = calculateStreak(allItems, template, zone)
+                                MainTaskStyleCycleCard(
+                                    template = template,
+                                    today = today,
+                                    isDoneToday = false,
+                                    isDoneInCycle = true,
+                                    streak = streak,
+                                    onClick = { editingTemplate = template },
+                                    onToggleToday = {
+                                        viewModel.toggleCycleTask(template, today)
+                                        coroutineScope.launch {
+                                            val nextDate = today.plusDays(template.intervalDays?.toLong() ?: 7L)
+                                            snackbarHostState.showSnackbar("「${template.title}」を前倒し完了しました ✨ (次回: ${nextDate.format(DAY_OF_WEEK_FORMATTER)})")
+                                        }
+                                    },
+                                    onSkip = {
+                                        viewModel.skipCycleTask(template)
+                                        coroutineScope.launch {
+                                            val interval = template.intervalDays ?: 7
+                                            val nextDate = today.plusDays(interval.toLong())
+                                            snackbarHostState.showSnackbar("「${template.title}」をスキップしました (次回: ${nextDate.monthValue}/${nextDate.dayOfMonth})")
+                                        }
+                                    }
+                                )
+                            }
+                        }
+
+                        // 3. 本日完了ゾーン
+                        if (doneTodayTemplates.isNotEmpty()) {
+                            item(key = "header_done_today") {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "✨ 本日完了（満たされた習慣）",
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF10B981),
+                                        letterSpacing = 0.3.sp
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "${doneTodayTemplates.size}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFF10B981).copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                            items(doneTodayTemplates, key = { it.id }) { template ->
+                                val streak = calculateStreak(allItems, template, zone)
+                                MainTaskStyleCycleCard(
+                                    template = template,
+                                    today = today,
+                                    isDoneToday = true,
+                                    isDoneInCycle = true,
+                                    streak = streak,
+                                    onClick = { editingTemplate = template },
+                                    onToggleToday = {
+                                        viewModel.toggleCycleTask(template, today)
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar("「${template.title}」の達成を取り消しました")
+                                        }
+                                    },
+                                    onSkip = {}
+                                )
+                            }
                         }
                     }
 
                     if (somedayTemplates.isNotEmpty()) {
                         item {
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -262,11 +369,11 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "SOMEDAY (日付未定 · いつか)",
-                                    fontSize = 12.sp,
+                                    text = "🌱 いつかやりたいこと（余白）",
+                                    fontSize = 12.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = colors.textSecondary,
-                                    letterSpacing = 0.5.sp
+                                    letterSpacing = 0.3.sp
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Box(
@@ -412,34 +519,33 @@ fun MainTaskStyleCycleCard(
 
     val statusColor = when {
         isSomeday -> Color(0xFF9CA3AF)
-        isOverdue -> Color(0xFFEF4444)
-        isDueToday -> Color(0xFFF59E0B)
+        isDoneToday -> Color(0xFF10B981)
+        isDueToday || isOverdue -> colors.primary
         isSkippedToday -> Color(0xFF6B7280)
-        else -> Color(0xFF10B981)
+        else -> colors.primary.copy(alpha = 0.4f)
     }
 
     val daysUntilDue = if (elapsedDays != null) interval - elapsedDays else 0
     val nextDueDate = if (lastDoneDate != null) lastDoneDate.plusDays(interval.toLong()) else today
 
     val timingText = when {
-        isSomeday -> if (lastDoneDate != null) "前回 ${lastDoneDate.format(DAY_OF_WEEK_FORMATTER)}" else "日付未定"
-        isDoneToday -> "本日完了 · 次回 ${nextDueDate.format(DAY_OF_WEEK_FORMATTER)}"
-        isSkippedToday -> "スキップ済 · 次回 ${nextDueDate.format(DAY_OF_WEEK_FORMATTER)}"
-        isOverdue -> "${-daysUntilDue}日超過 · 前回 ${lastDoneDate!!.format(DAY_OF_WEEK_FORMATTER)}"
-        isDueToday -> if (lastDoneDate == null) "今日開始予定" else "今日期日"
-        else -> "次回 ${nextDueDate.format(DAY_OF_WEEK_FORMATTER)} · あと${daysUntilDue}日"
+        isSomeday -> if (lastDoneDate != null) "前回 ${lastDoneDate.format(DAY_OF_WEEK_FORMATTER)}" else "いつかやりたい余白"
+        isDoneToday -> "本日完了 ✨ · 次回 ${nextDueDate.format(DAY_OF_WEEK_FORMATTER)}"
+        isSkippedToday -> "お休み中 · 次回 ${nextDueDate.format(DAY_OF_WEEK_FORMATTER)}"
+        isOverdue -> "そろそろ · 前回 ${lastDoneDate?.format(DAY_OF_WEEK_FORMATTER) ?: "なし"}"
+        isDueToday -> "今日おすすめ · 前回 ${lastDoneDate?.format(DAY_OF_WEEK_FORMATTER) ?: "なし"}"
+        else -> "あと${daysUntilDue}日 · 次回 ${nextDueDate.format(DAY_OF_WEEK_FORMATTER)}"
     }
 
     val timingColor = when {
         isSomeday -> colors.textSecondary
-        isSkippedToday -> colors.textSecondary
-        isOverdue -> Color(0xFFEF4444)
-        isDueToday -> Color(0xFFF59E0B)
-        else -> Color(0xFF10B981)
+        isDoneToday -> Color(0xFF10B981)
+        isDueToday || isOverdue -> colors.primary
+        else -> colors.textSecondary
     }
 
     val cycleText = if (isSomeday) {
-        "Someday"
+        "いつか"
     } else {
         if (interval % 7 == 0) "${interval / 7}週間ごと" else "${interval}日ごと"
     }
@@ -451,7 +557,7 @@ fun MainTaskStyleCycleCard(
     Card(
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = colors.card),
-        border = BorderStroke(1.dp, if (isOverdue) statusColor.copy(alpha = 0.45f) else colors.border),
+        border = BorderStroke(0.8.dp, colors.border.copy(alpha = 0.6f)),
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
@@ -505,12 +611,19 @@ fun MainTaskStyleCycleCard(
                     )
                     if (streak >= 2 && !isSomeday) {
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "🔥$streak",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFFF59E0B)
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = colors.primary.copy(alpha = 0.1f),
+                            modifier = Modifier.padding(vertical = 1.dp)
+                        ) {
+                            Text(
+                                text = "🌿 ${streak}巡目",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.primary,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                            )
+                        }
                     }
                 }
 

@@ -299,49 +299,81 @@ fun ItemDetailBottomSheet(
                 }
             }
 
-            // 1. Status Toggle Card (Done vs ToDo)
+            // 1. Status Indicator & Safe Action (Done vs ToDo)
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = colors.background,
-                border = BorderStroke(1.dp, colors.border),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { isDone = !isDone }
+                border = BorderStroke(1.dp, colors.border.copy(alpha = 0.6f)),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(24.dp)
-                            .clip(CircleShape)
-                            .border(2.dp, if (isDone) colors.statusDone else colors.primary, CircleShape)
-                            .background(if (isDone) colors.statusDone else Color.Transparent),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (isDone) {
-                            Icon(
-                                Icons.Default.Check,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
+                    if (isDone) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clip(CircleShape)
+                                    .background(colors.statusDone),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "できたこと（記録済み）",
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.statusDone
                             )
                         }
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text(
-                            text = if (isDone) "記録済み (できたこと)" else "未完了の予定 (やること)",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isDone) colors.statusDone else colors.primary
-                        )
-                        Text(
-                            text = if (isDone) "タイムラインに実行実績として記録されています" else "タップして記録済みに切り替えられます",
-                            fontSize = 11.sp,
-                            color = colors.textSecondary
-                        )
+                        TextButton(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                isDone = false
+                                selectedTodoTiming = "今日"
+                                selectedTodoTime = "終日"
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text("未完了に戻す", fontSize = 11.5.sp, color = colors.textSecondary)
+                        }
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clip(CircleShape)
+                                    .border(1.5.dp, colors.primary, CircleShape)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "やること（これからの予定）",
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.primary
+                            )
+                        }
+                        TextButton(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                isDone = true
+                                selectedDonePreset = "今"
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text("✓ 完了にする", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = colors.statusDone)
+                        }
                     }
                 }
             }
@@ -547,179 +579,181 @@ fun ItemDetailBottomSheet(
                 }
             }
 
-            // 2-B. 記録タイプ（チェック / カウント / 時間）
-            Spacer(modifier = Modifier.height(14.dp))
-            Text("記録タイプ", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
-            Spacer(modifier = Modifier.height(6.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(colors.background)
-                    .border(1.dp, colors.border, RoundedCornerShape(10.dp))
-                    .padding(3.dp)
-            ) {
-                listOf(
-                    Pair("CHECK", "☑ チェック"),
-                    Pair("COUNT", "🔢 カウント"),
-                    Pair("TIMER", "⏱ 時間")
-                ).forEach { (typeKey, label) ->
-                    val isSelected = selectedActionType == typeKey
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (isSelected) colors.primary else Color.Transparent)
-                            .clickable { selectedActionType = typeKey }
-                            .padding(vertical = 7.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = label,
-                            fontSize = 12.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) colors.onPrimary else colors.textSecondary
-                        )
-                    }
-                }
-            }
-
-            // カウント用ステッパー
-            if (selectedActionType == "COUNT") {
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(colors.background)
-                        .border(1.dp, colors.border, RoundedCornerShape(10.dp))
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "数量 ($selectedUnit):",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = colors.textSecondary
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedButton(
-                            onClick = { countValue = (countValue - 1).coerceAtLeast(1) },
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                            modifier = Modifier.height(32.dp)
-                        ) {
-                            Text("-1", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = "$countValue $selectedUnit",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.textPrimary
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        OutlinedButton(
-                            onClick = { countValue += 1 },
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                            modifier = Modifier.height(32.dp)
-                        ) {
-                            Text("+1", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-
+            // 2-B. 記録タイプ（チェック / カウント / 時間）と支出金額（完了した実績のときのみ表示！）
+            if (isDone) {
+                Spacer(modifier = Modifier.height(14.dp))
+                Text("記録タイプ", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    listOf("杯", "回", "個", "本", "皿", "枚").forEach { u ->
-                        val isSel = selectedUnit == u
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (isSel) colors.primary.copy(alpha = 0.15f) else colors.card)
-                                .border(1.dp, if (isSel) colors.primary else colors.border, RoundedCornerShape(6.dp))
-                                .clickable { selectedUnit = u }
-                                .padding(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Text(u, fontSize = 11.sp, color = if (isSel) colors.primary else colors.textPrimary)
-                        }
-                    }
-                }
-            } else if (selectedActionType == "TIMER") {
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))
                         .background(colors.background)
                         .border(1.dp, colors.border, RoundedCornerShape(10.dp))
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                        .padding(3.dp)
                 ) {
-                    Text(
-                        text = "作業時間:",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = colors.textSecondary
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedButton(
-                            onClick = { durationMinutes = (durationMinutes - 5).coerceAtLeast(1) },
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            modifier = Modifier.height(32.dp)
+                    listOf(
+                        Pair("CHECK", "☑ チェック"),
+                        Pair("COUNT", "🔢 カウント"),
+                        Pair("TIMER", "⏱ 時間")
+                    ).forEach { (typeKey, label) ->
+                        val isSelected = selectedActionType == typeKey
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) colors.primary else Color.Transparent)
+                                .clickable { selectedActionType = typeKey }
+                                .padding(vertical = 7.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text("-5分", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = "$durationMinutes 分",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.textPrimary
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        OutlinedButton(
-                            onClick = { durationMinutes += 5 },
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            modifier = Modifier.height(32.dp)
-                        ) {
-                            Text("+5分", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = label,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) colors.onPrimary else colors.textSecondary
+                            )
                         }
                     }
                 }
+
+                // カウント用ステッパー
+                if (selectedActionType == "COUNT") {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(colors.background)
+                            .border(1.dp, colors.border, RoundedCornerShape(10.dp))
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "数量 ($selectedUnit):",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = colors.textSecondary
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedButton(
+                                onClick = { countValue = (countValue - 1).coerceAtLeast(1) },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                modifier = Modifier.height(32.dp)
+                            ) {
+                                Text("-1", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "$countValue $selectedUnit",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.textPrimary
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            OutlinedButton(
+                                onClick = { countValue += 1 },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                modifier = Modifier.height(32.dp)
+                            ) {
+                                Text("+1", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("杯", "回", "個", "本", "皿", "枚").forEach { u ->
+                            val isSel = selectedUnit == u
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isSel) colors.primary.copy(alpha = 0.15f) else colors.card)
+                                    .border(1.dp, if (isSel) colors.primary else colors.border, RoundedCornerShape(6.dp))
+                                    .clickable { selectedUnit = u }
+                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text(u, fontSize = 11.sp, color = if (isSel) colors.primary else colors.textPrimary)
+                            }
+                        }
+                    }
+                } else if (selectedActionType == "TIMER") {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(colors.background)
+                            .border(1.dp, colors.border, RoundedCornerShape(10.dp))
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "作業時間:",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = colors.textSecondary
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedButton(
+                                onClick = { durationMinutes = (durationMinutes - 5).coerceAtLeast(1) },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.height(32.dp)
+                            ) {
+                                Text("-5分", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "$durationMinutes 分",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.textPrimary
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            OutlinedButton(
+                                onClick = { durationMinutes += 5 },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.height(32.dp)
+                            ) {
+                                Text("+5分", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // 3. Amount Input (¥)
+                Text("支出金額 (任意)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
+                Spacer(modifier = Modifier.height(6.dp))
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = { if (it.all { c -> c.isDigit() }) amountText = it },
+                    leadingIcon = { Text("¥", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colors.primary) },
+                    placeholder = { Text("0", color = colors.textSecondary.copy(alpha = 0.5f)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.primary,
+                        unfocusedBorderColor = colors.border,
+                        focusedContainerColor = colors.background,
+                        unfocusedContainerColor = colors.background
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // 3. Amount Input (¥)
-            Text("支出金額 (任意)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
-            Spacer(modifier = Modifier.height(6.dp))
-            OutlinedTextField(
-                value = amountText,
-                onValueChange = { if (it.all { c -> c.isDigit() }) amountText = it },
-                leadingIcon = { Text("¥", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colors.primary) },
-                placeholder = { Text("0", color = colors.textSecondary.copy(alpha = 0.5f)) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = colors.primary,
-                    unfocusedBorderColor = colors.border,
-                    focusedContainerColor = colors.background,
-                    unfocusedContainerColor = colors.background
-                ),
-                modifier = Modifier.fillMaxWidth()
-            )
 
             Spacer(modifier = Modifier.height(18.dp))
 

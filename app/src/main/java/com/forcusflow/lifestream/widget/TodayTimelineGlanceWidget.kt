@@ -56,6 +56,17 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
         val focusText = dailyFocusEntity?.content
 
         val allItems = try { db.timelineItemDao().getAll() } catch (e: Exception) { emptyList() }
+        val templates = try { db.templateDao().getAll() } catch (e: Exception) { emptyList() }
+
+        // Due periodic habits today
+        val duePeriodicHabits = templates.filter { it.type == "INTERVAL" }.filter { tmpl ->
+            val lastDoneDate = tmpl.lastCompletedAt?.let {
+                LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
+            }
+            val elapsed = if (lastDoneDate != null) java.time.temporal.ChronoUnit.DAYS.between(lastDoneDate, today) else 999L
+            val interval = tmpl.intervalDays ?: 7
+            elapsed >= interval
+        }
 
         // 1. DONE items today (completed during today's window)
         val doneItems = allItems.filter { item ->
@@ -87,16 +98,27 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
 
         provideContent {
             val scale = fontSizePref.scale
-            val cardBg = if (colors.isDark) {
-                Color(0xFF1E293B).copy(alpha = opacity.coerceIn(0.1f, 1.0f))
+            // Ambient subtle color shift matching morning, daytime, twilight, and night
+            val ambientCardBg = if (colors.isDark) {
+                when (now.hour) {
+                    in 5..10 -> Color(0xFF13202E) // Morning blue-tint
+                    in 11..16 -> Color(0xFF221F1B) // Daytime warm amber-tint
+                    in 17..19 -> Color(0xFF261920) // Twilight apricot-tint
+                    else -> Color(0xFF151826) // Night deep indigo-tint
+                }.copy(alpha = opacity.coerceIn(0.1f, 1.0f))
             } else {
-                Color(0xFFFFFFFF).copy(alpha = opacity.coerceIn(0.1f, 1.0f))
+                when (now.hour) {
+                    in 5..10 -> Color(0xFFF1F6FA) // Morning fresh mist
+                    in 11..16 -> Color(0xFFFAF7F2) // Daytime warm sunlight
+                    in 17..19 -> Color(0xFFFAF2EE) // Twilight peach glow
+                    else -> Color(0xFFF2F4F9) // Night calm slate
+                }.copy(alpha = opacity.coerceIn(0.1f, 1.0f))
             }
 
             Box(
                 modifier = GlanceModifier
                     .fillMaxSize()
-                    .background(cardBg)
+                    .background(ambientCardBg)
                     .cornerRadius(18.dp)
                     .padding(horizontal = 14.dp, vertical = 12.dp)
                     .clickable(actionStartActivity(launchIntent))
@@ -274,20 +296,74 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                     }
                     Spacer(modifier = GlanceModifier.height(4.dp))
 
-                    // 3. Pending items (これからの歩み、最大4件)
-                    val visiblePending = pendingItems.take(4)
-                    for (item in visiblePending) {
+                    // 3. Pending items (これからの歩み：ルーティン＋ToDo、最大4件)
+                    // 習慣（周期タスク）が到来していれば表示
+                    val visibleHabits = duePeriodicHabits.take(2)
+                    for (habit in visibleHabits) {
+                        Row(
+                            modifier = GlanceModifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp)
+                                .clickable(actionStartActivity(launchIntent)),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = GlanceModifier
+                                    .cornerRadius(4.dp)
+                                    .background(colors.primary.copy(alpha = 0.12f))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = "習慣",
+                                    style = TextStyle(
+                                        fontSize = (9.5f * scale).sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ColorProvider(colors.primary)
+                                    )
+                                )
+                            }
+                            Spacer(modifier = GlanceModifier.width(6.dp))
+                            Text(
+                                text = "${habit.iconKey ?: "🔄"} ${habit.title}",
+                                style = TextStyle(
+                                    fontSize = (12 * scale).sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = ColorProvider(colors.textPrimary)
+                                ),
+                                maxLines = 1,
+                                modifier = GlanceModifier.defaultWeight()
+                            )
+                        }
+                    }
+
+                    // 手元タスク（ToDo）
+                    val maxPendingCount = (4 - visibleHabits.size).coerceAtLeast(1)
+                    val visiblePending = pendingItems.take(maxPendingCount)
+                    for ((index, item) in visiblePending.withIndex()) {
+                        val isFirstTask = (index == 0 && visibleHabits.isEmpty())
                         val schedTimeStr = item.scheduledAt?.let { sched ->
                             val t = LocalDateTime.ofInstant(Instant.ofEpochMilli(sched), zone)
                                 .format(DateTimeFormatter.ofPattern("HH:mm"))
                             if (t != "00:00") t else null
                         }
 
-                        Row(
-                            modifier = GlanceModifier
+                        // 先頭タスクの「チラ見ハイライト（Glanceability）」
+                        val rowModifier = if (isFirstTask) {
+                            GlanceModifier
                                 .fillMaxWidth()
-                                .padding(vertical = 2.5f.dp)
-                                .clickable(actionStartActivity(launchIntent)),
+                                .cornerRadius(8.dp)
+                                .background(colors.primary.copy(alpha = 0.08f))
+                                .padding(horizontal = 6.dp, vertical = 3.dp)
+                                .clickable(actionStartActivity(launchIntent))
+                        } else {
+                            GlanceModifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp)
+                                .clickable(actionStartActivity(launchIntent))
+                        }
+
+                        Row(
+                            modifier = rowModifier,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             // 時刻指定があれば太字バッジ、なければ端正なドット
@@ -295,7 +371,7 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                 Box(
                                     modifier = GlanceModifier
                                         .cornerRadius(4.dp)
-                                        .background(colors.primary.copy(alpha = 0.15f))
+                                        .background(colors.primary.copy(alpha = 0.16f))
                                         .padding(horizontal = 4.dp, vertical = 1.dp)
                                 ) {
                                     Text(
@@ -311,9 +387,9 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                             } else {
                                 Box(
                                     modifier = GlanceModifier
-                                        .size(14.dp)
-                                        .cornerRadius(7.dp)
-                                        .background(colors.border.copy(alpha = 0.6f)),
+                                        .size(13.dp)
+                                        .cornerRadius(6.5.dp)
+                                        .background(if (isFirstTask) colors.primary.copy(alpha = 0.5f) else colors.border.copy(alpha = 0.6f)),
                                     contentAlignment = Alignment.Center
                                 ) {}
                                 Spacer(modifier = GlanceModifier.width(6.dp))
@@ -322,8 +398,8 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                             Text(
                                 text = item.title,
                                 style = TextStyle(
-                                    fontSize = (12.5f * scale).sp,
-                                    fontWeight = FontWeight.Medium,
+                                    fontSize = ((if (isFirstTask) 13f else 12.5f) * scale).sp,
+                                    fontWeight = if (isFirstTask) FontWeight.Bold else FontWeight.Medium,
                                     color = ColorProvider(colors.textPrimary)
                                 ),
                                 maxLines = 1,
@@ -332,16 +408,17 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                         }
                     }
 
-                    if (pendingItems.size > 4) {
+                    val totalRemaining = (duePeriodicHabits.size - visibleHabits.size) + (pendingItems.size - visiblePending.size)
+                    if (totalRemaining > 0) {
                         Spacer(modifier = GlanceModifier.height(2.dp))
                         Text(
-                            text = "... 他 ${pendingItems.size - 4} 件",
+                            text = "... 他 ${totalRemaining} 件",
                             style = TextStyle(
                                 fontSize = (10 * scale).sp,
                                 color = ColorProvider(colors.textSecondary.copy(alpha = 0.65f))
                             )
                         )
-                    } else if (pendingItems.isEmpty() && doneItems.isNotEmpty()) {
+                    } else if (pendingItems.isEmpty() && duePeriodicHabits.isEmpty() && doneItems.isNotEmpty()) {
                         Spacer(modifier = GlanceModifier.height(2.dp))
                         Text(
                             text = "手元のタスクはありません 🌿",

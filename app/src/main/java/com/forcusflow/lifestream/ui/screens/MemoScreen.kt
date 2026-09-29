@@ -50,6 +50,8 @@ fun MemoScreen(viewModel: MainViewModel) {
 
     val memos by viewModel.memos.collectAsState()
     val activeMemos = remember(memos) { memos.filter { !it.isArchived } }
+    val pinnedMemos = remember(activeMemos) { activeMemos.filter { it.isPinned } }
+    val unpinnedMemos = remember(activeMemos) { activeMemos.filter { !it.isPinned } }
     val archivedMemos = remember(memos) { memos.filter { it.isArchived } }
 
     var newMemoText by remember { mutableStateOf("") }
@@ -139,10 +141,10 @@ fun MemoScreen(viewModel: MainViewModel) {
                             .background(if (newMemoText.isNotBlank()) colors.primary else colors.border.copy(alpha = 0.5f))
                     ) {
                         Icon(
-                            Icons.AutoMirrored.Filled.Send,
+                            Icons.Default.Add,
                             contentDescription = "追加",
                             tint = if (newMemoText.isNotBlank()) colors.onPrimary else colors.textSecondary,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
@@ -187,7 +189,7 @@ fun MemoScreen(viewModel: MainViewModel) {
                     contentPadding = PaddingValues(top = 4.dp, bottom = 80.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Active Memos
+                    // Active Memos (Pinned & Unpinned)
                     if (activeMemos.isEmpty()) {
                         item(key = "empty_active") {
                             Box(
@@ -204,23 +206,42 @@ fun MemoScreen(viewModel: MainViewModel) {
                             }
                         }
                     } else {
-                        items(activeMemos, key = { it.id }) { memo ->
-                            val timeStr = remember(memo.createdAt) {
-                                val dt = LocalDateTime.ofInstant(Instant.ofEpochMilli(memo.createdAt), zone)
-                                val now = LocalDateTime.now()
-                                if (dt.toLocalDate() == now.toLocalDate()) {
-                                    dt.format(DateTimeFormatter.ofPattern("HH:mm"))
-                                } else if (dt.year == now.year) {
-                                    dt.format(DateTimeFormatter.ofPattern("M月d日 (E)", Locale.JAPANESE))
-                                } else {
-                                    dt.format(DateTimeFormatter.ofPattern("yyyy/M/d"))
+                        // 1. Pinned Memos Section
+                        if (pinnedMemos.isNotEmpty()) {
+                            item(key = "header_pinned_memos") {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "📌 ピン留め",
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.primary,
+                                        letterSpacing = 0.3.sp
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "${pinnedMemos.size}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = colors.primary.copy(alpha = 0.7f)
+                                    )
                                 }
                             }
-
-                            val dismissState = rememberSwipeToDismissBoxState(
-                                confirmValueChange = { value ->
-                                    if (value == SwipeToDismissBoxValue.EndToStart) {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            items(pinnedMemos, key = { "pinned_${it.id}" }) { memo ->
+                                MemoCardItem(
+                                    memo = memo,
+                                    colors = colors,
+                                    haptic = haptic,
+                                    zone = zone,
+                                    onEdit = {
+                                        editText = memo.content
+                                        memoToEdit = memo
+                                    },
+                                    onArchive = {
                                         viewModel.archiveMemo(memo)
                                         coroutineScope.launch {
                                             val res = snackbarHostState.showSnackbar(
@@ -232,146 +253,65 @@ fun MemoScreen(viewModel: MainViewModel) {
                                                 viewModel.unarchiveMemo(memo)
                                             }
                                         }
-                                        true
-                                    } else false
-                                }
-                            )
+                                    },
+                                    onPromote = { memoToPromote = memo }
+                                )
+                            }
+                        }
 
-                            SwipeToDismissBox(
-                                state = dismissState,
-                                enableDismissFromStartToEnd = false,
-                                backgroundContent = {
-                                    if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .background(colors.statusDone.copy(alpha = 0.85f))
-                                                .padding(horizontal = 16.dp),
-                                            contentAlignment = Alignment.CenterEnd
-                                        ) {
-                                            Text(
-                                                text = "片付ける",
-                                                color = Color.White,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 13.sp
-                                            )
-                                        }
-                                    }
-                                }
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .border(
-                                            width = if (memo.isPinned) 1.5.dp else 0.5.dp,
-                                            color = if (memo.isPinned) colors.primary.copy(alpha = 0.6f) else colors.border.copy(alpha = 0.6f),
-                                            shape = RoundedCornerShape(12.dp)
+                        // 2. Unpinned Memos Section
+                        if (unpinnedMemos.isNotEmpty()) {
+                            if (pinnedMemos.isNotEmpty()) {
+                                item(key = "header_unpinned_memos") {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 4.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "📝 メモ",
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = colors.textSecondary,
+                                            letterSpacing = 0.3.sp
                                         )
-                                        .background(colors.card)
-                                        .clickable {
-                                            editText = memo.content
-                                            memoToEdit = memo
-                                        }
-                                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                                ) {
-                                    Column {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.Top
-                                        ) {
-                                            Text(
-                                                text = memo.content,
-                                                fontSize = 14.sp,
-                                                color = colors.textPrimary,
-                                                lineHeight = 20.sp,
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                            if (memo.isPinned) {
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Text(
-                                                    text = "📌",
-                                                    fontSize = 11.sp,
-                                                    modifier = Modifier.padding(top = 2.dp)
-                                                )
-                                            }
-                                        }
-
-                                        Spacer(modifier = Modifier.height(8.dp))
-
-                                        // Footer: Date & Dual Action Buttons (✓ 片付ける / ↗ 昇格)
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = timeStr,
-                                                fontSize = 11.sp,
-                                                color = colors.textSecondary.copy(alpha = 0.8f)
-                                            )
-
-                                            Row(
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                // Minimal circular [ ✓ ] Archive button
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(28.dp)
-                                                        .clip(CircleShape)
-                                                        .background(colors.statusDone.copy(alpha = 0.10f))
-                                                        .border(0.5.dp, colors.statusDone.copy(alpha = 0.3f), CircleShape)
-                                                        .clickable {
-                                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                            viewModel.archiveMemo(memo)
-                                                            coroutineScope.launch {
-                                                                val res = snackbarHostState.showSnackbar(
-                                                                    message = "メモを片付けました",
-                                                                    actionLabel = "元に戻す",
-                                                                    duration = SnackbarDuration.Short
-                                                                )
-                                                                if (res == SnackbarResult.ActionPerformed) {
-                                                                    viewModel.unarchiveMemo(memo)
-                                                                }
-                                                            }
-                                                        },
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Icon(
-                                                        Icons.Default.Check,
-                                                        contentDescription = "片付ける",
-                                                        tint = colors.statusDone,
-                                                        modifier = Modifier.size(14.dp)
-                                                    )
-                                                }
-
-                                                // Minimal circular [ ↗ ] Promote button
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(28.dp)
-                                                        .clip(CircleShape)
-                                                        .background(colors.primary.copy(alpha = 0.12f))
-                                                        .border(0.5.dp, colors.primary.copy(alpha = 0.3f), CircleShape)
-                                                        .clickable {
-                                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                            memoToPromote = memo
-                                                        },
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Text(
-                                                        text = "↗",
-                                                        fontSize = 13.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = colors.primary
-                                                    )
-                                                }
-                                            }
-                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "${unpinnedMemos.size}",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = colors.textSecondary.copy(alpha = 0.7f)
+                                        )
                                     }
                                 }
+                            }
+                            items(unpinnedMemos, key = { it.id }) { memo ->
+                                MemoCardItem(
+                                    memo = memo,
+                                    colors = colors,
+                                    haptic = haptic,
+                                    zone = zone,
+                                    onEdit = {
+                                        editText = memo.content
+                                        memoToEdit = memo
+                                    },
+                                    onArchive = {
+                                        viewModel.archiveMemo(memo)
+                                        coroutineScope.launch {
+                                            val res = snackbarHostState.showSnackbar(
+                                                message = "メモを片付けました",
+                                                actionLabel = "元に戻す",
+                                                duration = SnackbarDuration.Short
+                                            )
+                                            if (res == SnackbarResult.ActionPerformed) {
+                                                viewModel.unarchiveMemo(memo)
+                                            }
+                                        }
+                                    },
+                                    onPromote = { memoToPromote = memo }
+                                )
                             }
                         }
                     }
@@ -463,7 +403,7 @@ fun MemoScreen(viewModel: MainViewModel) {
                                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                                                 modifier = Modifier.height(28.dp)
                                             ) {
-                                                Text("戻す", fontSize = 11.5.sp, color = colors.primary)
+                                                Text("↩ 手元に戻す", fontSize = 11.5.sp, color = colors.primary, fontWeight = FontWeight.Medium)
                                             }
                                             IconButton(
                                                 onClick = {
@@ -833,3 +773,166 @@ private fun PromotionOptionCard(
         )
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MemoCardItem(
+    memo: com.forcusflow.lifestream.data.MemoEntity,
+    colors: com.forcusflow.lifestream.ui.theme.LifeStreamColors,
+    haptic: androidx.compose.ui.hapticfeedback.HapticFeedback,
+    zone: ZoneId,
+    onEdit: () -> Unit,
+    onArchive: () -> Unit,
+    onPromote: () -> Unit
+) {
+    val timeStr = remember(memo.createdAt) {
+        val dt = LocalDateTime.ofInstant(Instant.ofEpochMilli(memo.createdAt), zone)
+        val now = LocalDateTime.now()
+        if (dt.toLocalDate() == now.toLocalDate()) {
+            dt.format(DateTimeFormatter.ofPattern("HH:mm"))
+        } else if (dt.year == now.year) {
+            dt.format(DateTimeFormatter.ofPattern("M月d日 (E)", Locale.JAPANESE))
+        } else {
+            dt.format(DateTimeFormatter.ofPattern("yyyy/M/d"))
+        }
+    }
+
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart) {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onArchive()
+                true
+            } else false
+        }
+    )
+
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = false,
+        backgroundContent = {
+            if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(colors.statusDone.copy(alpha = 0.85f))
+                        .padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.CenterEnd
+                ) {
+                    Text(
+                        text = "片付ける",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+        }
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .border(
+                    width = if (memo.isPinned) 1.2.dp else 0.5.dp,
+                    color = if (memo.isPinned) colors.primary.copy(alpha = 0.6f) else colors.border.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                .background(colors.card)
+                .clickable { onEdit() }
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+        ) {
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Text(
+                        text = memo.content,
+                        fontSize = 14.sp,
+                        color = colors.textPrimary,
+                        lineHeight = 20.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (memo.isPinned) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "📌",
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Footer: Date & Dual Action Buttons (✓ 片付ける / ➔ タスクへ)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = timeStr,
+                        fontSize = 11.sp,
+                        color = colors.textSecondary.copy(alpha = 0.8f)
+                    )
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Minimal circular [ ✓ ] Archive button
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(colors.statusDone.copy(alpha = 0.10f))
+                                .border(0.5.dp, colors.statusDone.copy(alpha = 0.3f), CircleShape)
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onArchive()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = "片付ける",
+                                tint = colors.statusDone,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+
+                        // Warm pill-style "➔ タスクへ" Promote button
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = colors.primary.copy(alpha = 0.10f),
+                            border = BorderStroke(0.6.dp, colors.primary.copy(alpha = 0.35f)),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onPromote()
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "➔ タスクへ",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = colors.primary
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
