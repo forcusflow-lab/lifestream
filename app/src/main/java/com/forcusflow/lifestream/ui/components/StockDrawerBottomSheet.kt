@@ -9,7 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -44,12 +44,16 @@ fun StockDrawerBottomSheet(
     val zone = ZoneId.systemDefault()
     val today = LocalDate.now()
 
-    // Group items by target date
-    val groupedByDate = remember(upcomingItems) {
-        upcomingItems.groupBy { item ->
-            val sched = item.scheduledAt ?: return@groupBy today.plusDays(1)
-            LocalDateTime.ofInstant(Instant.ofEpochMilli(sched), zone).toLocalDate()
-        }.toSortedMap()
+    // Group items: Date-specific future items grouped by date, anytime/past rollover items grouped as undated stock
+    val nowMillis = remember { System.currentTimeMillis() }
+    val scheduledGrouped = remember(upcomingItems, nowMillis) {
+        upcomingItems.filter { it.scheduledAt != null && it.scheduledAt > nowMillis }
+            .groupBy { item ->
+                LocalDateTime.ofInstant(Instant.ofEpochMilli(item.scheduledAt!!), zone).toLocalDate()
+            }.toSortedMap()
+    }
+    val undatedStock = remember(upcomingItems, nowMillis) {
+        upcomingItems.filter { it.scheduledAt == null || it.scheduledAt <= nowMillis }
     }
 
     ModalBottomSheet(
@@ -77,7 +81,7 @@ fun StockDrawerBottomSheet(
                     Text("📦", fontSize = 18.sp)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "引き出し（ストック一覧）",
+                        text = "引き出し",
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
                         color = colors.textPrimary
@@ -90,7 +94,7 @@ fun StockDrawerBottomSheet(
 
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "明日以降に予定されたタスクが待機しています。当日になると自動で「これからの歩み」へ合流します。",
+                text = "明日以降の予定や、手元から一時退避したタスクが静かに待機しています。",
                 fontSize = 12.5.sp,
                 color = colors.textSecondary,
                 lineHeight = 17.sp
@@ -122,7 +126,7 @@ fun StockDrawerBottomSheet(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "未来の予定タスクを追加するとここに待機します",
+                                text = "未来の予定や退避タスクがここに静かにしまわれます",
                                 fontSize = 12.sp,
                                 color = colors.textSecondary
                             )
@@ -130,7 +134,98 @@ fun StockDrawerBottomSheet(
                     }
                 }
             } else {
-                groupedByDate.forEach { (date, items) ->
+                // 1. 未指定・退避タスク
+                if (undatedStock.isNotEmpty()) {
+                    Text(
+                        text = "ストック（いつでも手元へ戻せます）",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.primary,
+                        modifier = Modifier.padding(top = 6.dp, bottom = 6.dp)
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = colors.background.copy(alpha = 0.5f),
+                        border = BorderStroke(0.5.dp, colors.border.copy(alpha = 0.4f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                            undatedStock.forEachIndexed { index, item ->
+                                if (index > 0) {
+                                    HorizontalDivider(
+                                        color = colors.border.copy(alpha = 0.25f),
+                                        thickness = 0.5.dp
+                                    )
+                                }
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onSelectItem(item) }
+                                        .padding(vertical = 9.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = if (item.isDone) colors.statusDone else Color.Transparent,
+                                        border = BorderStroke(1.5.dp, if (item.isDone) colors.statusDone else colors.border),
+                                        modifier = Modifier
+                                            .size(20.dp)
+                                            .clickable { onToggleDone(item) }
+                                    ) {
+                                        if (item.isDone) {
+                                            Icon(
+                                                Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(10.dp))
+
+                                    Text(
+                                        text = item.title,
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = colors.textPrimary,
+                                        textDecoration = if (item.isDone) TextDecoration.LineThrough else null,
+                                        modifier = Modifier.weight(1f)
+                                    )
+
+                                    OutlinedButton(
+                                        onClick = { onBringToToday(item) },
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = BorderStroke(0.5.dp, colors.primary.copy(alpha = 0.5f)),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(30.dp)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = "今日やる",
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = colors.primary
+                                            )
+                                            Spacer(modifier = Modifier.width(2.dp))
+                                            Icon(
+                                                Icons.AutoMirrored.Filled.ArrowForward,
+                                                contentDescription = null,
+                                                tint = colors.primary,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 2. 日付指定の未来タスク
+                scheduledGrouped.forEach { (date, items) ->
                     val daysUntil = ChronoUnit.DAYS.between(today, date)
                     val dateHeaderLabel = when (daysUntil) {
                         1L -> "明日 (${date.format(DateTimeFormatter.ofPattern("M/d E", Locale.JAPANESE))})"

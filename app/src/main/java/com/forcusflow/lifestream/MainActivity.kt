@@ -16,6 +16,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import android.content.Intent
 import com.forcusflow.lifestream.ui.components.BottomNavBar
 import com.forcusflow.lifestream.ui.screens.CycleMatrixScreen
 import com.forcusflow.lifestream.ui.screens.HistoryScreen
@@ -30,6 +31,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleIntent(intent)
         setContent {
             val themeMode by viewModel.themeMode.collectAsState()
             val currentTab by viewModel.currentTab.collectAsState()
@@ -70,5 +72,21 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_OPEN_ADD_SHEET, false) == true) {
+            viewModel.currentTab.value = 0
+            viewModel.requestOpenAddSheet()
+        }
+    }
+
+    companion object {
+        const val EXTRA_OPEN_ADD_SHEET = "extra_open_add_sheet"
     }
 }

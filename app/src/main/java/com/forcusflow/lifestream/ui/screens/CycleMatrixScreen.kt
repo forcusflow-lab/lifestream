@@ -318,14 +318,15 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
     if (showAddPeriodicDialog) {
         AddPeriodicTaskDialog(
             onDismiss = { showAddPeriodicDialog = false },
-            onAdd = { title, intervalDays, iconKey, colorHex ->
+            onAdd = { title, intervalDays, iconKey, colorHex, timeOfDayZone ->
                 viewModel.addTemplate(
                     title = title,
                     type = "INTERVAL",
                     intervalDays = intervalDays,
                     defaultAmount = null,
                     iconKey = iconKey,
-                    colorHex = colorHex
+                    colorHex = colorHex,
+                    timeOfDayZone = timeOfDayZone
                 )
                 showAddPeriodicDialog = false
                 coroutineScope.launch {
@@ -787,6 +788,7 @@ fun EditPeriodicTaskBottomSheet(
 
     var title by remember { mutableStateOf(template.title) }
     var intervalDays by remember { mutableStateOf<Int?>(template.intervalDays) }
+    var timeOfDayZone by remember { mutableStateOf(template.timeOfDayZone) }
     var iconKey by remember { mutableStateOf(template.iconKey ?: "🧹") }
     var selectedColorHex by remember { mutableStateOf(template.colorHex ?: "#10B981") }
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
@@ -838,7 +840,8 @@ fun EditPeriodicTaskBottomSheet(
                             title = title.trim(),
                             intervalDays = if (intervalDays != null && intervalDays!! > 0) intervalDays else null,
                             iconKey = iconKey,
-                            colorHex = selectedColorHex
+                            colorHex = selectedColorHex,
+                            timeOfDayZone = timeOfDayZone
                         )
                         onSave(updated)
                     },
@@ -868,6 +871,43 @@ fun EditPeriodicTaskBottomSheet(
                 intervalDays = intervalDays,
                 onIntervalChange = { intervalDays = it }
             )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // 生活リズム・時間帯ゾーン
+            Text("時間帯ゾーン（いつやる？）", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(
+                    "ALL_DAY" to "いつでも",
+                    "MORNING" to "朝 ☀️ (4〜12時)",
+                    "AFTERNOON" to "昼 🍴 (12〜17時)",
+                    "EVENING_NIGHT" to "夕・夜 🌙 (17〜4時)"
+                ).forEach { (code, label) ->
+                    val isSelected = timeOfDayZone == code
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(8.dp))
+                            .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.card)
+                            .clickable { timeOfDayZone = code }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = label,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) colors.primary else colors.textSecondary
+                        )
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(14.dp))
 
@@ -1161,11 +1201,12 @@ fun EditPeriodicTaskBottomSheet(
 @Composable
 fun AddPeriodicTaskDialog(
     onDismiss: () -> Unit,
-    onAdd: (title: String, intervalDays: Int?, iconKey: String, colorHex: String) -> Unit
+    onAdd: (title: String, intervalDays: Int?, iconKey: String, colorHex: String, timeOfDayZone: String) -> Unit
 ) {
     val colors = LifeStreamTheme.colors
     var title by remember { mutableStateOf("") }
     var intervalDays by remember { mutableStateOf<Int?>(7) }
+    var timeOfDayZone by remember { mutableStateOf("ALL_DAY") }
     var iconKey by remember { mutableStateOf("🧹") }
     var selectedColorHex by remember { mutableStateOf("#8C5A3C") }
     val iconOptions = DEFAULT_ICON_OPTIONS
@@ -1208,7 +1249,8 @@ fun AddPeriodicTaskDialog(
                                 title.trim(),
                                 if (intervalDays != null && intervalDays!! > 0) intervalDays else null,
                                 iconKey,
-                                selectedColorHex
+                                selectedColorHex,
+                                timeOfDayZone
                             )
                         }
                     },
@@ -1263,6 +1305,48 @@ fun AddPeriodicTaskDialog(
                 intervalDays = intervalDays,
                 onIntervalChange = { intervalDays = it }
             )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // 生活リズム・時間帯ゾーン
+            Text(
+                text = "生活リズム・時間帯ゾーン（いつやる？）",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.textSecondary
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(
+                    "ALL_DAY" to "いつでも",
+                    "MORNING" to "朝 ☀️ (4〜12時)",
+                    "AFTERNOON" to "昼 🍴 (12〜17時)",
+                    "EVENING_NIGHT" to "夕・夜 🌙 (17〜4時)"
+                ).forEach { (code, label) ->
+                    val isSelected = timeOfDayZone == code
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(8.dp))
+                            .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.card)
+                            .clickable { timeOfDayZone = code }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = label,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) colors.primary else colors.textSecondary
+                        )
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(20.dp))
 

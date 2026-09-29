@@ -25,6 +25,13 @@ import java.time.LocalTime
 import java.time.YearMonth
 import java.time.ZoneId
 
+enum class TimeOfDayZone(val code: String, val label: String, val description: String) {
+    ALL_DAY("ALL_DAY", "いつでも", "終日表示"),
+    MORNING("MORNING", "朝 ☀️", "04:00〜12:00"),
+    AFTERNOON("AFTERNOON", "昼 🍴", "12:00〜17:00"),
+    EVENING_NIGHT("EVENING_NIGHT", "夕・夜 🌙", "17:00〜04:00")
+}
+
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val db = AppDatabase.getInstance(application)
     private val itemDao = db.timelineItemDao()
@@ -37,8 +44,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val themeMode = MutableStateFlow(WidgetSettingsManager.getThemeMode(application))
     val dayCutoffHour = MutableStateFlow(WidgetSettingsManager.getCutoffHour(application))
 
-    // Navigation state
+    // Navigation and Sheet state
     val currentTab = MutableStateFlow(0) // 0: 今日, 1: 履歴, 2: 周期, 3: メモ, 4: 設定
+    val openAddSheetRequested = MutableStateFlow(false)
+
+    fun requestOpenAddSheet() {
+        openAddSheetRequested.value = true
+    }
+
+    fun consumeOpenAddSheetRequest() {
+        openAddSheetRequested.value = false
+    }
+
+    // Time of day zone helpers
+    fun getCurrentTimeOfDayZone(time: LocalTime = LocalTime.now()): TimeOfDayZone {
+        val hour = time.hour
+        return when {
+            hour in 4..11 -> TimeOfDayZone.MORNING
+            hour in 12..16 -> TimeOfDayZone.AFTERNOON
+            else -> TimeOfDayZone.EVENING_NIGHT
+        }
+    }
+
+    fun isTemplateInActiveZone(template: TemplateEntity, currentTime: LocalTime = LocalTime.now()): Boolean {
+        val zoneStr = template.timeOfDayZone
+        if (zoneStr == "ALL_DAY" || zoneStr.isBlank()) return true
+        val currentZone = getCurrentTimeOfDayZone(currentTime)
+        return currentZone.code == zoneStr
+    }
 
     // Data streams
     val templates: StateFlow<List<TemplateEntity>> = templateDao.getAllFlow()
@@ -105,6 +138,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         viewModelScope.launch(Dispatchers.IO) {
             DatabaseSeeder.seed(templateDao, itemDao)
+            purgeOldStockItems()
         }
         viewModelScope.launch(Dispatchers.IO) {
             combine(
@@ -116,6 +150,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 .collectLatest {
                     notifyWidgetUpdate()
                 }
+        }
+    }
+
+    fun purgeOldStockItems() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val thirtyDaysAgo = System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000
+            val all = itemDao.getAll()
+            val oldStock = all.filter {
+                !it.isDone &&
+                (it.createdAt in 1..thirtyDaysAgo) &&
+                (it.scheduledAt == null || it.scheduledAt < thirtyDaysAgo)
+            }
+            oldStock.forEach { itemDao.delete(it) }
         }
     }
 
@@ -478,7 +525,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         actionType: String = "CHECK",
         unit: String = "",
         stepValue: Int = 1,
-        isPinned: Boolean = false
+        isPinned: Boolean = false,
+        timeOfDayZone: String = "ALL_DAY"
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             val existing = templateDao.getAll()
@@ -497,7 +545,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 unit = unit,
                 stepValue = stepValue,
                 isPinned = isPinned,
-                displayOrder = maxOrder + 1
+                displayOrder = maxOrder + 1,
+                timeOfDayZone = timeOfDayZone
             )
             templateDao.insert(template)
         }
@@ -708,7 +757,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // === Reschedule Upcoming Item to Today ===
     fun rescheduleItemToToday(item: TimelineItemEntity) {
         viewModelScope.launch(Dispatchers.IO) {
-            itemDao.update(item.copy(scheduledAt = null))
+            itemDao.update(
+                item.copy(
+                    scheduledAt = null,
+                    createdAt = System.currentTimeMillis()
+                )
+            )
         }
     }
 

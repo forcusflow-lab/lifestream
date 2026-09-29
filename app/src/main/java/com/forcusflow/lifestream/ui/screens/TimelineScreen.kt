@@ -78,7 +78,6 @@ fun TimelineScreen(viewModel: MainViewModel) {
     val templates by viewModel.templates.collectAsState()
     val pinnedTemplates by viewModel.pinnedTemplates.collectAsState()
     val allItems by viewModel.allItems.collectAsState()
-    val anytimePending by viewModel.anytimePendingItems.collectAsState()
     val activeTimerTemplate by viewModel.activeTimerTemplate.collectAsState()
     val activeTimerItem by viewModel.activeTimerItem.collectAsState()
     val timerSeconds by viewModel.timerElapsedSeconds.collectAsState()
@@ -92,6 +91,14 @@ fun TimelineScreen(viewModel: MainViewModel) {
     var showFocusSheet by remember { mutableStateOf(false) }
     var showDrawerSheet by remember { mutableStateOf(false) }
     var isFutureTrayExpanded by remember { mutableStateOf(true) }
+
+    val openAddRequested by viewModel.openAddSheetRequested.collectAsState()
+    LaunchedEffect(openAddRequested) {
+        if (openAddRequested) {
+            showAddSheet = true
+            viewModel.consumeOpenAddSheetRequest()
+        }
+    }
 
     val zone = ZoneId.systemDefault()
     var currentTime by remember { mutableStateOf(LocalDateTime.now()) }
@@ -128,30 +135,44 @@ fun TimelineScreen(viewModel: MainViewModel) {
     }
 
     // 2. Today's Pending Hand Tasks (Focus Tray items)
-    val todayPendingItems = remember(allItems, anytimePending, todayStart, todayEnd) {
+    // Timed tasks for today are sorted to the VERY TOP in chronological order,
+    // followed by anytime tasks created today. Past unfinished tasks roll over to the drawer!
+    val todayPendingItems = remember(allItems, todayStart, todayEnd) {
         val scheduledToday = allItems.filter { item ->
             !item.isDone && item.scheduledAt != null && item.scheduledAt in todayStart..todayEnd
-        }
-        (scheduledToday + anytimePending).distinctBy { it.id }.sortedWith(
-            compareBy<TimelineItemEntity> { it.scheduledAt == null }
-                .thenBy { it.scheduledAt ?: 0L }
-                .thenBy { it.id }
-        )
+        }.sortedBy { it.scheduledAt ?: 0L }
+
+        val anytimeToday = allItems.filter { item ->
+            !item.isDone && item.scheduledAt == null && (item.createdAt >= todayStart || item.createdAt == 0L)
+        }.sortedBy { it.id }
+
+        (scheduledToday + anytimeToday).distinctBy { it.id }
     }
 
     val todayItems = remember(todayDoneItems, todayPendingItems) {
         todayDoneItems + todayPendingItems
     }
 
-    // 3. Future scheduled pending tasks (Stock in drawer)
-    val upcomingItems = remember(allItems, todayEnd) {
+    // 3. Stock in drawer (Future scheduled tasks + Past unfinished rollover tasks)
+    val upcomingItems = remember(allItems, todayStart, todayEnd) {
         allItems.filter { item ->
-            !item.isDone && item.scheduledAt != null && item.scheduledAt > todayEnd
-        }.sortedBy { it.scheduledAt }
+            !item.isDone && (
+                // Future scheduled tasks
+                (item.scheduledAt != null && item.scheduledAt > todayEnd) ||
+                // Past scheduled unfinished tasks (rolled over into drawer!)
+                (item.scheduledAt != null && item.scheduledAt < todayStart) ||
+                // Past anytime unfinished tasks (rolled over into drawer!)
+                (item.scheduledAt == null && item.createdAt in 1 until todayStart)
+            )
+        }.sortedWith(
+            compareBy<TimelineItemEntity> { it.scheduledAt == null }
+                .thenBy { it.scheduledAt ?: 0L }
+                .thenByDescending { it.createdAt }
+        )
     }
 
-    // Periodic tasks due today or overdue
-    val dueOrOverduePeriodic = remember(templates, today) {
+    // Periodic tasks due today or overdue AND matching active time of day zone!
+    val dueOrOverduePeriodic = remember(templates, today, currentTime) {
         templates.filter { it.type == "INTERVAL" }.mapNotNull { tmpl ->
             val lastDoneDate = tmpl.lastCompletedAt?.let {
                 LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
@@ -159,7 +180,9 @@ fun TimelineScreen(viewModel: MainViewModel) {
             val elapsed = if (lastDoneDate != null) ChronoUnit.DAYS.between(lastDoneDate, today) else 999L
             val interval = tmpl.intervalDays ?: 7
             if (elapsed >= interval) {
-                Triple(tmpl, elapsed > interval, elapsed)
+                if (viewModel.isTemplateInActiveZone(tmpl, currentTime.toLocalTime())) {
+                    Triple(tmpl, elapsed > interval, elapsed)
+                } else null
             } else null
         }
     }
@@ -680,6 +703,27 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                             modifier = Modifier.weight(1f),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
+                                            // 時刻指定がある場合は左端に太字バッジとして配置（見逃し防止！）
+                                            item.scheduledAt?.let { sched ->
+                                                val timeStr = LocalDateTime.ofInstant(Instant.ofEpochMilli(sched), zone)
+                                                    .format(DateTimeFormatter.ofPattern("HH:mm"))
+                                                if (timeStr != "00:00") {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(4.dp),
+                                                        color = colors.primary.copy(alpha = 0.12f),
+                                                        modifier = Modifier.padding(end = 6.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = timeStr,
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = colors.primary,
+                                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+
                                             Text(
                                                 text = item.title,
                                                 fontSize = 13.5.sp,
@@ -689,21 +733,6 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                                 overflow = TextOverflow.Ellipsis,
                                                 modifier = Modifier.weight(1f, fill = false)
                                             )
-
-                                            // 時刻指定がある場合のみ小さく添える
-                                            item.scheduledAt?.let { sched ->
-                                                val timeStr = LocalDateTime.ofInstant(Instant.ofEpochMilli(sched), zone)
-                                                    .format(DateTimeFormatter.ofPattern("HH:mm"))
-                                                if (timeStr != "00:00") {
-                                                    Spacer(modifier = Modifier.width(6.dp))
-                                                    Text(
-                                                        text = timeStr,
-                                                        fontSize = 11.sp,
-                                                        color = colors.textSecondary.copy(alpha = 0.65f),
-                                                        fontWeight = FontWeight.Normal
-                                                    )
-                                                }
-                                            }
                                         }
 
                                         Spacer(modifier = Modifier.width(4.dp))
@@ -779,7 +808,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                         Text("📦", fontSize = 12.sp)
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = "引き出し（ストック ${upcomingItems.size}件）",
+                                            text = "引き出し",
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Normal,
                                             color = colors.textSecondary

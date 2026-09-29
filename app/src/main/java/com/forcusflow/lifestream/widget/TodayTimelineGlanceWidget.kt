@@ -15,8 +15,6 @@ import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.cornerRadius
-import androidx.glance.appwidget.lazy.LazyColumn
-import androidx.glance.appwidget.lazy.items
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.layout.*
@@ -67,29 +65,32 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
             )
         }.sortedBy { it.completedAt ?: it.scheduledAt ?: 0L }
 
-        // 2. Pending items today (scheduled today or anytime)
+        // 2. Pending items today (timed tasks first, then anytime tasks created today)
         val scheduledToday = allItems.filter { item ->
             !item.isDone && item.scheduledAt != null && item.scheduledAt in todayStart..todayEnd
-        }
-        val anytimePending = allItems.filter { item ->
-            !item.isDone && item.scheduledAt == null
-        }
-        val pendingItems = (scheduledToday + anytimePending).distinctBy { it.id }.sortedWith(
-            compareBy<TimelineItemEntity> { it.scheduledAt == null }
-                .thenBy { it.scheduledAt ?: 0L }
-                .thenBy { it.id }
-        )
+        }.sortedBy { it.scheduledAt ?: 0L }
+
+        val anytimeToday = allItems.filter { item ->
+            !item.isDone && item.scheduledAt == null && (item.createdAt >= todayStart || item.createdAt == 0L)
+        }.sortedBy { it.id }
+
+        val pendingItems = (scheduledToday + anytimeToday).distinctBy { it.id }
 
         val launchIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
 
+        val addIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(MainActivity.EXTRA_OPEN_ADD_SHEET, true)
+        }
+
         provideContent {
             val scale = fontSizePref.scale
             val cardBg = if (colors.isDark) {
-                Color(0xFF1E293B).copy(alpha = opacity)
+                Color(0xFF1E293B).copy(alpha = opacity.coerceIn(0.1f, 1.0f))
             } else {
-                Color(0xFFFFFFFF).copy(alpha = opacity)
+                Color(0xFFFFFFFF).copy(alpha = opacity.coerceIn(0.1f, 1.0f))
             }
 
             Box(
@@ -100,261 +101,255 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                     .padding(horizontal = 14.dp, vertical = 12.dp)
                     .clickable(actionStartActivity(launchIntent))
             ) {
-                LazyColumn(
+                Column(
                     modifier = GlanceModifier.fillMaxSize()
                 ) {
-                    // Header: Date & App launch hint
-                    item {
-                        Row(
-                            modifier = GlanceModifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
+                    // Header: Date & ＋ 追加 Button
+                    Row(
+                        modifier = GlanceModifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = dateFormatted,
+                            style = TextStyle(
+                                fontSize = (16 * scale).sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ColorProvider(colors.textPrimary)
+                            ),
+                            modifier = GlanceModifier.defaultWeight()
+                        )
+
+                        // ＋ 追加 Button (ワンタップで直接アプリを開いてタスク追加シートを起動)
+                        Box(
+                            modifier = GlanceModifier
+                                .cornerRadius(12.dp)
+                                .background(colors.primary.copy(alpha = 0.14f))
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                                .clickable(actionStartActivity(addIntent)),
+                            contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = dateFormatted,
+                                text = "＋ 追加",
                                 style = TextStyle(
-                                    fontSize = (18 * scale).sp,
+                                    fontSize = (11 * scale).sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = ColorProvider(colors.textPrimary)
-                                ),
-                                modifier = GlanceModifier.defaultWeight()
-                            )
-                            Text(
-                                text = "FocusFlow ↗",
-                                style = TextStyle(
-                                    fontSize = (10 * scale).sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
+                                    color = ColorProvider(colors.primary)
                                 )
                             )
                         }
                     }
 
                     // Focus section
-                    item {
+                    if (!focusText.isNullOrBlank()) {
                         Spacer(modifier = GlanceModifier.height(3.dp))
-                        Row(
-                            modifier = GlanceModifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (!focusText.isNullOrBlank()) {
-                                Text(
-                                    text = "🎯 “$focusText”",
-                                    style = TextStyle(
-                                        fontSize = (12 * scale).sp,
-                                        fontWeight = FontWeight.Medium,
-                                        fontStyle = FontStyle.Italic,
-                                        color = ColorProvider(colors.primary)
-                                    ),
-                                    maxLines = 1
-                                )
-                            } else {
-                                Text(
-                                    text = "🎯 今日のフォーカスを設定...",
-                                    style = TextStyle(
-                                        fontSize = (11.5f * scale).sp,
-                                        color = ColorProvider(colors.textSecondary.copy(alpha = 0.6f))
-                                    ),
-                                    maxLines = 1
-                                )
-                            }
-                        }
-                        Spacer(modifier = GlanceModifier.height(6.dp))
-                        // Divider
-                        Box(
-                            modifier = GlanceModifier
-                                .fillMaxWidth()
-                                .height(1.dp)
-                                .background(colors.border.copy(alpha = 0.4f))
-                        ) {}
-                        Spacer(modifier = GlanceModifier.height(6.dp))
+                        Text(
+                            text = "🎯 “$focusText”",
+                            style = TextStyle(
+                                fontSize = (11.5f * scale).sp,
+                                fontWeight = FontWeight.Medium,
+                                fontStyle = FontStyle.Italic,
+                                color = ColorProvider(colors.primary)
+                            ),
+                            maxLines = 1
+                        )
                     }
+
+                    Spacer(modifier = GlanceModifier.height(6.dp))
+
+                    // Thin Divider with high contrast
+                    Box(
+                        modifier = GlanceModifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(colors.border.copy(alpha = 0.45f))
+                    ) {}
+
+                    Spacer(modifier = GlanceModifier.height(6.dp))
 
                     // Empty state when nothing today
                     if (doneItems.isEmpty() && pendingItems.isEmpty()) {
-                        item {
-                            Spacer(modifier = GlanceModifier.height(8.dp))
-                            Column(
-                                modifier = GlanceModifier.fillMaxWidth(),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    text = "🌿 清々しい1日のはじまり",
-                                    style = TextStyle(
-                                        fontSize = (13 * scale).sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = ColorProvider(colors.textPrimary)
-                                    )
+                        Spacer(modifier = GlanceModifier.height(10.dp))
+                        Column(
+                            modifier = GlanceModifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "🌿 清々しい1日のはじまり",
+                                style = TextStyle(
+                                    fontSize = (13 * scale).sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ColorProvider(colors.textPrimary)
                                 )
-                                Spacer(modifier = GlanceModifier.height(2.dp))
-                                Text(
-                                    text = "タップして最初の行動を記録しましょう",
-                                    style = TextStyle(
-                                        fontSize = (11 * scale).sp,
-                                        color = ColorProvider(colors.textSecondary)
-                                    )
+                            )
+                            Spacer(modifier = GlanceModifier.height(2.dp))
+                            Text(
+                                text = "タップして最初の行動を記録しましょう",
+                                style = TextStyle(
+                                    fontSize = (11 * scale).sp,
+                                    color = ColorProvider(colors.textSecondary)
                                 )
-                            }
+                            )
                         }
                     }
 
-                    // 1. DONE items (過去の実績ログ：NOWラインの上)
-                    if (doneItems.isNotEmpty()) {
-                        items(doneItems) { item ->
-                            val timeStr = (item.completedAt ?: item.scheduledAt)?.let { ts ->
-                                LocalDateTime.ofInstant(Instant.ofEpochMilli(ts), zone)
-                                    .format(DateTimeFormatter.ofPattern("HH:mm"))
-                            } ?: "--:--"
+                    // 1. DONE items (過去の実績ログ：NOWラインの上、最大3件)
+                    val visibleDone = doneItems.takeLast(3)
+                    for (item in visibleDone) {
+                        val timeStr = (item.completedAt ?: item.scheduledAt)?.let { ts ->
+                            LocalDateTime.ofInstant(Instant.ofEpochMilli(ts), zone)
+                                .format(DateTimeFormatter.ofPattern("HH:mm"))
+                        } ?: "--:--"
 
-                            val cleanTitle = item.title
-                                .replace("\\s*\\(\\d+(分|秒)\\)".toRegex(), "")
-                                .replace("\\s*\\(\\d+[杯回個本皿枚]目?\\)".toRegex(), "")
-                                .trim()
+                        val cleanTitle = item.title
+                            .replace("\\s*\\(\\d+(分|秒)\\)".toRegex(), "")
+                            .replace("\\s*\\(\\d+[杯回個本皿枚]目?\\)".toRegex(), "")
+                            .trim()
 
-                            Row(
-                                modifier = GlanceModifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = timeStr,
-                                    style = TextStyle(
-                                        fontSize = (10.5f * scale).sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = ColorProvider(colors.textSecondary)
-                                    ),
-                                    modifier = GlanceModifier.width(36.dp)
-                                )
-                                Text(
-                                    text = "✓",
-                                    style = TextStyle(
-                                        fontSize = (11 * scale).sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = ColorProvider(colors.statusDone)
-                                    ),
-                                    modifier = GlanceModifier.padding(horizontal = 4.dp)
-                                )
-                                Text(
-                                    text = cleanTitle,
-                                    style = TextStyle(
-                                        fontSize = (12.5f * scale).sp,
-                                        textDecoration = TextDecoration.LineThrough,
-                                        color = ColorProvider(colors.textSecondary)
-                                    ),
-                                    maxLines = 1,
-                                    modifier = GlanceModifier.defaultWeight()
-                                )
-                            }
+                        Row(
+                            modifier = GlanceModifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp)
+                                .clickable(actionStartActivity(launchIntent)),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = timeStr,
+                                style = TextStyle(
+                                    fontSize = (10.5f * scale).sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = ColorProvider(colors.textSecondary.copy(alpha = 0.75f))
+                                ),
+                                modifier = GlanceModifier.width(36.dp)
+                            )
+                            Text(
+                                text = "✓",
+                                style = TextStyle(
+                                    fontSize = (11 * scale).sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ColorProvider(colors.statusDone)
+                                ),
+                                modifier = GlanceModifier.padding(horizontal = 4.dp)
+                            )
+                            Text(
+                                text = cleanTitle,
+                                style = TextStyle(
+                                    fontSize = (12 * scale).sp,
+                                    textDecoration = TextDecoration.LineThrough,
+                                    color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
+                                ),
+                                maxLines = 1,
+                                modifier = GlanceModifier.defaultWeight()
+                            )
                         }
                     }
 
                     // 2. NOW line (現在時刻)
-                    item {
-                        Spacer(modifier = GlanceModifier.height(4.dp))
+                    Spacer(modifier = GlanceModifier.height(4.dp))
+                    Row(
+                        modifier = GlanceModifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = GlanceModifier
+                                .cornerRadius(6.dp)
+                                .background(colors.nowLine)
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "現在 $nowTimeFormatted",
+                                style = TextStyle(
+                                    fontSize = (9.5f * scale).sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ColorProvider(Color.White)
+                                )
+                            )
+                        }
+                        Spacer(modifier = GlanceModifier.width(6.dp))
+                        Box(
+                            modifier = GlanceModifier
+                                .defaultWeight()
+                                .height(1.dp)
+                                .background(colors.nowLine.copy(alpha = 0.6f))
+                        ) {}
+                    }
+                    Spacer(modifier = GlanceModifier.height(4.dp))
+
+                    // 3. Pending items (これからの歩み、最大4件)
+                    val visiblePending = pendingItems.take(4)
+                    for (item in visiblePending) {
+                        val schedTimeStr = item.scheduledAt?.let { sched ->
+                            val t = LocalDateTime.ofInstant(Instant.ofEpochMilli(sched), zone)
+                                .format(DateTimeFormatter.ofPattern("HH:mm"))
+                            if (t != "00:00") t else null
+                        }
+
                         Row(
-                            modifier = GlanceModifier.fillMaxWidth(),
+                            modifier = GlanceModifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.5f.dp)
+                                .clickable(actionStartActivity(launchIntent)),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Box(
-                                modifier = GlanceModifier
-                                    .cornerRadius(6.dp)
-                                    .background(colors.nowLine)
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = "現在 $nowTimeFormatted",
-                                    style = TextStyle(
-                                        fontSize = (10 * scale).sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = ColorProvider(Color.White)
-                                    )
-                                )
-                            }
-                            Spacer(modifier = GlanceModifier.width(6.dp))
-                            Box(
-                                modifier = GlanceModifier
-                                    .defaultWeight()
-                                    .height(1.dp)
-                                    .background(colors.nowLine.copy(alpha = 0.7f))
-                            ) {}
-                        }
-                        Spacer(modifier = GlanceModifier.height(4.dp))
-                    }
-
-                    // 3. Pending items (これからの歩み)
-                    if (pendingItems.isNotEmpty()) {
-                        items(pendingItems) { item ->
-                            val schedTimeStr = item.scheduledAt?.let { sched ->
-                                val t = LocalDateTime.ofInstant(Instant.ofEpochMilli(sched), zone)
-                                    .format(DateTimeFormatter.ofPattern("HH:mm"))
-                                if (t != "00:00") t else null
-                            }
-
-                            Row(
-                                modifier = GlanceModifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 2.5f.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                // 1-tap completion circle (○)
+                            // 時刻指定があれば太字バッジ、なければ端正なドット
+                            if (schedTimeStr != null) {
                                 Box(
                                     modifier = GlanceModifier
-                                        .size(24.dp)
-                                        .cornerRadius(12.dp)
-                                        .background(colors.card.copy(alpha = 0.3f))
-                                        .clickable(
-                                            actionRunCallback<ToggleItemDoneActionCallback>(
-                                                actionParametersOf(ToggleItemDoneActionCallback.itemIdKey to item.id)
-                                            )
-                                        ),
-                                    contentAlignment = Alignment.Center
+                                        .cornerRadius(4.dp)
+                                        .background(colors.primary.copy(alpha = 0.15f))
+                                        .padding(horizontal = 4.dp, vertical = 1.dp)
                                 ) {
-                                    Text(
-                                        text = "○",
-                                        style = TextStyle(
-                                            fontSize = (15 * scale).sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = ColorProvider(colors.textSecondary.copy(alpha = 0.8f))
-                                        )
-                                    )
-                                }
-
-                                Spacer(modifier = GlanceModifier.width(6.dp))
-
-                                Text(
-                                    text = item.title,
-                                    style = TextStyle(
-                                        fontSize = (13 * scale).sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = ColorProvider(colors.textPrimary)
-                                    ),
-                                    maxLines = 1,
-                                    modifier = GlanceModifier.defaultWeight()
-                                )
-
-                                if (schedTimeStr != null) {
-                                    Spacer(modifier = GlanceModifier.width(4.dp))
                                     Text(
                                         text = schedTimeStr,
                                         style = TextStyle(
                                             fontSize = (10 * scale).sp,
-                                            color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
+                                            fontWeight = FontWeight.Bold,
+                                            color = ColorProvider(colors.primary)
                                         )
                                     )
                                 }
+                                Spacer(modifier = GlanceModifier.width(6.dp))
+                            } else {
+                                Box(
+                                    modifier = GlanceModifier
+                                        .size(14.dp)
+                                        .cornerRadius(7.dp)
+                                        .background(colors.border.copy(alpha = 0.6f)),
+                                    contentAlignment = Alignment.Center
+                                ) {}
+                                Spacer(modifier = GlanceModifier.width(6.dp))
                             }
-                        }
-                    } else if (doneItems.isNotEmpty()) {
-                        item {
-                            Spacer(modifier = GlanceModifier.height(2.dp))
+
                             Text(
-                                text = "手元のタスクはありません 🌿",
+                                text = item.title,
                                 style = TextStyle(
-                                    fontSize = (11 * scale).sp,
-                                    color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
-                                )
+                                    fontSize = (12.5f * scale).sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = ColorProvider(colors.textPrimary)
+                                ),
+                                maxLines = 1,
+                                modifier = GlanceModifier.defaultWeight()
                             )
                         }
+                    }
+
+                    if (pendingItems.size > 4) {
+                        Spacer(modifier = GlanceModifier.height(2.dp))
+                        Text(
+                            text = "... 他 ${pendingItems.size - 4} 件",
+                            style = TextStyle(
+                                fontSize = (10 * scale).sp,
+                                color = ColorProvider(colors.textSecondary.copy(alpha = 0.65f))
+                            )
+                        )
+                    } else if (pendingItems.isEmpty() && doneItems.isNotEmpty()) {
+                        Spacer(modifier = GlanceModifier.height(2.dp))
+                        Text(
+                            text = "手元のタスクはありません 🌿",
+                            style = TextStyle(
+                                fontSize = (11 * scale).sp,
+                                color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
+                            )
+                        )
                     }
                 }
             }

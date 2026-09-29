@@ -21,5 +21,6 @@ data class TemplateEntity(
     val unit: String = "", // "杯", "回", "分"
     val stepValue: Int = 1, // 1タップあたりの増分 (デフォルト: 1)
     val isPinned: Boolean = false, // クイックスタンプバーへのピン留め
-    val displayOrder: Int = 0
+    val displayOrder: Int = 0,
+    val timeOfDayZone: String = "ALL_DAY" // "ALL_DAY", "MORNING", "AFTERNOON", "EVENING_NIGHT"
 )
