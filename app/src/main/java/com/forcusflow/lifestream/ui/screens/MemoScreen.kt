@@ -26,6 +26,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.forcusflow.lifestream.data.MemoEntity
+import com.forcusflow.lifestream.ui.components.AddItemBottomSheet
+import com.forcusflow.lifestream.ui.screens.AddPeriodicTaskDialog
 import com.forcusflow.lifestream.ui.theme.LifeStreamTheme
 import com.forcusflow.lifestream.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
@@ -53,6 +55,9 @@ fun MemoScreen(viewModel: MainViewModel) {
     var newMemoText by remember { mutableStateOf("") }
     var memoToPromote by remember { mutableStateOf<MemoEntity?>(null) }
     var memoToEdit by remember { mutableStateOf<MemoEntity?>(null) }
+    var memoForTodoAdd by remember { mutableStateOf<MemoEntity?>(null) }
+    var memoForDoneAdd by remember { mutableStateOf<MemoEntity?>(null) }
+    var memoForPeriodicAdd by remember { mutableStateOf<MemoEntity?>(null) }
     var editText by remember { mutableStateOf("") }
     var showArchivedSection by remember { mutableStateOf(false) }
 
@@ -218,7 +223,14 @@ fun MemoScreen(viewModel: MainViewModel) {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                         viewModel.archiveMemo(memo)
                                         coroutineScope.launch {
-                                            snackbarHostState.showSnackbar("メモを片付けました")
+                                            val res = snackbarHostState.showSnackbar(
+                                                message = "メモを片付けました",
+                                                actionLabel = "元に戻す",
+                                                duration = SnackbarDuration.Short
+                                            )
+                                            if (res == SnackbarResult.ActionPerformed) {
+                                                viewModel.unarchiveMemo(memo)
+                                            }
                                         }
                                         true
                                     } else false
@@ -316,7 +328,14 @@ fun MemoScreen(viewModel: MainViewModel) {
                                                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                                             viewModel.archiveMemo(memo)
                                                             coroutineScope.launch {
-                                                                snackbarHostState.showSnackbar("メモを片付けました")
+                                                                val res = snackbarHostState.showSnackbar(
+                                                                    message = "メモを片付けました",
+                                                                    actionLabel = "元に戻す",
+                                                                    duration = SnackbarDuration.Short
+                                                                )
+                                                                if (res == SnackbarResult.ActionPerformed) {
+                                                                    viewModel.unarchiveMemo(memo)
+                                                                }
                                                             }
                                                         },
                                                     contentAlignment = Alignment.Center
@@ -569,7 +588,14 @@ fun MemoScreen(viewModel: MainViewModel) {
                             viewModel.deleteMemo(editing)
                             memoToEdit = null
                             coroutineScope.launch {
-                                snackbarHostState.showSnackbar("メモを削除しました")
+                                val res = snackbarHostState.showSnackbar(
+                                    message = "メモを削除しました",
+                                    actionLabel = "元に戻す",
+                                    duration = SnackbarDuration.Short
+                                )
+                                if (res == SnackbarResult.ActionPerformed) {
+                                    viewModel.insertMemo(editing)
+                                }
                             }
                         }
                     ) {
@@ -609,69 +635,156 @@ fun MemoScreen(viewModel: MainViewModel) {
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Option 1: Convert to TODO
+                // Option 1: Convert to TODO (編集シートを開く)
                 PromotionOptionCard(
                     icon = "📋",
                     title = "TODO（やること）にする",
-                    subtitle = "今日中、または明日以降の日時を指定してタスク化",
+                    subtitle = "予定日・時間や詳細を確認してタスク化",
                     onClick = {
+                        val m = targetMemo
                         memoToPromote = null
-                        viewModel.promoteMemoToTodo(targetMemo, scheduledAt = null)
-                        coroutineScope.launch {
-                            snackbarHostState.showSnackbar("「${targetMemo.content}」をTODOに追加しました")
-                        }
+                        memoForTodoAdd = m
                     }
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Option 2: Convert to DONE
+                // Option 2: Convert to DONE (記録シートを開く)
                 PromotionOptionCard(
                     icon = "✅",
                     title = "できたこと（記録）にする",
-                    subtitle = "今完了した実績として今日のタイムラインに即座に記録",
+                    subtitle = "実行時間や詳細を確認してタイムラインに記録",
                     onClick = {
+                        val m = targetMemo
                         memoToPromote = null
-                        viewModel.promoteMemoToDone(targetMemo)
-                        coroutineScope.launch {
-                            snackbarHostState.showSnackbar("「${targetMemo.content}」を完了として記録しました")
-                        }
+                        memoForDoneAdd = m
                     }
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Option 3: Convert to Periodic Task
+                // Option 3: Convert to Periodic Task (周期追加ダイアログを開く)
                 PromotionOptionCard(
                     icon = "🔄",
-                    title = "周期ルーティンにする (7日ごと)",
-                    subtitle = "周期タブに追加して定期的なリマインド習慣にする",
+                    title = "周期ルーティンにする",
+                    subtitle = "日数間隔やゾーンを確認して周期管理に追加",
                     onClick = {
+                        val m = targetMemo
                         memoToPromote = null
-                        viewModel.promoteMemoToPeriodic(targetMemo, intervalDays = 7)
-                        coroutineScope.launch {
-                            snackbarHostState.showSnackbar("「${targetMemo.content}」を周期管理に追加しました")
-                        }
-                    }
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Option 4: Convert to Quick Template
-                PromotionOptionCard(
-                    icon = "⚡",
-                    title = "定番テンプレートにする",
-                    subtitle = "今日タブ上部のワンタップ記録ボタンに追加",
-                    onClick = {
-                        memoToPromote = null
-                        viewModel.promoteMemoToTemplate(targetMemo)
-                        coroutineScope.launch {
-                            snackbarHostState.showSnackbar("「${targetMemo.content}」をテンプレートに追加しました")
-                        }
+                        memoForPeriodicAdd = m
                     }
                 )
             }
         }
+    }
+
+    // Memo -> TODO Sheet
+    if (memoForTodoAdd != null) {
+        val memo = memoForTodoAdd!!
+        val firstLine = memo.content.lines().firstOrNull()?.trim()?.take(40) ?: memo.content.take(40)
+        AddItemBottomSheet(
+            onDismiss = { memoForTodoAdd = null },
+            initialIsDone = false,
+            initialTitle = firstLine,
+            initialNote = memo.content,
+            onSave = { title, isDone, scheduledAt, completedAt, amount, note, templateId, durationSeconds, countValue, createdAt ->
+                viewModel.addTimelineItem(
+                    title = title,
+                    isDone = isDone,
+                    scheduledAt = scheduledAt,
+                    completedAt = completedAt,
+                    amount = amount,
+                    note = note,
+                    templateId = templateId,
+                    durationSeconds = durationSeconds,
+                    countValue = countValue,
+                    createdAt = createdAt
+                )
+                viewModel.archiveMemo(memo)
+                memoForTodoAdd = null
+                coroutineScope.launch {
+                    val res = snackbarHostState.showSnackbar(
+                        message = "「$title」をTODOに追加しました",
+                        actionLabel = "元に戻す",
+                        duration = SnackbarDuration.Short
+                    )
+                    if (res == SnackbarResult.ActionPerformed) {
+                        viewModel.unarchiveMemo(memo)
+                    }
+                }
+            }
+        )
+    }
+
+    // Memo -> DONE Sheet
+    if (memoForDoneAdd != null) {
+        val memo = memoForDoneAdd!!
+        val firstLine = memo.content.lines().firstOrNull()?.trim()?.take(40) ?: memo.content.take(40)
+        AddItemBottomSheet(
+            onDismiss = { memoForDoneAdd = null },
+            initialIsDone = true,
+            initialTitle = firstLine,
+            initialNote = memo.content,
+            onSave = { title, isDone, scheduledAt, completedAt, amount, note, templateId, durationSeconds, countValue, createdAt ->
+                viewModel.addTimelineItem(
+                    title = title,
+                    isDone = isDone,
+                    scheduledAt = scheduledAt,
+                    completedAt = completedAt,
+                    amount = amount,
+                    note = note,
+                    templateId = templateId,
+                    durationSeconds = durationSeconds,
+                    countValue = countValue,
+                    createdAt = createdAt
+                )
+                viewModel.archiveMemo(memo)
+                memoForDoneAdd = null
+                coroutineScope.launch {
+                    val res = snackbarHostState.showSnackbar(
+                        message = "「$title」を記録しました",
+                        actionLabel = "元に戻す",
+                        duration = SnackbarDuration.Short
+                    )
+                    if (res == SnackbarResult.ActionPerformed) {
+                        viewModel.unarchiveMemo(memo)
+                    }
+                }
+            }
+        )
+    }
+
+    // Memo -> Periodic Task Dialog
+    if (memoForPeriodicAdd != null) {
+        val memo = memoForPeriodicAdd!!
+        val firstLine = memo.content.lines().firstOrNull()?.trim()?.take(40) ?: memo.content.take(40)
+        AddPeriodicTaskDialog(
+            onDismiss = { memoForPeriodicAdd = null },
+            initialTitle = firstLine,
+            onAdd = { title, intervalDays, iconKey, colorHex, timeOfDayZone ->
+                viewModel.addTemplate(
+                    title = title,
+                    type = "INTERVAL",
+                    intervalDays = intervalDays,
+                    defaultAmount = null,
+                    iconKey = iconKey,
+                    colorHex = colorHex,
+                    timeOfDayZone = timeOfDayZone
+                )
+                viewModel.archiveMemo(memo)
+                memoForPeriodicAdd = null
+                coroutineScope.launch {
+                    val res = snackbarHostState.showSnackbar(
+                        message = "「$title」を周期タスクに追加しました",
+                        actionLabel = "元に戻す",
+                        duration = SnackbarDuration.Short
+                    )
+                    if (res == SnackbarResult.ActionPerformed) {
+                        viewModel.unarchiveMemo(memo)
+                    }
+                }
+            }
+        )
     }
 }
 

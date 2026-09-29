@@ -885,9 +885,9 @@ fun EditPeriodicTaskBottomSheet(
             ) {
                 listOf(
                     "ALL_DAY" to "いつでも",
-                    "MORNING" to "朝 ☀️ (4〜12時)",
-                    "AFTERNOON" to "昼 🍴 (12〜17時)",
-                    "EVENING_NIGHT" to "夕・夜 🌙 (17〜4時)"
+                    "MORNING" to "朝 ☀️",
+                    "AFTERNOON" to "昼 🍴",
+                    "EVENING_NIGHT" to "夜 🌙"
                 ).forEach { (code, label) ->
                     val isSelected = timeOfDayZone == code
                     Box(
@@ -1201,10 +1201,11 @@ fun EditPeriodicTaskBottomSheet(
 @Composable
 fun AddPeriodicTaskDialog(
     onDismiss: () -> Unit,
-    onAdd: (title: String, intervalDays: Int?, iconKey: String, colorHex: String, timeOfDayZone: String) -> Unit
+    onAdd: (title: String, intervalDays: Int?, iconKey: String, colorHex: String, timeOfDayZone: String) -> Unit,
+    initialTitle: String = ""
 ) {
     val colors = LifeStreamTheme.colors
-    var title by remember { mutableStateOf("") }
+    var title by remember { mutableStateOf(initialTitle) }
     var intervalDays by remember { mutableStateOf<Int?>(7) }
     var timeOfDayZone by remember { mutableStateOf("ALL_DAY") }
     var iconKey by remember { mutableStateOf("🧹") }
@@ -1324,9 +1325,9 @@ fun AddPeriodicTaskDialog(
             ) {
                 listOf(
                     "ALL_DAY" to "いつでも",
-                    "MORNING" to "朝 ☀️ (4〜12時)",
-                    "AFTERNOON" to "昼 🍴 (12〜17時)",
-                    "EVENING_NIGHT" to "夕・夜 🌙 (17〜4時)"
+                    "MORNING" to "朝 ☀️",
+                    "AFTERNOON" to "昼 🍴",
+                    "EVENING_NIGHT" to "夜 🌙"
                 ).forEach { (code, label) ->
                     val isSelected = timeOfDayZone == code
                     Box(

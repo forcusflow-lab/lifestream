@@ -27,9 +27,9 @@ import java.time.ZoneId
 
 enum class TimeOfDayZone(val code: String, val label: String, val description: String) {
     ALL_DAY("ALL_DAY", "いつでも", "終日表示"),
-    MORNING("MORNING", "朝 ☀️", "04:00〜12:00"),
-    AFTERNOON("AFTERNOON", "昼 🍴", "12:00〜17:00"),
-    EVENING_NIGHT("EVENING_NIGHT", "夕・夜 🌙", "17:00〜04:00")
+    MORNING("MORNING", "朝 ☀️", "朝の活動"),
+    AFTERNOON("AFTERNOON", "昼 🍴", "昼・午後の活動"),
+    EVENING_NIGHT("EVENING_NIGHT", "夜 🌙", "夕方・夜の活動")
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -60,8 +60,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun getCurrentTimeOfDayZone(time: LocalTime = LocalTime.now()): TimeOfDayZone {
         val hour = time.hour
         return when {
-            hour in 4..11 -> TimeOfDayZone.MORNING
-            hour in 12..16 -> TimeOfDayZone.AFTERNOON
+            hour in 4..10 -> TimeOfDayZone.MORNING
+            hour in 11..16 -> TimeOfDayZone.AFTERNOON
             else -> TimeOfDayZone.EVENING_NIGHT
         }
     }
@@ -412,7 +412,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         note: String?,
         templateId: Long?,
         durationSeconds: Int? = null,
-        countValue: Int? = null
+        countValue: Int? = null,
+        createdAt: Long = System.currentTimeMillis()
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             val item = TimelineItemEntity(
@@ -424,7 +425,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 note = note,
                 templateId = templateId,
                 durationSeconds = durationSeconds,
-                countValue = countValue
+                countValue = countValue,
+                createdAt = createdAt
             )
             itemDao.insert(item)
             if (isDone && templateId != null) {
@@ -763,6 +765,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     createdAt = System.currentTimeMillis()
                 )
             )
+        }
+    }
+
+    // === Reschedule Item to Drawer (Stock) ===
+    fun rescheduleItemToDrawer(item: TimelineItemEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            itemDao.update(
+                item.copy(
+                    scheduledAt = null,
+                    createdAt = 1000L
+                )
+            )
+        }
+    }
+
+    fun insertMemo(memo: MemoEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            memoDao.insert(memo)
         }
     }
 

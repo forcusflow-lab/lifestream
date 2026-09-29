@@ -19,6 +19,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -124,13 +127,51 @@ fun ItemDetailBottomSheet(
     }
     var countValue by remember { mutableStateOf(initialCount) }
 
+    val haptic = LocalHapticFeedback.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val scrollState = rememberScrollState()
+
     val zone = ZoneId.systemDefault()
     var selectedDonePreset by remember { mutableStateOf("今") }
-    var selectedTodoPreset by remember {
+
+    val todayStart = remember { LocalDate.now().atStartOfDay(zone).toInstant().toEpochMilli() }
+    val isStockDrawer = remember(item.scheduledAt, item.createdAt) {
+        item.scheduledAt == null && (item.createdAt in 1 until todayStart)
+    }
+
+    var selectedTodoTiming by remember {
         mutableStateOf(
-            if (item.scheduledAt == null) "今日中" else "📅"
+            when {
+                isStockDrawer -> "引き出し"
+                item.scheduledAt == null -> "今日"
+                else -> {
+                    val itemDate = Instant.ofEpochMilli(item.scheduledAt).atZone(zone).toLocalDate()
+                    val today = LocalDate.now()
+                    if (itemDate.isEqual(today)) "今日" else "日時指定"
+                }
+            }
         )
     }
+
+    var customPickedTime by remember {
+        mutableStateOf(
+            if (item.scheduledAt != null) {
+                Instant.ofEpochMilli(item.scheduledAt).atZone(zone).toLocalTime()
+            } else null
+        )
+    }
+
+    var selectedTodoTime by remember {
+        mutableStateOf(
+            if (item.scheduledAt == null) "終日"
+            else {
+                val itemTime = Instant.ofEpochMilli(item.scheduledAt).atZone(zone).toLocalTime()
+                val formatted = "%02d:%02d".format(itemTime.hour, itemTime.minute)
+                formatted
+            }
+        )
+    }
+
     var customDateTime by remember {
         mutableStateOf(
             if (item.isDone) {
@@ -142,6 +183,7 @@ fun ItemDetailBottomSheet(
     }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
+    var isTimePickerForDirectTime by remember { mutableStateOf(false) }
     var tempPickedDate by remember {
         mutableStateOf(customDateTime?.toLocalDate() ?: LocalDate.now())
     }
@@ -157,7 +199,7 @@ fun ItemDetailBottomSheet(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 24.dp)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .navigationBarsPadding()
                 .imePadding()
         ) {
@@ -198,19 +240,40 @@ fun ItemDetailBottomSheet(
                             }
                         } else null
 
+                        var finalCreatedAt = item.createdAt
                         val finalScheduledAt = if (!isDone) {
-                            when {
-                                selectedTodoPreset == "今日中" -> null
-                                selectedTodoPreset == "明日" -> now.plusDays(1).withHour(9).withMinute(0).atZone(zone).toInstant().toEpochMilli()
-                                selectedTodoPreset == "今週末" -> {
+                            when (selectedTodoTiming) {
+                                "引き出し" -> {
+                                    finalCreatedAt = 1000L
+                                    null
+                                }
+                                "今日" -> {
+                                    if (selectedTodoTime == "終日") {
+                                        null
+                                    } else {
+                                        val time = customPickedTime ?: try {
+                                            LocalTime.parse(selectedTodoTime)
+                                        } catch (e: Exception) {
+                                            LocalTime.of(12, 0)
+                                        }
+                                        LocalDate.now().atTime(time).atZone(zone).toInstant().toEpochMilli()
+                                    }
+                                }
+                                "今週末" -> {
                                     val daysUntilWeekend = (6 - now.dayOfWeek.value).let { if (it <= 0) it + 7 else it }
-                                    now.plusDays(daysUntilWeekend.toLong()).withHour(10).withMinute(0).atZone(zone).toInstant().toEpochMilli()
+                                    val baseDate = now.toLocalDate().plusDays(daysUntilWeekend.toLong())
+                                    val time = if (selectedTodoTime == "終日") LocalTime.of(10, 0) else {
+                                        customPickedTime ?: try {
+                                            LocalTime.parse(selectedTodoTime)
+                                        } catch (e: Exception) {
+                                            LocalTime.of(10, 0)
+                                        }
+                                    }
+                                    baseDate.atTime(time).atZone(zone).toInstant().toEpochMilli()
                                 }
-                                selectedTodoPreset == "来週月曜" -> {
-                                    val daysUntilNextMonday = (8 - now.dayOfWeek.value).let { if (it <= 0) it + 7 else it }
-                                    now.plusDays(daysUntilNextMonday.toLong()).withHour(9).withMinute(0).atZone(zone).toInstant().toEpochMilli()
+                                "日時指定" -> {
+                                    customDateTime?.atZone(zone)?.toInstant()?.toEpochMilli()
                                 }
-                                customDateTime != null -> customDateTime!!.atZone(zone).toInstant().toEpochMilli()
                                 else -> null
                             }
                         } else null
@@ -220,6 +283,7 @@ fun ItemDetailBottomSheet(
                             note = note.trim().ifBlank { null },
                             amount = parsedAmount,
                             isDone = isDone,
+                            createdAt = finalCreatedAt,
                             scheduledAt = finalScheduledAt,
                             completedAt = finalCompletedAt,
                             durationSeconds = finalDurationSeconds,
@@ -301,73 +365,184 @@ fun ItemDetailBottomSheet(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // 2-A. タイミング設定（登録画面と完全統一）
+            // 2-A. タイミング設定（AddItemBottomSheetと完全統一）
             Spacer(modifier = Modifier.height(14.dp))
             Text(
-                text = if (isDone) "記録日時" else "予定日時",
+                text = if (isDone) "記録日時" else "いつやりますか？",
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = colors.textSecondary
             )
             Spacer(modifier = Modifier.height(6.dp))
 
-            val customPresetLabel = customDateTime?.let {
-                "📅 %d/%d %02d:%02d".format(it.monthValue, it.dayOfMonth, it.hour, it.minute)
-            } ?: "📅 日時指定..."
+            if (isDone) {
+                val customPresetLabel = customDateTime?.let {
+                    "📅 %d/%d %02d:%02d".format(it.monthValue, it.dayOfMonth, it.hour, it.minute)
+                } ?: "📅 日時指定..."
 
-            val timingPresets = if (isDone) {
-                listOf("今", "15分前", "1時間前", "昨晩", customPresetLabel)
-            } else {
-                listOf("今日中", "明日", "今週末", "来週月曜", customPresetLabel)
-            }
+                val timingPresets = listOf("今", "15分前", "1時間前", "昨晩", customPresetLabel)
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                timingPresets.forEach { preset ->
-                    val isSelected = if (isDone) {
-                        selectedDonePreset == preset || (preset == customPresetLabel && customDateTime != null && selectedDonePreset.startsWith("📅"))
-                    } else {
-                        selectedTodoPreset == preset || (preset == customPresetLabel && customDateTime != null && selectedTodoPreset.startsWith("📅"))
-                    }
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(
-                                1.dp,
-                                if (isSelected) colors.primary else colors.border,
-                                RoundedCornerShape(8.dp)
-                            )
-                            .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.background)
-                            .clickable {
-                                if (isDone) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    timingPresets.forEach { preset ->
+                        val isSelected = selectedDonePreset == preset || (preset == customPresetLabel && customDateTime != null && selectedDonePreset.startsWith("📅"))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(
+                                    1.dp,
+                                    if (isSelected) colors.primary else colors.border,
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.background)
+                                .clickable {
+                                    keyboardController?.hide()
                                     if (preset.startsWith("📅")) {
                                         showDatePicker = true
                                     } else {
                                         selectedDonePreset = preset
                                         customDateTime = null
                                     }
-                                } else {
-                                    if (preset.startsWith("📅")) {
+                                }
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = preset,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) colors.primary else colors.textPrimary
+                            )
+                        }
+                    }
+                }
+            } else {
+                // 1段目: いつやる？ (今日 / 引き出し / 今週末 / 日時指定)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf(
+                        "今日" to "🌿 今日",
+                        "引き出し" to "📦 引き出し（日時未定）",
+                        "今週末" to "☕ 今週末",
+                        "日時指定" to "📅 日時指定..."
+                    ).forEach { (key, label) ->
+                        val isSelected = selectedTodoTiming == key
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(
+                                    1.dp,
+                                    if (isSelected) colors.primary else colors.border,
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.background)
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    keyboardController?.hide()
+                                    selectedTodoTiming = key
+                                    if (key == "日時指定") {
                                         showDatePicker = true
                                     } else {
-                                        selectedTodoPreset = preset
                                         customDateTime = null
                                     }
                                 }
-                            }
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        contentAlignment = Alignment.Center
+                                .padding(horizontal = 11.dp, vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) colors.primary else colors.textPrimary
+                            )
+                        }
+                    }
+                }
+
+                // 2段目: 時間も決める？ (今日 or 今週末のときのみ表示)
+                if (selectedTodoTiming == "今日" || selectedTodoTiming == "今週末") {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "時刻も設定しますか？ (任意)",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = colors.textSecondary.copy(alpha = 0.8f)
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text(
-                            text = preset,
-                            fontSize = 12.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) colors.primary else colors.textPrimary
-                        )
+                        val timeOptions = mutableListOf("終日", "10:00", "14:00", "18:00")
+                        if (customPickedTime != null) {
+                            val formattedCustom = "%02d:%02d".format(customPickedTime!!.hour, customPickedTime!!.minute)
+                            if (formattedCustom !in timeOptions) {
+                                timeOptions.add(formattedCustom)
+                            }
+                        }
+
+                        timeOptions.forEach { opt ->
+                            val isSelected = selectedTodoTime == opt
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .border(
+                                        1.dp,
+                                        if (isSelected) colors.primary else colors.border.copy(alpha = 0.6f),
+                                        RoundedCornerShape(8.dp)
+                                    )
+                                    .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.card)
+                                    .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        keyboardController?.hide()
+                                        selectedTodoTime = opt
+                                        if (opt == "終日") customPickedTime = null
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = opt,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) colors.primary else colors.textPrimary
+                                )
+                            }
+                        }
+
+                        // ⏰ 時刻を直接選ぶ (カレンダーを挟まず直接TimePickerが開く！)
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(0.5.dp, colors.primary.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                                .background(colors.primary.copy(alpha = 0.05f))
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    keyboardController?.hide()
+                                    isTimePickerForDirectTime = true
+                                    showTimePicker = true
+                                }
+                                .padding(horizontal = 10.dp, vertical = 5.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "⏰ 時刻を選ぶ...",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = colors.primary
+                            )
+                        }
                     }
                 }
             }
@@ -786,16 +961,24 @@ fun ItemDetailBottomSheet(
                         }
                         Text("時刻を指定", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = colors.textPrimary)
                         TextButton(onClick = {
-                            val time = LocalTime.of(timePickerState.hour, timePickerState.minute)
-                            val dt = LocalDateTime.of(tempPickedDate, time)
-                            customDateTime = dt
-                            val label = "📅 %d/%d %02d:%02d".format(dt.monthValue, dt.dayOfMonth, dt.hour, dt.minute)
-                            if (isDone) {
-                                selectedDonePreset = label
+                            if (isTimePickerForDirectTime) {
+                                val picked = LocalTime.of(timePickerState.hour, timePickerState.minute)
+                                customPickedTime = picked
+                                selectedTodoTime = "%02d:%02d".format(picked.hour, picked.minute)
+                                isTimePickerForDirectTime = false
+                                showTimePicker = false
                             } else {
-                                selectedTodoPreset = label
+                                val time = LocalTime.of(timePickerState.hour, timePickerState.minute)
+                                val dt = LocalDateTime.of(tempPickedDate, time)
+                                customDateTime = dt
+                                val label = "📅 %d/%d %02d:%02d".format(dt.monthValue, dt.dayOfMonth, dt.hour, dt.minute)
+                                if (isDone) {
+                                    selectedDonePreset = label
+                                } else {
+                                    selectedTodoTiming = "日時指定"
+                                }
+                                showTimePicker = false
                             }
-                            showTimePicker = false
                         }) {
                             Text("決定", color = colors.primary, fontWeight = FontWeight.Bold)
                         }

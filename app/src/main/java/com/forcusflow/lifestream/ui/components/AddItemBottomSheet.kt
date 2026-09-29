@@ -1,10 +1,6 @@
 package com.forcusflow.lifestream.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,12 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CalendarToday
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Paid
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,27 +22,27 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.forcusflow.lifestream.data.TemplateEntity
 import com.forcusflow.lifestream.ui.theme.LifeStreamTheme
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 
-/**
- * プログレッシブ・ディスクロージャー（段階的開示）採用 登録ボトムシート
- * - 最初はタイトルと保存ボタンのみで圧倒的にシンプル・広々
- * - メモ・金額・日時指定はタップした時だけ滑らかに展開
- * - 画面がごちゃごちゃせず、極上の使い心地を実現
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddItemBottomSheet(
+    initialTitle: String = "",
+    initialNote: String = "",
+    initialIsDone: Boolean = true,
     templates: List<TemplateEntity> = emptyList(),
     onDismiss: () -> Unit,
     onSave: (
@@ -63,25 +54,34 @@ fun AddItemBottomSheet(
         note: String?,
         templateId: Long?,
         durationSeconds: Int?,
-        countValue: Int?
+        countValue: Int?,
+        createdAt: Long
     ) -> Unit
 ) {
     val colors = LifeStreamTheme.colors
     val haptic = LocalHapticFeedback.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val coroutineScope = rememberCoroutineScope()
+    val scrollState = rememberScrollState()
 
-    var title by remember { mutableStateOf("") }
-    var isDone by remember { mutableStateOf(true) }
+    var title by remember { mutableStateOf(initialTitle) }
+    var isDone by remember { mutableStateOf(initialIsDone) }
 
     // Progressive disclosure states
-    var showNoteField by remember { mutableStateOf(false) }
-    var note by remember { mutableStateOf("") }
+    var showNoteField by remember { mutableStateOf(initialNote.isNotBlank()) }
+    var note by remember { mutableStateOf(initialNote) }
 
     var showAmountField by remember { mutableStateOf(false) }
     var amountText by remember { mutableStateOf("") }
 
     var showTimingField by remember { mutableStateOf(false) }
     var selectedDonePreset by remember { mutableStateOf("今") }
-    var selectedTodoPreset by remember { mutableStateOf("今日中") }
+
+    // 1段目: "今日", "引き出し", "今週末", "日時指定"
+    var selectedTodoTiming by remember { mutableStateOf("今日") }
+    // 2段目: "終日", "10:00", "14:00", "18:00", or custom "HH:mm"
+    var selectedTodoTime by remember { mutableStateOf("終日") }
+    var customPickedTime by remember { mutableStateOf<LocalTime?>(null) }
 
     var selectedTemplateId by remember { mutableStateOf<Long?>(null) }
     val selectedTemplate = remember(selectedTemplateId, templates) {
@@ -94,7 +94,17 @@ fun AddItemBottomSheet(
     var customDateTime by remember { mutableStateOf<LocalDateTime?>(null) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
+    var isTimePickerForDirectTime by remember { mutableStateOf(false) }
     var tempPickedDate by remember { mutableStateOf(LocalDate.now().plusDays(1)) }
+
+    fun onExpandField(action: () -> Unit) {
+        keyboardController?.hide()
+        action()
+        coroutineScope.launch {
+            delay(120L)
+            scrollState.animateScrollTo(scrollState.maxValue)
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -105,7 +115,7 @@ fun AddItemBottomSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .navigationBarsPadding()
                 .imePadding()
                 .padding(bottom = 32.dp)
@@ -160,13 +170,12 @@ fun AddItemBottomSheet(
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 isDone = false
-                                selectedTemplateId = null
                             }
                             .padding(horizontal = 14.dp, vertical = 6.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "やること",
+                            text = "これからの予定",
                             fontWeight = if (!isDone) FontWeight.Bold else FontWeight.Medium,
                             fontSize = 12.sp,
                             color = if (!isDone) colors.onPrimary else colors.textSecondary
@@ -174,9 +183,11 @@ fun AddItemBottomSheet(
                     }
                 }
 
+                // Save / Record Button
                 TextButton(
                     onClick = {
                         if (title.isNotBlank()) {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             val zone = ZoneId.systemDefault()
                             val now = LocalDateTime.now()
                             val amt = amountText.toLongOrNull()
@@ -192,23 +203,47 @@ fun AddItemBottomSheet(
                                     else -> now
                                 }
                                 val millis = doneTime.atZone(zone).toInstant().toEpochMilli()
-                                onSave(title.trim(), true, null, millis, amt, note.ifBlank { null }, selectedTemplateId, durationSec, countVal)
+                                onSave(title.trim(), true, null, millis, amt, note.ifBlank { null }, selectedTemplateId, durationSec, countVal, System.currentTimeMillis())
                             } else {
-                                val scheduledMillis = when {
-                                    selectedTodoPreset == "今日中" -> null
-                                    selectedTodoPreset == "明日" -> now.plusDays(1).withHour(9).withMinute(0).atZone(zone).toInstant().toEpochMilli()
-                                    selectedTodoPreset == "今週末" -> {
+                                var scheduledMillis: Long? = null
+                                var createdAtMillis: Long = System.currentTimeMillis()
+
+                                when (selectedTodoTiming) {
+                                    "引き出し" -> {
+                                        scheduledMillis = null
+                                        createdAtMillis = 1000L // 過去のcreatedAtとすることで確実に引き出し（ストック）に直行
+                                    }
+                                    "今日" -> {
+                                        if (selectedTodoTime != "終日") {
+                                            val time = customPickedTime ?: when (selectedTodoTime) {
+                                                "10:00" -> LocalTime.of(10, 0)
+                                                "14:00" -> LocalTime.of(14, 0)
+                                                "18:00" -> LocalTime.of(18, 0)
+                                                else -> null
+                                            }
+                                            if (time != null) {
+                                                scheduledMillis = LocalDateTime.of(now.toLocalDate(), time).atZone(zone).toInstant().toEpochMilli()
+                                            }
+                                        }
+                                    }
+                                    "今週末" -> {
                                         val daysUntilWeekend = (6 - now.dayOfWeek.value).let { if (it <= 0) it + 7 else it }
-                                        now.plusDays(daysUntilWeekend.toLong()).withHour(10).withMinute(0).atZone(zone).toInstant().toEpochMilli()
+                                        val weekendDate = now.toLocalDate().plusDays(daysUntilWeekend.toLong())
+                                        val time = customPickedTime ?: when (selectedTodoTime) {
+                                            "10:00" -> LocalTime.of(10, 0)
+                                            "14:00" -> LocalTime.of(14, 0)
+                                            "18:00" -> LocalTime.of(18, 0)
+                                            else -> LocalTime.of(0, 0)
+                                        }
+                                        scheduledMillis = LocalDateTime.of(weekendDate, time).atZone(zone).toInstant().toEpochMilli()
                                     }
-                                    selectedTodoPreset == "来週月曜" -> {
-                                        val daysUntilNextMonday = (8 - now.dayOfWeek.value).let { if (it <= 0) it + 7 else it }
-                                        now.plusDays(daysUntilNextMonday.toLong()).withHour(9).withMinute(0).atZone(zone).toInstant().toEpochMilli()
+                                    "日時指定" -> {
+                                        if (customDateTime != null) {
+                                            scheduledMillis = customDateTime!!.atZone(zone).toInstant().toEpochMilli()
+                                        }
                                     }
-                                    customDateTime != null -> customDateTime!!.atZone(zone).toInstant().toEpochMilli()
-                                    else -> null
                                 }
-                                onSave(title.trim(), false, scheduledMillis, null, amt, note.ifBlank { null }, selectedTemplateId, durationSec, countVal)
+                                onSave(title.trim(), false, scheduledMillis, null, amt, note.ifBlank { null }, selectedTemplateId, durationSec, countVal, createdAtMillis)
                             }
                             onDismiss()
                         }
@@ -227,7 +262,7 @@ fun AddItemBottomSheet(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // === 2. Main Title Input (白背景角丸カード・薄い境界線スタイル) ===
+            // === 2. Main Title Input ===
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -258,99 +293,9 @@ fun AddItemBottomSheet(
                 )
             }
 
-            // Dynamic Stepper for COUNT / TIMER Templates
-            if (selectedTemplate?.actionType == "COUNT") {
-                val unitStr = if (selectedTemplate.unit.isNotBlank()) selectedTemplate.unit else "杯"
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(colors.background)
-                        .border(1.dp, colors.border, RoundedCornerShape(10.dp))
-                        .padding(horizontal = 14.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "数量 (${unitStr}):",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = colors.textSecondary
-                    )
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        FilledTonalIconButton(
-                            onClick = { if (countValue > 1) countValue-- },
-                            enabled = countValue > 1,
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Text("-1", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Text(
-                            text = "$countValue $unitStr",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.textPrimary
-                        )
-                        FilledTonalIconButton(
-                            onClick = { countValue++ },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Text("+1", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            } else if (selectedTemplate?.actionType == "TIMER") {
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(colors.background)
-                        .border(1.dp, colors.border, RoundedCornerShape(10.dp))
-                        .padding(horizontal = 14.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "計測時間 (分):",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = colors.textSecondary
-                    )
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        FilledTonalIconButton(
-                            onClick = { if (timerMinutes > 5) timerMinutes -= 5 },
-                            enabled = timerMinutes > 5,
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Text("-5", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Text(
-                            text = "$timerMinutes 分",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.textPrimary
-                        )
-                        FilledTonalIconButton(
-                            onClick = { timerMinutes += 5 },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Text("+5", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-
+            // === 3. Progressive Disclosure Chips ===
             Spacer(modifier = Modifier.height(12.dp))
 
-            // === 3. Progressive Disclosure Chips (タップで必要項目を展開) ===
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -363,7 +308,7 @@ fun AddItemBottomSheet(
                 AssistChip(
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        showNoteField = !showNoteField
+                        onExpandField { showNoteField = !showNoteField }
                     },
                     label = {
                         Text(
@@ -384,7 +329,7 @@ fun AddItemBottomSheet(
                 AssistChip(
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        showAmountField = !showAmountField
+                        onExpandField { showAmountField = !showAmountField }
                     },
                     label = {
                         Text(
@@ -400,21 +345,27 @@ fun AddItemBottomSheet(
                     border = BorderStroke(1.dp, if (isAmountActive) colors.statusTarget else colors.border)
                 )
 
-                // [ ＋ 日時指定 ]
-                val isTimingActive = showTimingField || (isDone && selectedDonePreset != "今") || (!isDone && selectedTodoPreset != "今日中")
+                // [ ＋ 日時指定 / タイミング ]
+                val isTimingActive = showTimingField || (isDone && selectedDonePreset != "今") || (!isDone && (selectedTodoTiming != "今日" || selectedTodoTime != "終日"))
                 AssistChip(
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        showTimingField = !showTimingField
+                        onExpandField { showTimingField = !showTimingField }
                     },
                     label = {
                         val lbl = if (isDone) {
                             if (selectedDonePreset != "今") selectedDonePreset else "日時: 今"
                         } else {
-                            if (selectedTodoPreset != "今日中") selectedTodoPreset else "日時: 今日中"
+                            when (selectedTodoTiming) {
+                                "今日" -> if (selectedTodoTime != "終日") "今日 $selectedTodoTime" else "日時: 今日"
+                                "引き出し" -> "📦 引き出し（日時未定）"
+                                "今週末" -> if (selectedTodoTime != "終日") "今週末 $selectedTodoTime" else "日時: 今週末"
+                                "日時指定" -> customDateTime?.let { "%d/%d %02d:%02d".format(it.monthValue, it.dayOfMonth, it.hour, it.minute) } ?: "日時指定"
+                                else -> "＋ タイミング"
+                            }
                         }
                         Text(
-                            text = if (showTimingField || isTimingActive) lbl else "＋ 日時指定",
+                            text = if (showTimingField || isTimingActive) lbl else "＋ タイミング",
                             fontSize = 12.sp,
                             fontWeight = if (isTimingActive) FontWeight.Bold else FontWeight.Normal
                         )
@@ -468,81 +419,191 @@ fun AddItemBottomSheet(
                 }
             }
 
-            // Timing Field Expansion
+            // Timing Field Expansion (爆速・2段階設定)
             AnimatedVisibility(
                 visible = showTimingField,
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
             ) {
                 Column(modifier = Modifier.padding(top = 10.dp)) {
-                    Text(
-                        text = if (isDone) "記録日時:" else "予定日時:",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = colors.textSecondary
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    val customPresetLabel = customDateTime?.let {
-                        "📅 %d/%d %02d:%02d".format(it.monthValue, it.dayOfMonth, it.hour, it.minute)
-                    } ?: "📅 日時指定..."
-
-                    val presets = if (isDone) {
-                        listOf("今", "15分前", "1時間前", "昨晩")
-                    } else {
-                        listOf("今日中", "明日", "今週末", "来週月曜", customPresetLabel)
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        presets.forEach { preset ->
-                            val isSelected = if (isDone) {
-                                selectedDonePreset == preset
-                            } else {
-                                selectedTodoPreset == preset || (preset == customPresetLabel && customDateTime != null && selectedTodoPreset.startsWith("📅"))
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .border(
-                                        1.dp,
-                                        if (isSelected) colors.primary else colors.border,
-                                        RoundedCornerShape(8.dp)
-                                    )
-                                    .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.card)
-                                    .clickable {
-                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        if (isDone) {
+                    if (isDone) {
+                        Text(
+                            text = "記録日時:",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.textSecondary
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf("今", "15分前", "1時間前", "昨晩").forEach { preset ->
+                                val isSelected = selectedDonePreset == preset
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .border(
+                                            1.dp,
+                                            if (isSelected) colors.primary else colors.border,
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                        .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.card)
+                                        .clickable {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                             selectedDonePreset = preset
-                                        } else {
-                                            if (preset.startsWith("📅")) {
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = preset,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) colors.primary else colors.textPrimary
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        // 1段目: いつやる？ (今日 / 引き出し / 今週末 / 日時指定)
+                        Text(
+                            text = "いつやりますか？",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.textSecondary
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(
+                                "今日" to "🌿 今日",
+                                "引き出し" to "📦 引き出し（日時未定）",
+                                "今週末" to "☕ 今週末",
+                                "日時指定" to "📅 日時指定..."
+                            ).forEach { (key, label) ->
+                                val isSelected = selectedTodoTiming == key
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .border(
+                                            1.dp,
+                                            if (isSelected) colors.primary else colors.border,
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                        .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.card)
+                                        .clickable {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            keyboardController?.hide()
+                                            selectedTodoTiming = key
+                                            if (key == "日時指定") {
                                                 showDatePicker = true
                                             } else {
-                                                selectedTodoPreset = preset
                                                 customDateTime = null
                                             }
                                         }
-                                    }
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                                contentAlignment = Alignment.Center
+                                        .padding(horizontal = 11.dp, vertical = 6.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) colors.primary else colors.textPrimary
+                                    )
+                                }
+                            }
+                        }
+
+                        // 2段目: 時間も決める？ (今日 or 今週末のときのみ表示)
+                        if (selectedTodoTiming == "今日" || selectedTodoTiming == "今週末") {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = "時刻も設定しますか？ (任意)",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = colors.textSecondary.copy(alpha = 0.8f)
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Text(
-                                    text = preset,
-                                    fontSize = 12.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isSelected) colors.primary else colors.textPrimary
-                                )
+                                val timeOptions = mutableListOf("終日", "10:00", "14:00", "18:00")
+                                if (customPickedTime != null) {
+                                    val formattedCustom = "%02d:%02d".format(customPickedTime!!.hour, customPickedTime!!.minute)
+                                    if (formattedCustom !in timeOptions) {
+                                        timeOptions.add(formattedCustom)
+                                    }
+                                }
+
+                                timeOptions.forEach { opt ->
+                                    val isSelected = selectedTodoTime == opt
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .border(
+                                                1.dp,
+                                                if (isSelected) colors.primary else colors.border.copy(alpha = 0.6f),
+                                                RoundedCornerShape(8.dp)
+                                            )
+                                            .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.card)
+                                            .clickable {
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                selectedTodoTime = opt
+                                                if (opt == "終日") customPickedTime = null
+                                            }
+                                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = opt,
+                                            fontSize = 11.5.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSelected) colors.primary else colors.textPrimary
+                                        )
+                                    }
+                                }
+
+                                // ⏰ 時刻を直接選ぶ (カレンダーを挟まず直接TimePickerが開く！)
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .border(0.5.dp, colors.primary.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                                        .background(colors.primary.copy(alpha = 0.05f))
+                                        .clickable {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            keyboardController?.hide()
+                                            isTimePickerForDirectTime = true
+                                            showTimePicker = true
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "⏰ 時刻を選ぶ...",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = colors.primary
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // Material 3 Date Picker Modal Bottom Sheet
+            // Material 3 Date Picker Modal Bottom Sheet (特定日指定時のみ使用)
             if (showDatePicker) {
                 val datePickerState = rememberDatePickerState(
                     initialSelectedDateMillis = System.currentTimeMillis()
@@ -573,6 +634,7 @@ fun AddItemBottomSheet(
                                 if (epoch != null) {
                                     tempPickedDate = Instant.ofEpochMilli(epoch).atZone(ZoneId.of("UTC")).toLocalDate()
                                     showDatePicker = false
+                                    isTimePickerForDirectTime = false
                                     showTimePicker = true
                                 } else {
                                     showDatePicker = false
@@ -587,10 +649,10 @@ fun AddItemBottomSheet(
                 }
             }
 
-            // Material 3 Time Picker Modal Bottom Sheet
+            // Material 3 Time Picker Modal Bottom Sheet (直接時刻指定 or 日付ピッカー後)
             if (showTimePicker) {
                 val timePickerState = rememberTimePickerState(
-                    initialHour = 10,
+                    initialHour = 14,
                     initialMinute = 0,
                     is24Hour = true
                 )
@@ -618,10 +680,14 @@ fun AddItemBottomSheet(
                             Text("時刻を指定", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = colors.textPrimary)
                             TextButton(onClick = {
                                 val time = LocalTime.of(timePickerState.hour, timePickerState.minute)
-                                val dt = LocalDateTime.of(tempPickedDate, time)
-                                customDateTime = dt
-                                val label = "📅 %d/%d %02d:%02d".format(dt.monthValue, dt.dayOfMonth, dt.hour, dt.minute)
-                                selectedTodoPreset = label
+                                if (isTimePickerForDirectTime) {
+                                    customPickedTime = time
+                                    selectedTodoTime = "%02d:%02d".format(time.hour, time.minute)
+                                } else {
+                                    val dt = LocalDateTime.of(tempPickedDate, time)
+                                    customDateTime = dt
+                                    selectedTodoTiming = "日時指定"
+                                }
                                 showTimePicker = false
                             }) {
                                 Text("決定", color = colors.primary, fontWeight = FontWeight.Bold)
@@ -638,55 +704,42 @@ fun AddItemBottomSheet(
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = "クイック選択:",
-                    fontSize = 12.sp,
-                    color = colors.textSecondary,
-                    fontWeight = FontWeight.SemiBold
+                    fontSize = 11.5.sp,
+                    color = colors.textSecondary
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    templates.take(12).forEach { t ->
-                        val isSelected = selectedTemplateId == t.id
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .border(
-                                    1.dp,
-                                    if (isSelected) colors.primary else colors.border,
-                                    RoundedCornerShape(8.dp)
-                                )
-                                .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.card)
-                                .clickable {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    selectedTemplateId = t.id
-                                    title = t.title
-                                    if (t.defaultAmount != null) {
-                                        amountText = t.defaultAmount.toString()
-                                        showAmountField = true
-                                    }
-                                    if (t.actionType == "COUNT") {
-                                        countValue = 1
-                                    } else if (t.actionType == "TIMER") {
-                                        timerMinutes = 15
-                                    }
+                    templates.filter { it.type != "INTERVAL" }.forEach { tmpl ->
+                        val isSelected = selectedTemplateId == tmpl.id
+                        AssistChip(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                if (isSelected) {
+                                    selectedTemplateId = null
+                                } else {
+                                    selectedTemplateId = tmpl.id
+                                    if (title.isBlank()) title = tmpl.title
+                                    if (tmpl.defaultAmount != null) amountText = tmpl.defaultAmount.toString()
                                 }
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(text = t.iconKey ?: "📌", fontSize = 13.sp)
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = t.title,
-                                fontSize = 12.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSelected) colors.primary else colors.textPrimary
-                            )
-                        }
+                            },
+                            label = {
+                                Text(
+                                    text = "${tmpl.iconKey ?: "⚡"} ${tmpl.title}",
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            colors = AssistChipDefaults.assistChipColors(
+                                containerColor = if (isSelected) colors.primary.copy(alpha = 0.15f) else colors.card,
+                                labelColor = if (isSelected) colors.primary else colors.textPrimary
+                            ),
+                            border = BorderStroke(1.dp, if (isSelected) colors.primary else colors.border)
+                        )
                     }
                 }
             }

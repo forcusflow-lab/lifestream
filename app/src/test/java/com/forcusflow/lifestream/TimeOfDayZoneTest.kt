@@ -13,8 +13,8 @@ class TimeOfDayZoneTest {
     private fun getCurrentZone(time: LocalTime): TimeOfDayZone {
         val hour = time.hour
         return when {
-            hour in 4..11 -> TimeOfDayZone.MORNING
-            hour in 12..16 -> TimeOfDayZone.AFTERNOON
+            hour in 4..10 -> TimeOfDayZone.MORNING
+            hour in 11..16 -> TimeOfDayZone.AFTERNOON
             else -> TimeOfDayZone.EVENING_NIGHT
         }
     }
@@ -29,12 +29,12 @@ class TimeOfDayZoneTest {
     fun testMorningZoneBoundaries() {
         assertEquals(TimeOfDayZone.MORNING, getCurrentZone(LocalTime.of(4, 0)))
         assertEquals(TimeOfDayZone.MORNING, getCurrentZone(LocalTime.of(8, 30)))
-        assertEquals(TimeOfDayZone.MORNING, getCurrentZone(LocalTime.of(11, 59)))
+        assertEquals(TimeOfDayZone.MORNING, getCurrentZone(LocalTime.of(10, 59)))
     }
 
     @Test
     fun testAfternoonZoneBoundaries() {
-        assertEquals(TimeOfDayZone.AFTERNOON, getCurrentZone(LocalTime.of(12, 0)))
+        assertEquals(TimeOfDayZone.AFTERNOON, getCurrentZone(LocalTime.of(11, 0)))
         assertEquals(TimeOfDayZone.AFTERNOON, getCurrentZone(LocalTime.of(14, 15)))
         assertEquals(TimeOfDayZone.AFTERNOON, getCurrentZone(LocalTime.of(16, 59)))
     }
