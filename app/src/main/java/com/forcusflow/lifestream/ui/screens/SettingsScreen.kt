@@ -334,7 +334,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                         color = colors.textPrimary
                                     )
                                     Text(
-                                        text = "FocusFlow ↗",
+                                        text = "byLife ↗",
                                         fontSize = (10 * widgetFontSize.scale).sp,
                                         color = colors.textSecondary.copy(alpha = 0.7f)
                                     )
@@ -424,7 +424,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 val quickCount = templates.count { it.type != "INTERVAL" }
                 SettingActionCard(
                     title = "クイック記録（テンプレート）管理",
-                    subtitle = "勉強, 家事, 水など ${quickCount}件登録中（並び替え・ピン留め）",
+                    subtitle = "${quickCount}件登録中（今日タブの「⚙」やチップの長押しからも管理できます）",
                     actionLabel = "管理 >",
                     onClick = { showTemplatesDialog = true }
                 )
@@ -471,18 +471,6 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Item 4: Notifications
-                SettingActionCard(
-                    title = "通知・リマインダー",
-                    subtitle = "周期推奨タスクの期限前通知 (ON)",
-                    actionLabel = "設定 >",
-                    onClick = {
-                        coroutineScope.launch {
-                            snackbarHostState.showSnackbar("リマインダー通知は有効です")
-                        }
-                    }
-                )
-                Spacer(modifier = Modifier.height(8.dp))
 
                 // Item 5: Reset / Sample Data
                 SettingActionCard(

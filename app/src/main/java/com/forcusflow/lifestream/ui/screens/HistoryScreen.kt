@@ -822,14 +822,15 @@ fun TaskitoHistoryStemRow(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(colors.primary.copy(alpha = 0.12f))
+                                .border(0.6.dp, colors.textSecondary.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                                .background(colors.background)
                                 .padding(horizontal = 5.dp, vertical = 1.dp)
                         ) {
                             Text(
-                                text = "予定",
+                                text = "未実施",
                                 fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.primary
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.textSecondary
                             )
                         }
                         Spacer(modifier = Modifier.width(6.dp))
@@ -866,8 +867,8 @@ fun TaskitoHistoryStemRow(
                     Text(
                         text = cleanTitle,
                         fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.textPrimary,
+                        fontWeight = if (item.isDone) FontWeight.Bold else FontWeight.Medium,
+                        color = if (item.isDone) colors.textPrimary else colors.textSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)

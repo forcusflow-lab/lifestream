@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.forcusflow.lifestream.data.MemoEntity
 import com.forcusflow.lifestream.ui.components.AddItemBottomSheet
+import com.forcusflow.lifestream.ui.components.AppHeader
 import com.forcusflow.lifestream.ui.screens.AddPeriodicTaskDialog
 import com.forcusflow.lifestream.ui.theme.LifeStreamTheme
 import com.forcusflow.lifestream.viewmodel.MainViewModel
@@ -75,21 +76,11 @@ fun MemoScreen(viewModel: MainViewModel) {
                 .padding(padding)
                 .background(colors.background)
         ) {
-            // Header: Minimal & Peaceful
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 14.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "メモ",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.textPrimary
-                )
-            }
+            // Header: Minimal & Peaceful (Unified AppHeader)
+            AppHeader(
+                title = "メモ",
+                subtitle = "心に浮かんだアイデアや覚え書き"
+            )
 
             // Quick Input Card (Top Instant Scratchpad)
             Box(

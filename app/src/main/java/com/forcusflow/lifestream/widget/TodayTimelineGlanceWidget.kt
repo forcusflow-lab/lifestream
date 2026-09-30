@@ -82,7 +82,7 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
         }.sortedBy { it.scheduledAt ?: 0L }
 
         val anytimeToday = allItems.filter { item ->
-            !item.isDone && item.scheduledAt == null && (item.createdAt >= todayStart || item.createdAt == 0L)
+            !item.isDone && item.scheduledAt == null && item.createdAt >= todayStart
         }.sortedBy { it.id }
 
         val pendingItems = (scheduledToday + anytimeToday).distinctBy { it.id }
@@ -98,22 +98,20 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
 
         provideContent {
             val scale = fontSizePref.scale
-            // Ambient subtle color shift matching morning, daytime, twilight, and night
-            val ambientCardBg = if (colors.isDark) {
-                when (now.hour) {
-                    in 5..10 -> Color(0xFF13202E) // Morning blue-tint
-                    in 11..16 -> Color(0xFF221F1B) // Daytime warm amber-tint
-                    in 17..19 -> Color(0xFF261920) // Twilight apricot-tint
-                    else -> Color(0xFF151826) // Night deep indigo-tint
-                }.copy(alpha = opacity.coerceIn(0.1f, 1.0f))
-            } else {
-                when (now.hour) {
-                    in 5..10 -> Color(0xFFF1F6FA) // Morning fresh mist
-                    in 11..16 -> Color(0xFFFAF7F2) // Daytime warm sunlight
-                    in 17..19 -> Color(0xFFFAF2EE) // Twilight peach glow
-                    else -> Color(0xFFF2F4F9) // Night calm slate
-                }.copy(alpha = opacity.coerceIn(0.1f, 1.0f))
+            // Ambient subtle color shift matching morning, daytime, twilight, and night based on theme background
+            val baseColor = colors.background
+            val lumFactor = when (now.hour) {
+                in 5..10 -> if (colors.isDark) 1.04f else 1.02f
+                in 11..16 -> if (colors.isDark) 1.02f else 1.00f
+                in 17..19 -> if (colors.isDark) 0.98f else 0.99f
+                else -> if (colors.isDark) 0.94f else 0.97f
             }
+            val ambientCardBg = Color(
+                red = (baseColor.red * lumFactor).coerceIn(0f, 1f),
+                green = (baseColor.green * lumFactor).coerceIn(0f, 1f),
+                blue = (baseColor.blue * lumFactor).coerceIn(0f, 1f),
+                alpha = baseColor.alpha
+            ).copy(alpha = opacity.coerceIn(0.1f, 1.0f))
 
             Box(
                 modifier = GlanceModifier
@@ -214,8 +212,26 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                         }
                     }
 
-                    // 1. DONE items (過去の実績ログ：NOWラインの上、最大3件)
-                    val visibleDone = doneItems.takeLast(3)
+                    // 1. DONE items (過去の実績ログ：NOWラインの上、最新2件＋サマリー)
+                    if (doneItems.size > 2) {
+                        Row(
+                            modifier = GlanceModifier
+                                .fillMaxWidth()
+                                .padding(vertical = 1.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "+ 他 ${doneItems.size - 2}件完了",
+                                style = TextStyle(
+                                    fontSize = (10 * scale).sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = ColorProvider(colors.textSecondary.copy(alpha = 0.65f))
+                                )
+                            )
+                        }
+                    }
+
+                    val visibleDone = doneItems.takeLast(2)
                     for (item in visibleDone) {
                         val timeStr = (item.completedAt ?: item.scheduledAt)?.let { ts ->
                             LocalDateTime.ofInstant(Instant.ofEpochMilli(ts), zone)
@@ -230,7 +246,7 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                         Row(
                             modifier = GlanceModifier
                                 .fillMaxWidth()
-                                .padding(vertical = 2.dp)
+                                .padding(vertical = 3.dp)
                                 .clickable(actionStartActivity(launchIntent)),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -256,7 +272,6 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                 text = cleanTitle,
                                 style = TextStyle(
                                     fontSize = (12 * scale).sp,
-                                    textDecoration = TextDecoration.LineThrough,
                                     color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
                                 ),
                                 maxLines = 1,

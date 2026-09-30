@@ -35,6 +35,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeMode by viewModel.themeMode.collectAsState()
             val currentTab by viewModel.currentTab.collectAsState()
+            val todayBadgeCount by viewModel.todayBadgeCount.collectAsState()
 
             LifeStreamTheme(themeMode = themeMode) {
                 val colors = LifeStreamTheme.colors
@@ -44,6 +45,7 @@ class MainActivity : ComponentActivity() {
                     bottomBar = {
                         BottomNavBar(
                             selectedTab = currentTab,
+                            todayBadgeCount = todayBadgeCount,
                             onTabSelected = { viewModel.currentTab.value = it }
                         )
                     }

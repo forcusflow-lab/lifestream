@@ -112,23 +112,25 @@ fun StockDrawerBottomSheet(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 32.dp, horizontal = 16.dp),
+                            .padding(vertical = 36.dp, horizontal = 16.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("📦", fontSize = 28.sp)
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("🗂️", fontSize = 32.sp)
+                            Spacer(modifier = Modifier.height(10.dp))
                             Text(
-                                text = "引き出しは空です",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold,
+                                text = "引き出しは空っぽ",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
                                 color = colors.textPrimary
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "未来の予定や退避タスクがここに静かにしまわれます",
-                                fontSize = 12.sp,
-                                color = colors.textSecondary
+                                text = "後回しにしたいことができたら、\nここに安心してストックできます。",
+                                fontSize = 12.5.sp,
+                                color = colors.textSecondary,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                lineHeight = 18.sp
                             )
                         }
                     }

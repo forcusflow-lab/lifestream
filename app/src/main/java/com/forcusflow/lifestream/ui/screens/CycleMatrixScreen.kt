@@ -104,7 +104,13 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     val zone = ZoneId.systemDefault()
-    val today = LocalDate.now()
+    val cutoffHour by viewModel.dayCutoffHour.collectAsState()
+    val today = remember(cutoffHour) {
+        viewModel.getLogicalDate(LocalDateTime.now(), cutoffHour)
+    }
+    val (todayStart, todayEnd) = remember(today, cutoffHour) {
+        viewModel.getDayRange(today, cutoffHour)
+    }
 
     var showAddPeriodicDialog by remember { mutableStateOf(false) }
     var editingTemplate by remember { mutableStateOf<TemplateEntity?>(null) }
@@ -188,7 +194,7 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                         periodicTemplates.forEach { template ->
                             val isDoneToday = allItems.any {
                                 it.isDone && it.templateId == template.id && it.completedAt != null &&
-                                LocalDateTime.ofInstant(Instant.ofEpochMilli(it.completedAt), zone).toLocalDate() == today
+                                it.completedAt in todayStart..todayEnd
                             }
                             if (isDoneToday) {
                                 doneTodayTemplates.add(template)
@@ -393,10 +399,10 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                             }
                         }
                         items(somedayTemplates, key = { it.id }) { template ->
-                            val isDoneToday = remember(allItems, template.id, today) {
+                            val isDoneToday = remember(allItems, template.id, todayStart, todayEnd) {
                                 allItems.any {
                                     it.isDone && it.templateId == template.id && it.completedAt != null &&
-                                    LocalDateTime.ofInstant(Instant.ofEpochMilli(it.completedAt), zone).toLocalDate() == today
+                                    it.completedAt in todayStart..todayEnd
                                 }
                             }
                             MainTaskStyleCycleCard(
@@ -528,11 +534,13 @@ fun MainTaskStyleCycleCard(
     val daysUntilDue = if (elapsedDays != null) interval - elapsedDays else 0
     val nextDueDate = if (lastDoneDate != null) lastDoneDate.plusDays(interval.toLong()) else today
 
+    val overdueDays = if (elapsedDays != null && elapsedDays > interval) elapsedDays - interval else 0
     val timingText = when {
         isSomeday -> if (lastDoneDate != null) "前回 ${lastDoneDate.format(DAY_OF_WEEK_FORMATTER)}" else "いつかやりたい余白"
         isDoneToday -> "本日完了 ✨ · 次回 ${nextDueDate.format(DAY_OF_WEEK_FORMATTER)}"
         isSkippedToday -> "お休み中 · 次回 ${nextDueDate.format(DAY_OF_WEEK_FORMATTER)}"
-        isOverdue -> "そろそろ · 前回 ${lastDoneDate?.format(DAY_OF_WEEK_FORMATTER) ?: "なし"}"
+        isOverdue && overdueDays > 3 -> "${overdueDays}日ぶり · 前回 ${lastDoneDate?.format(DAY_OF_WEEK_FORMATTER) ?: "なし"}"
+        isOverdue -> "そろそろ · 前回 ${lastDoneDate?.format(DAY_OF_WEEK_FORMATTER)}"
         isDueToday -> "今日おすすめ · 前回 ${lastDoneDate?.format(DAY_OF_WEEK_FORMATTER) ?: "なし"}"
         else -> "あと${daysUntilDue}日 · 次回 ${nextDueDate.format(DAY_OF_WEEK_FORMATTER)}"
     }
@@ -540,6 +548,7 @@ fun MainTaskStyleCycleCard(
     val timingColor = when {
         isSomeday -> colors.textSecondary
         isDoneToday -> Color(0xFF10B981)
+        isOverdue && overdueDays > 3 -> colors.textSecondary
         isDueToday || isOverdue -> colors.primary
         else -> colors.textSecondary
     }
@@ -683,7 +692,7 @@ fun MainTaskStyleCycleCard(
             val isActionUrgent = isOverdue || isDueToday
             val buttonBorderColor = when {
                 isDoneToday -> Color.Transparent
-                isOverdue -> Color(0xFFEF4444)
+                isOverdue -> colors.primary
                 isDueToday -> Color(0xFFF59E0B)
                 else -> colors.border.copy(alpha = 0.6f)
             }
@@ -729,8 +738,7 @@ fun MainTaskStyleCycleCard(
 }
 
 /**
- * 実施周期セレクター（ステッパー ＋ プリセットピル ＋ 自然言語プレビュー）
- * 日付未定 (Someday) の設定にも完全対応
+ * 実施周期セレクター（シンプルチップ ＋ カスタム時ステッパー展開）
  */
 @Composable
 fun PeriodicIntervalSelector(
@@ -740,150 +748,122 @@ fun PeriodicIntervalSelector(
     val colors = LifeStreamTheme.colors
     val haptic = LocalHapticFeedback.current
 
-    val presets = listOf<Pair<Int?, String>>(
-        Pair(null, "日付未定 (Someday)"),
-        Pair(1, "1日 (毎日)"),
-        Pair(2, "2日"),
-        Pair(3, "3日"),
-        Pair(7, "7日 (毎週)"),
-        Pair(14, "14日 (隔週)"),
-        Pair(30, "30日 (毎月)")
-    )
-
     val isSomeday = intervalDays == null || intervalDays <= 0
-    val explanation = when {
-        isSomeday -> "周期を設定せず、空いた時間や気が向いた時にやるタスク（Someday）として管理します"
-        intervalDays == 1 -> "毎日（1日ごと）に推奨されます"
-        intervalDays == 7 -> "毎週（前回完了から7日後）に自動で今日タブに推奨・浮上します"
-        intervalDays == 14 -> "隔週（前回完了から14日後）に自動で今日タブに推奨・浮上します"
-        intervalDays == 30 -> "毎月（前回完了から30日後）に自動で今日タブに推奨・浮上します"
-        else -> "前回完了から【${intervalDays}日後】に自動で今日タブに推奨・浮上します"
-    }
+    val isPreset = intervalDays in listOf(1, 7, 14, 30) || isSomeday
+    var isCustomMode by remember(intervalDays) { mutableStateOf(!isPreset && intervalDays != null) }
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
-            text = "実施周期:",
+            text = "実施周期",
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
             color = colors.textSecondary
         )
         Spacer(modifier = Modifier.height(6.dp))
 
-        // Center Stepper Row
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(colors.background)
-                .border(1.dp, colors.border, RoundedCornerShape(12.dp))
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            FilledTonalIconButton(
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    if (intervalDays != null && intervalDays > 1) {
-                        onIntervalChange(intervalDays - 1)
-                    } else {
-                        onIntervalChange(null)
-                    }
-                },
-                enabled = !isSomeday,
-                modifier = Modifier.size(36.dp)
-            ) {
-                Text("−", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            }
-
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = if (isSomeday) "日付未定 (Someday)" else "${intervalDays} 日ごと",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.textPrimary
-                )
-                Text(
-                    text = if (isSomeday) "いつでも取り組める" else if (intervalDays!! % 7 == 0) "${intervalDays / 7}週間ごと" else "サイクル: ${intervalDays}日間",
-                    fontSize = 11.sp,
-                    color = colors.textSecondary
-                )
-            }
-
-            FilledTonalIconButton(
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    if (isSomeday) {
-                        onIntervalChange(1)
-                    } else if (intervalDays != null && intervalDays < 365) {
-                        onIntervalChange(intervalDays + 1)
-                    }
-                },
-                enabled = isSomeday || (intervalDays != null && intervalDays < 365),
-                modifier = Modifier.size(36.dp)
-            ) {
-                Text("＋", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Quick Preset Chips (Horizontal Scroll)
+        // Preset Chips
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            presets.forEach { (days, label) ->
-                val isSelected = if (days == null) isSomeday else intervalDays == days
+            listOf<Triple<String, Int?, Boolean>>(
+                Triple("毎日", 1, !isCustomMode && intervalDays == 1),
+                Triple("毎週", 7, !isCustomMode && intervalDays == 7),
+                Triple("隔週", 14, !isCustomMode && intervalDays == 14),
+                Triple("毎月", 30, !isCustomMode && intervalDays == 30),
+                Triple("未定 (いつでも)", null, !isCustomMode && isSomeday),
+                Triple("カスタム", intervalDays ?: 3, isCustomMode)
+            ).forEach { (label, value, isSelected) ->
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .background(if (isSelected) colors.primary else colors.card)
                         .border(
                             1.dp,
                             if (isSelected) colors.primary else colors.border,
                             RoundedCornerShape(8.dp)
                         )
+                        .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.background)
                         .clickable {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onIntervalChange(days)
+                            if (label == "カスタム") {
+                                isCustomMode = true
+                                if (intervalDays == null || intervalDays <= 0) {
+                                    onIntervalChange(3)
+                                }
+                            } else {
+                                isCustomMode = false
+                                onIntervalChange(value)
+                            }
                         }
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                        .padding(horizontal = 11.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = label,
-                        fontSize = 11.sp,
+                        fontSize = 12.sp,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                        color = if (isSelected) colors.onPrimary else colors.textPrimary
+                        color = if (isSelected) colors.primary else colors.textPrimary
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        // Custom Stepper (Only when Custom is selected)
+        if (isCustomMode) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(colors.background)
+                    .border(1.dp, colors.border.copy(alpha = 0.7f), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        val cur = intervalDays ?: 3
+                        if (cur > 1) onIntervalChange(cur - 1)
+                    },
+                    enabled = (intervalDays ?: 3) > 1,
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                    modifier = Modifier.height(32.dp)
+                ) {
+                    Text("-1日", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
 
-        // Natural Language Explanation Card
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .background(colors.primary.copy(alpha = 0.08f))
-                .border(0.5.dp, colors.primary.copy(alpha = 0.25f), RoundedCornerShape(8.dp))
-                .padding(horizontal = 10.dp, vertical = 6.dp)
-        ) {
-            Text(
-                text = "💡 $explanation",
-                fontSize = 11.sp,
-                color = colors.primary,
-                lineHeight = 15.sp
-            )
+                Text(
+                    text = "${intervalDays ?: 3} 日ごと",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary
+                )
+
+                OutlinedButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        val cur = intervalDays ?: 3
+                        if (cur < 365) onIntervalChange(cur + 1)
+                    },
+                    enabled = (intervalDays ?: 3) < 365,
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                    modifier = Modifier.height(32.dp)
+                ) {
+                    Text("+1日", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 }
 
 /**
- * 周期タスクの詳細・編集・過去実績カレンダー BottomSheet
+ * 周期タスクの詳細・編集 BottomSheet（ToDo編集画面と完全統一）
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -907,6 +887,10 @@ fun EditPeriodicTaskBottomSheet(
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
+    // Accordions
+    var showAdvancedOptions by remember { mutableStateOf(false) }
+    var showHistoryCalendar by remember { mutableStateOf(false) }
+
     val completedDates = remember(allItems, template.id) {
         allItems.filter {
             it.isDone &&
@@ -921,33 +905,39 @@ fun EditPeriodicTaskBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = colors.card,
-        dragHandle = { BottomSheetDefaults.DragHandle() }
+        dragHandle = { BottomSheetDefaults.DragHandle() },
+        modifier = Modifier.fillMaxHeight(0.92f)
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .padding(horizontal = 24.dp)
                 .verticalScroll(rememberScrollState())
                 .navigationBarsPadding()
                 .imePadding()
                 .padding(bottom = 32.dp)
         ) {
-            // Header
+            // Header: Cancel - Title - Save Button (Unified with ItemDetailBottomSheet)
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(onClick = onDismiss) {
+                TextButton(
+                    onClick = onDismiss,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) {
                     Text("キャンセル", color = colors.textSecondary, fontSize = 15.sp)
                 }
                 Text(
-                    text = "周期タスクの編集・履歴",
+                    text = "周期タスクの編集",
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     color = colors.textPrimary
                 )
-                TextButton(
+                Button(
                     onClick = {
                         val updated = template.copy(
                             title = title.trim(),
@@ -958,43 +948,50 @@ fun EditPeriodicTaskBottomSheet(
                         )
                         onSave(updated)
                     },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
                     enabled = title.isNotBlank()
                 ) {
-                    Text("保存", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = if (title.isNotBlank()) colors.primary else colors.textSecondary.copy(alpha = 0.5f))
+                    Text("保存", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // タスク名
+            // 1. タスク名
             Text("タスク名", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
             Spacer(modifier = Modifier.height(6.dp))
             OutlinedTextField(
                 value = title,
                 onValueChange = { title = it },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(10.dp)
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = colors.primary,
+                    unfocusedBorderColor = colors.border,
+                    focusedContainerColor = colors.background,
+                    unfocusedContainerColor = colors.background
+                ),
+                modifier = Modifier.fillMaxWidth()
             )
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
-            // 周期設定セレクター
+            // 2. 実施周期
             PeriodicIntervalSelector(
                 intervalDays = intervalDays,
                 onIntervalChange = { intervalDays = it }
             )
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
-            // 生活リズム・時間帯ゾーン
+            // 3. 生活リズム・時間帯ゾーン
             Text("時間帯ゾーン（いつやる？）", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
             Spacer(modifier = Modifier.height(6.dp))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 listOf(
                     "ALL_DAY" to "いつでも",
@@ -1007,231 +1004,300 @@ fun EditPeriodicTaskBottomSheet(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(8.dp))
-                            .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.card)
+                            .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.background)
                             .clickable { timeOfDayZone = code }
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                            .padding(horizontal = 11.dp, vertical = 6.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = label,
                             fontSize = 12.sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) colors.primary else colors.textSecondary
+                            color = if (isSelected) colors.primary else colors.textPrimary
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
-            // アイコン
-            Text("アイコン", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
-            Spacer(modifier = Modifier.height(6.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                DEFAULT_ICON_OPTIONS.forEach { ic ->
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(
-                                1.5.dp,
-                                if (iconKey == ic) colors.primary else colors.border,
-                                RoundedCornerShape(8.dp)
-                            )
-                            .background(if (iconKey == ic) colors.primary.copy(alpha = 0.15f) else colors.card)
-                            .clickable { iconKey = ic },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(text = ic, fontSize = 17.sp)
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // カラー
-            Text("テーマカラー", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
-            Spacer(modifier = Modifier.height(6.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                DEFAULT_COLOR_OPTIONS.forEach { (hex, _) ->
-                    val parsedColor = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrElse { colors.primary }
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(parsedColor)
-                            .border(
-                                width = if (selectedColorHex == hex) 2.5.dp else 0.dp,
-                                color = if (selectedColorHex == hex) colors.textPrimary else Color.Transparent,
-                                shape = CircleShape
-                            )
-                            .clickable { selectedColorHex = hex },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (selectedColorHex == hex) {
-                            Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // === 過去の達成記録・月間カレンダー ===
+            // 4. アコーディオン：アイコン・カラー設定（任意）
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = colors.background,
-                border = BorderStroke(1.dp, colors.border),
+                border = BorderStroke(1.dp, if (showAdvancedOptions) colors.primary.copy(alpha = 0.5f) else colors.border),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(14.dp)) {
+                Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showAdvancedOptions = !showAdvancedOptions },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        IconButton(
-                            onClick = { currentMonth = currentMonth.minusMonths(1) },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(Icons.Default.ChevronLeft, contentDescription = "前月", tint = colors.textPrimary)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = iconKey, fontSize = 16.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "アイコン・カラー設定（任意）",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.textPrimary
+                            )
                         }
                         Text(
-                            text = "${currentMonth.year}年 ${currentMonth.monthValue}月",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.textPrimary
+                            text = if (showAdvancedOptions) "▲ 閉じる" else "▼ 設定する",
+                            fontSize = 12.sp,
+                            color = colors.primary,
+                            fontWeight = FontWeight.Medium
                         )
-                        IconButton(
-                            onClick = {
-                                if (currentMonth.isBefore(YearMonth.now())) {
-                                    currentMonth = currentMonth.plusMonths(1)
-                                }
-                            },
-                            enabled = currentMonth.isBefore(YearMonth.now()),
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.ChevronRight,
-                                contentDescription = "次月",
-                                tint = if (currentMonth.isBefore(YearMonth.now())) colors.textPrimary else colors.textSecondary.copy(alpha = 0.3f)
-                            )
-                        }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    if (showAdvancedOptions) {
+                        Spacer(modifier = Modifier.height(14.dp))
 
-                    // 曜日ヘッダー
-                    val dayNames = listOf("月", "火", "水", "木", "金", "土", "日")
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceAround
-                    ) {
-                        dayNames.forEach { d ->
-                            Text(
-                                text = d,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.textSecondary,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.width(32.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    // 日付グリッド (1 to lengthOfMonth)
-                    val firstDay = currentMonth.atDay(1)
-                    val startOffset = firstDay.dayOfWeek.value - 1 // 0 (Mon) to 6 (Sun)
-                    val daysInMonth = currentMonth.lengthOfMonth()
-                    val totalCells = startOffset + daysInMonth
-                    val rows = (totalCells + 6) / 7
-
-                    for (r in 0 until rows) {
+                        // アイコン選択
+                        Text("アイコン", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = colors.textSecondary)
+                        Spacer(modifier = Modifier.height(6.dp))
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 2.dp),
-                            horizontalArrangement = Arrangement.SpaceAround
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            for (c in 0 until 7) {
-                                val cellIdx = r * 7 + c
-                                val dayNum = cellIdx - startOffset + 1
-                                if (dayNum in 1..daysInMonth) {
-                                    val date = currentMonth.atDay(dayNum)
-                                    val isDone = completedDates.contains(date)
-                                    val isCurDay = (date == today)
-                                    val isFuture = date.isAfter(today)
+                            DEFAULT_ICON_OPTIONS.forEach { ic ->
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .border(
+                                            1.5.dp,
+                                            if (iconKey == ic) colors.primary else colors.border,
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                        .background(if (iconKey == ic) colors.primary.copy(alpha = 0.15f) else colors.card)
+                                        .clickable { iconKey = ic },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(text = ic, fontSize = 18.sp)
+                                }
+                            }
+                        }
 
-                                    Box(
-                                        modifier = Modifier
-                                            .size(34.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(
-                                                when {
-                                                    isDone -> Color(0xFF16A34A)
-                                                    isCurDay -> colors.primary.copy(alpha = 0.15f)
-                                                    else -> Color.Transparent
-                                                }
-                                            )
-                                            .border(
-                                                width = if (isCurDay) 1.5.dp else 0.dp,
-                                                color = if (isCurDay) colors.primary else Color.Transparent,
-                                                shape = RoundedCornerShape(8.dp)
-                                            )
-                                            .clickable(enabled = !isFuture) {
-                                                onToggleDate(date)
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text(
-                                                text = "$dayNum",
-                                                fontSize = 11.sp,
-                                                fontWeight = if (isDone || isCurDay) FontWeight.Bold else FontWeight.Normal,
-                                                color = when {
-                                                    isDone -> Color.White
-                                                    isCurDay -> colors.primary
-                                                    isFuture -> colors.textSecondary.copy(alpha = 0.35f)
-                                                    else -> colors.textPrimary
-                                                }
-                                            )
-                                            if (isDone) {
-                                                Text("✓", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                            }
-                                        }
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // カラー選択
+                        Text("テーマカラー", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = colors.textSecondary)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            DEFAULT_COLOR_OPTIONS.forEach { (hex, _) ->
+                                val parsedColor = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrElse { colors.primary }
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(parsedColor)
+                                        .border(
+                                            width = if (selectedColorHex == hex) 2.5.dp else 0.dp,
+                                            color = if (selectedColorHex == hex) colors.textPrimary else Color.Transparent,
+                                            shape = CircleShape
+                                        )
+                                        .clickable { selectedColorHex = hex },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (selectedColorHex == hex) {
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
                                     }
-                                } else {
-                                    Spacer(modifier = Modifier.size(34.dp))
                                 }
                             }
                         }
                     }
+                }
+            }
 
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "💡 押し忘れた過去の日付をタップして、いつでも達成記録を追加・解除できます",
-                        fontSize = 10.sp,
-                        color = colors.textSecondary,
-                        lineHeight = 14.sp
-                    )
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // 5. アコーディオン：過去の達成記録・月間カレンダー
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = colors.background,
+                border = BorderStroke(1.dp, if (showHistoryCalendar) colors.primary.copy(alpha = 0.5f) else colors.border),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showHistoryCalendar = !showHistoryCalendar },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("📅", fontSize = 16.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "過去の記録を確認・修正",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.textPrimary
+                            )
+                        }
+                        Text(
+                            text = if (showHistoryCalendar) "▲ 閉じる" else "▼ カレンダーを見る",
+                            fontSize = 12.sp,
+                            color = colors.primary,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+
+                    if (showHistoryCalendar) {
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // 月ナビゲーション
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(
+                                onClick = { currentMonth = currentMonth.minusMonths(1) },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(Icons.Default.ChevronLeft, contentDescription = "前月", tint = colors.textPrimary)
+                            }
+                            Text(
+                                text = "${currentMonth.year}年 ${currentMonth.monthValue}月",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.textPrimary
+                            )
+                            IconButton(
+                                onClick = {
+                                    if (currentMonth.isBefore(YearMonth.now())) {
+                                        currentMonth = currentMonth.plusMonths(1)
+                                    }
+                                },
+                                enabled = currentMonth.isBefore(YearMonth.now()),
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.ChevronRight,
+                                    contentDescription = "次月",
+                                    tint = if (currentMonth.isBefore(YearMonth.now())) colors.textPrimary else colors.textSecondary.copy(alpha = 0.3f)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        // 曜日ヘッダー
+                        val dayNames = listOf("月", "火", "水", "木", "金", "土", "日")
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceAround
+                        ) {
+                            dayNames.forEach { d ->
+                                Text(
+                                    text = d,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.textSecondary,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.width(32.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        // 日付グリッド
+                        val firstDay = currentMonth.atDay(1)
+                        val startOffset = firstDay.dayOfWeek.value - 1
+                        val daysInMonth = currentMonth.lengthOfMonth()
+                        val totalCells = startOffset + daysInMonth
+                        val rows = (totalCells + 6) / 7
+
+                        for (r in 0 until rows) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 2.dp),
+                                horizontalArrangement = Arrangement.SpaceAround
+                            ) {
+                                for (c in 0 until 7) {
+                                    val cellIdx = r * 7 + c
+                                    val dayNum = cellIdx - startOffset + 1
+                                    if (dayNum in 1..daysInMonth) {
+                                        val date = currentMonth.atDay(dayNum)
+                                        val isDone = completedDates.contains(date)
+                                        val isCurDay = (date == today)
+                                        val isFuture = date.isAfter(today)
+
+                                        Box(
+                                            modifier = Modifier
+                                                .size(34.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(
+                                                    when {
+                                                        isDone -> Color(0xFF16A34A)
+                                                        isCurDay -> colors.primary.copy(alpha = 0.15f)
+                                                        else -> Color.Transparent
+                                                    }
+                                                )
+                                                .border(
+                                                    width = if (isCurDay) 1.5.dp else 0.dp,
+                                                    color = if (isCurDay) colors.primary else Color.Transparent,
+                                                    shape = RoundedCornerShape(8.dp)
+                                                )
+                                                .clickable(enabled = !isFuture) {
+                                                    onToggleDate(date)
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Text(
+                                                    text = "$dayNum",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (isDone || isCurDay) FontWeight.Bold else FontWeight.Normal,
+                                                    color = when {
+                                                        isDone -> Color.White
+                                                        isCurDay -> colors.primary
+                                                        isFuture -> colors.textSecondary.copy(alpha = 0.35f)
+                                                        else -> colors.textPrimary
+                                                    }
+                                                )
+                                                if (isDone) {
+                                                    Text("✓", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        Spacer(modifier = Modifier.size(34.dp))
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "💡 押し忘れた過去の日付をタップして、達成記録を追加・解除できます",
+                            fontSize = 10.5.sp,
+                            color = colors.textSecondary,
+                            lineHeight = 14.sp
+                        )
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 削除ボタン
+            // 6. 削除ボタン
             OutlinedButton(
                 onClick = { showDeleteConfirmDialog = true },
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.statusOverdue),
@@ -1310,6 +1376,9 @@ fun EditPeriodicTaskBottomSheet(
     }
 }
 
+/**
+ * 新規周期タスク追加シート（ToDo画面と完全統一）
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddPeriodicTaskDialog(
@@ -1323,6 +1392,8 @@ fun AddPeriodicTaskDialog(
     var timeOfDayZone by remember { mutableStateOf("ALL_DAY") }
     var iconKey by remember { mutableStateOf("🧹") }
     var selectedColorHex by remember { mutableStateOf("#8C5A3C") }
+    var showAdvancedOptions by remember { mutableStateOf(false) }
+
     val iconOptions = DEFAULT_ICON_OPTIONS
     val colorOptions = DEFAULT_COLOR_OPTIONS
 
@@ -1330,24 +1401,30 @@ fun AddPeriodicTaskDialog(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = colors.card,
-        dragHandle = { BottomSheetDefaults.DragHandle() }
+        dragHandle = { BottomSheetDefaults.DragHandle() },
+        modifier = Modifier.fillMaxHeight(0.92f)
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .padding(horizontal = 24.dp)
                 .verticalScroll(rememberScrollState())
                 .navigationBarsPadding()
                 .imePadding()
                 .padding(bottom = 32.dp)
         ) {
-            // Header
+            // Header: Cancel - Title - Add Button
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(onClick = onDismiss) {
+                TextButton(
+                    onClick = onDismiss,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) {
                     Text("キャンセル", color = colors.textSecondary, fontSize = 15.sp)
                 }
                 Text(
@@ -1356,7 +1433,7 @@ fun AddPeriodicTaskDialog(
                     fontWeight = FontWeight.Bold,
                     color = colors.textPrimary
                 )
-                TextButton(
+                Button(
                     onClick = {
                         if (title.isNotBlank()) {
                             onAdd(
@@ -1368,73 +1445,51 @@ fun AddPeriodicTaskDialog(
                             )
                         }
                     },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
                     enabled = title.isNotBlank()
                 ) {
-                    Text(
-                        "追加",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        color = if (title.isNotBlank()) colors.primary else colors.textSecondary.copy(alpha = 0.5f)
-                    )
+                    Text("追加", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // タスク名入力
-            Text(
-                text = "タスク名",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = colors.textSecondary
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Surface(
+            // 1. タスク名
+            Text("タスク名", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
+            Spacer(modifier = Modifier.height(6.dp))
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                placeholder = { Text("例: エアコン清掃、布団干し...", color = colors.textSecondary.copy(alpha = 0.5f)) },
+                singleLine = true,
                 shape = RoundedCornerShape(12.dp),
-                color = colors.card,
-                border = BorderStroke(0.5.dp, colors.border.copy(alpha = 0.35f)),
-                shadowElevation = 1.dp,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = colors.primary,
+                    unfocusedBorderColor = colors.border,
+                    focusedContainerColor = colors.background,
+                    unfocusedContainerColor = colors.background
+                ),
                 modifier = Modifier.fillMaxWidth()
-            ) {
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    placeholder = { Text("例: エアコン清掃、布団干し...", color = colors.textSecondary.copy(alpha = 0.5f)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color.Transparent,
-                        unfocusedBorderColor = Color.Transparent,
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent
-                    )
-                )
-            }
+            )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
-            // 周期設定セレクター
+            // 2. 実施周期
             PeriodicIntervalSelector(
                 intervalDays = intervalDays,
                 onIntervalChange = { intervalDays = it }
             )
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
-            // 生活リズム・時間帯ゾーン
-            Text(
-                text = "生活リズム・時間帯ゾーン（いつやる？）",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = colors.textSecondary
-            )
-            Spacer(modifier = Modifier.height(8.dp))
+            // 3. 生活リズム・時間帯ゾーン
+            Text("時間帯ゾーン（いつやる？）", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
+            Spacer(modifier = Modifier.height(6.dp))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 listOf(
                     "ALL_DAY" to "いつでも",
@@ -1447,94 +1502,118 @@ fun AddPeriodicTaskDialog(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(8.dp))
-                            .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.card)
+                            .background(if (isSelected) colors.primary.copy(alpha = 0.12f) else colors.background)
                             .clickable { timeOfDayZone = code }
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                            .padding(horizontal = 11.dp, vertical = 6.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = label,
                             fontSize = 12.sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) colors.primary else colors.textSecondary
+                            color = if (isSelected) colors.primary else colors.textPrimary
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
-            // アイコン
-            Text(
-                text = "アイコン",
-                fontSize = 13.sp,
-                color = colors.textSecondary,
-                fontWeight = FontWeight.SemiBold
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            // 4. アコーディオン：アイコン・カラー設定（任意）
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = colors.background,
+                border = BorderStroke(1.dp, if (showAdvancedOptions) colors.primary.copy(alpha = 0.5f) else colors.border),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                iconOptions.forEach { ic ->
-                    Box(
+                Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                    Row(
                         modifier = Modifier
-                            .size(40.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .border(
-                                1.5.dp,
-                                if (iconKey == ic) colors.primary else colors.border.copy(alpha = 0.5f),
-                                RoundedCornerShape(10.dp)
-                            )
-                            .background(if (iconKey == ic) colors.primary.copy(alpha = 0.15f) else colors.card)
-                            .clickable { iconKey = ic },
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .clickable { showAdvancedOptions = !showAdvancedOptions },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(text = ic, fontSize = 20.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = iconKey, fontSize = 16.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "アイコン・カラー設定（任意）",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.textPrimary
+                            )
+                        }
+                        Text(
+                            text = if (showAdvancedOptions) "▲ 閉じる" else "▼ 設定する",
+                            fontSize = 12.sp,
+                            color = colors.primary,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
-                }
-            }
 
-            Spacer(modifier = Modifier.height(20.dp))
+                    if (showAdvancedOptions) {
+                        Spacer(modifier = Modifier.height(14.dp))
 
-            // カラー
-            Text(
-                text = "テーマカラー",
-                fontSize = 13.sp,
-                color = colors.textSecondary,
-                fontWeight = FontWeight.SemiBold
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                colorOptions.forEach { (hex, _) ->
-                    val parsedColor = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrElse { colors.primary }
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(parsedColor)
-                            .border(
-                                width = if (selectedColorHex == hex) 2.5.dp else 0.dp,
-                                color = if (selectedColorHex == hex) colors.textPrimary else Color.Transparent,
-                                shape = CircleShape
-                            )
-                            .clickable { selectedColorHex = hex },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (selectedColorHex == hex) {
-                            Icon(
-                                Icons.Default.Check,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
+                        // アイコン選択
+                        Text("アイコン", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = colors.textSecondary)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            iconOptions.forEach { ic ->
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .border(
+                                            1.5.dp,
+                                            if (iconKey == ic) colors.primary else colors.border,
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                        .background(if (iconKey == ic) colors.primary.copy(alpha = 0.15f) else colors.card)
+                                        .clickable { iconKey = ic },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(text = ic, fontSize = 18.sp)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // カラー選択
+                        Text("テーマカラー", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = colors.textSecondary)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            colorOptions.forEach { (hex, _) ->
+                                val parsedColor = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrElse { colors.primary }
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(parsedColor)
+                                        .border(
+                                            width = if (selectedColorHex == hex) 2.5.dp else 0.dp,
+                                            color = if (selectedColorHex == hex) colors.textPrimary else Color.Transparent,
+                                            shape = CircleShape
+                                        )
+                                        .clickable { selectedColorHex = hex },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (selectedColorHex == hex) {
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                    }
+                                }
+                            }
                         }
                     }
                 }

@@ -97,18 +97,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Badge count for Today tab: pending ToDos + overdue periodic tasks
     val todayBadgeCount: StateFlow<Int> = combine(
         anytimePendingItems,
-        templates
-    ) { pending, tmplList ->
-        val today = LocalDate.now()
+        templates,
+        dayCutoffHour
+    ) { pending, tmplList, cutoff ->
+        val logicalToday = getLogicalDate(LocalDateTime.now(), cutoff)
+        val (todayStart, _) = getDayRange(logicalToday, cutoff)
         val overdueCount = tmplList.count { tmpl ->
             if (tmpl.type != "INTERVAL") return@count false
             val lastDoneMillis = tmpl.lastCompletedAt ?: return@count true
             val lastDate = java.time.Instant.ofEpochMilli(lastDoneMillis)
                 .atZone(zone).toLocalDate()
-            val elapsed = java.time.temporal.ChronoUnit.DAYS.between(lastDate, today)
+            val elapsed = java.time.temporal.ChronoUnit.DAYS.between(lastDate, logicalToday)
             elapsed >= (tmpl.intervalDays ?: 7)
         }
-        pending.size + overdueCount
+        val todayPendingCount = pending.count { it.createdAt >= todayStart }
+        todayPendingCount + overdueCount
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     // Search query
@@ -138,7 +141,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         viewModelScope.launch(Dispatchers.IO) {
             DatabaseSeeder.seed(templateDao, itemDao)
-            purgeOldStockItems()
         }
         viewModelScope.launch(Dispatchers.IO) {
             combine(
@@ -150,19 +152,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 .collectLatest {
                     notifyWidgetUpdate()
                 }
-        }
-    }
-
-    fun purgeOldStockItems() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val thirtyDaysAgo = System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000
-            val all = itemDao.getAll()
-            val oldStock = all.filter {
-                !it.isDone &&
-                (it.createdAt in 1..thirtyDaysAgo) &&
-                (it.scheduledAt == null || it.scheduledAt < thirtyDaysAgo)
-            }
-            oldStock.forEach { itemDao.delete(it) }
         }
     }
 
@@ -437,8 +426,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun recordCycleTask(template: TemplateEntity, targetDate: LocalDate) {
         viewModelScope.launch(Dispatchers.IO) {
-            val time = LocalTime.now()
-            val millis = LocalDateTime.of(targetDate, time).atZone(zone).toInstant().toEpochMilli()
+            val logicalToday = getLogicalDate()
+            val millis = if (targetDate == logicalToday) {
+                System.currentTimeMillis()
+            } else {
+                val time = LocalTime.now()
+                LocalDateTime.of(targetDate, time).atZone(zone).toInstant().toEpochMilli()
+            }
             val item = TimelineItemEntity(
                 title = template.title,
                 isDone = true,
@@ -454,8 +448,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleCycleTask(template: TemplateEntity, targetDate: LocalDate) {
         viewModelScope.launch(Dispatchers.IO) {
-            val startOfDay = targetDate.atStartOfDay(zone).toInstant().toEpochMilli()
-            val endOfDay = targetDate.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
+            val (startOfDay, endOfDay) = getDayRange(targetDate)
             val existing = itemDao.getCompletedByTemplateAndRange(template.id, startOfDay, endOfDay).firstOrNull()
             if (existing != null) {
                 itemDao.delete(existing)
@@ -771,10 +764,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // === Reschedule Item to Drawer (Stock) ===
     fun rescheduleItemToDrawer(item: TimelineItemEntity) {
         viewModelScope.launch(Dispatchers.IO) {
+            val (todayStart, _) = getDayRange(LocalDate.now())
             itemDao.update(
                 item.copy(
                     scheduledAt = null,
-                    createdAt = 1000L
+                    createdAt = (todayStart - 1000L).coerceAtLeast(1L)
                 )
             )
         }

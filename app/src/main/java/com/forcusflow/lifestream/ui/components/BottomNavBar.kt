@@ -38,6 +38,7 @@ data class NavTabItem(
 @Composable
 fun BottomNavBar(
     selectedTab: Int,
+    todayBadgeCount: Int = 0,
     onTabSelected: (Int) -> Unit
 ) {
     val colors = LifeStreamTheme.colors
@@ -100,12 +101,32 @@ fun BottomNavBar(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
-                        Icon(
-                            imageVector = tab.icon,
-                            contentDescription = tab.label,
-                            tint = animatedTint,
-                            modifier = Modifier.size(22.dp)
-                        )
+                        Box(contentAlignment = Alignment.TopEnd) {
+                            Icon(
+                                imageVector = tab.icon,
+                                contentDescription = tab.label,
+                                tint = animatedTint,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            if (tab.index == 0 && todayBadgeCount > 0) {
+                                Box(
+                                    modifier = Modifier
+                                        .offset(x = 6.dp, y = (-3).dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(colors.primary)
+                                        .padding(horizontal = 4.dp, vertical = 0.5.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = if (todayBadgeCount > 99) "99+" else todayBadgeCount.toString(),
+                                        color = colors.onPrimary,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        lineHeight = 11.sp
+                                    )
+                                }
+                            }
+                        }
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = tab.label,

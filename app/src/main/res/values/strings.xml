@@ -1,5 +1,5 @@
 <resources>
     <string name="app_name">byLife</string>
-    <string name="widget_name">今日のタイムライン手帳</string>
-    <string name="widget_description">今日のフォーカス・実績タイムライン・これからの歩みをホーム画面に美しく表示します</string>
+    <string name="widget_name">byLife 今日の手帳</string>
+    <string name="widget_description">byLife 今日のフォーカス・実績タイムライン・これからの歩みをホーム画面に美しく表示します</string>
 </resources>

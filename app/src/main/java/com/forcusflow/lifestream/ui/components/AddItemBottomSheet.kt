@@ -43,6 +43,7 @@ fun AddItemBottomSheet(
     initialTitle: String = "",
     initialNote: String = "",
     initialIsDone: Boolean = true,
+    cutoffHour: Int = 4,
     templates: List<TemplateEntity> = emptyList(),
     onDismiss: () -> Unit,
     onManageTemplates: (() -> Unit)? = null,
@@ -184,8 +185,8 @@ fun AddItemBottomSheet(
                     }
                 }
 
-                // Save / Record Button
-                TextButton(
+                // Save / Record Button (Unified filled button style)
+                Button(
                     onClick = {
                         if (title.isNotBlank()) {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -212,7 +213,9 @@ fun AddItemBottomSheet(
                                 when (selectedTodoTiming) {
                                     "引き出し" -> {
                                         scheduledMillis = null
-                                        createdAtMillis = 1000L // 過去のcreatedAtとすることで確実に引き出し（ストック）に直行
+                                        val todayLogical = if (now.hour < cutoffHour) now.toLocalDate().minusDays(1) else now.toLocalDate()
+                                        val todayStartMillis = todayLogical.atTime(cutoffHour, 0).atZone(zone).toInstant().toEpochMilli()
+                                        createdAtMillis = (todayStartMillis - 1000L).coerceAtLeast(1L)
                                     }
                                     "今日" -> {
                                         if (selectedTodoTime != "終日") {
@@ -249,14 +252,15 @@ fun AddItemBottomSheet(
                             onDismiss()
                         }
                     },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
                     enabled = title.isNotBlank()
                 ) {
                     Text(
-                        text = if (isDone) "記録" else "保存",
+                        text = if (isDone) "記録" else "追加",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        color = if (title.isNotBlank()) colors.primary else colors.textSecondary.copy(alpha = 0.4f)
+                        fontSize = 14.sp
                     )
                 }
             }

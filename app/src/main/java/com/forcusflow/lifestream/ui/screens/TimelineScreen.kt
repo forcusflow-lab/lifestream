@@ -64,12 +64,6 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Locale
 
-sealed class TimelineRowItem {
-    data class LogItem(val entity: TimelineItemEntity) : TimelineRowItem()
-    data class NowMarker(val timeStr: String) : TimelineRowItem()
-    data class AnytimeToDo(val entity: TimelineItemEntity) : TimelineRowItem()
-    data class PeriodicSurfaced(val template: TemplateEntity, val isOverdue: Boolean, val elapsedDays: Long) : TimelineRowItem()
-}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -146,7 +140,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
         }.sortedBy { it.scheduledAt ?: 0L }
 
         val anytimeToday = allItems.filter { item ->
-            !item.isDone && item.scheduledAt == null && (item.createdAt >= todayStart || item.createdAt == 0L)
+            !item.isDone && item.scheduledAt == null && item.createdAt >= todayStart
         }.sortedBy { it.id }
 
         (scheduledToday + anytimeToday).distinctBy { it.id }
@@ -191,40 +185,44 @@ fun TimelineScreen(viewModel: MainViewModel) {
     }
 
     val listState = rememberLazyListState()
-    var hasScrolledToNow by remember { mutableStateOf(false) }
     var completingItemIds by remember { mutableStateOf(setOf<Long>()) }
 
     // Ambient gradient based on time of day (Morning / Afternoon / Twilight / Night)
+    // 選択中のテーマ背景色をベースに、時間帯による明度（ルミナンス）を微細に変化させる
     val currentHour = currentTime.hour
     val isDarkTheme = colors.isDark
-    val ambientGradientBrush = remember(currentHour, isDarkTheme) {
-        val (topColor, bottomColor) = when (currentHour) {
-            in 5..10 -> { // 朝: 澄んだ朝露とペールブルー
-                if (isDarkTheme) Pair(Color(0xFF0F1E2E), Color(0xFF13171F))
-                else Pair(Color(0xFFE8F1F5), Color(0xFFFAFAFA))
+    val ambientGradientBrush = remember(currentHour, colors.background, isDarkTheme) {
+        val base = colors.background
+        fun adjustLuminance(c: Color, factor: Float): Color {
+            return Color(
+                red = (c.red * factor).coerceIn(0f, 1f),
+                green = (c.green * factor).coerceIn(0f, 1f),
+                blue = (c.blue * factor).coerceIn(0f, 1f),
+                alpha = c.alpha
+            )
+        }
+        val (topFactor, bottomFactor) = when (currentHour) {
+            in 5..10 -> { // 朝: 上部が澄んだ清涼感 (+3%)
+                if (isDarkTheme) Pair(1.04f, 1.0f) else Pair(1.02f, 0.99f)
             }
-            in 11..16 -> { // 昼: やわらかな陽光と琥珀
-                if (isDarkTheme) Pair(Color(0xFF1F1C18), Color(0xFF171717))
-                else Pair(Color(0xFFF9F6F0), Color(0xFFFCFCF9))
+            in 11..16 -> { // 昼: ほぼ均一のやわらかな自然光
+                if (isDarkTheme) Pair(1.02f, 0.98f) else Pair(1.01f, 0.99f)
             }
-            in 17..19 -> { // 夕方: 薄茜色と夕暮れのアプリコット
-                if (isDarkTheme) Pair(Color(0xFF23181D), Color(0xFF171518))
-                else Pair(Color(0xFFFBF0EC), Color(0xFFFAF7F5))
+            in 17..19 -> { // 夕方: 上部にわずかな落ち着き
+                if (isDarkTheme) Pair(0.98f, 0.95f) else Pair(0.99f, 0.97f)
             }
-            else -> { // 夜: 深い静寂のインディゴ・スレート
-                if (isDarkTheme) Pair(Color(0xFF111422), Color(0xFF121216))
-                else Pair(Color(0xFFEEF1F7), Color(0xFFF8F9FA))
+            else -> { // 夜: 深い静寂 (-3〜-5%)
+                if (isDarkTheme) Pair(0.95f, 0.90f) else Pair(0.98f, 0.96f)
             }
         }
         Brush.verticalGradient(
-            listOf(topColor, bottomColor)
+            listOf(adjustLuminance(base, topFactor), adjustLuminance(base, bottomFactor))
         )
     }
 
-    LaunchedEffect(todayDoneItems.size) {
-        if (!hasScrolledToNow && todayDoneItems.isNotEmpty()) {
+    LaunchedEffect(Unit) {
+        if (todayDoneItems.isNotEmpty()) {
             listState.scrollToItem((todayDoneItems.size - 1).coerceAtLeast(0))
-            hasScrolledToNow = true
         }
     }
 
@@ -397,44 +395,81 @@ fun TimelineScreen(viewModel: MainViewModel) {
                         else -> chipBorderColor.copy(alpha = 0.08f)
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .border(
-                                width = if (isTimerActive) 1.5.dp else 1.dp,
-                                color = chipBorderColor.copy(alpha = if (isTimerActive) 1f else 0.6f),
-                                shape = RoundedCornerShape(10.dp)
-                            )
-                            .background(chipBgColor)
-                            .combinedClickable(
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    viewModel.quickRecordTemplate(t) { savedItem ->
-                                        coroutineScope.launch {
-                                            val result = snackbarHostState.showSnackbar(
-                                                message = "${savedItem.title} を記録しました",
-                                                actionLabel = "元に戻す",
-                                                duration = SnackbarDuration.Short
-                                            )
-                                            if (result == SnackbarResult.ActionPerformed) {
-                                                viewModel.undoLastItem()
+                    var showChipMenu by remember { mutableStateOf(false) }
+
+                    Box {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .border(
+                                    width = if (isTimerActive) 1.5.dp else 1.dp,
+                                    color = chipBorderColor.copy(alpha = if (isTimerActive) 1f else 0.6f),
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                                .background(chipBgColor)
+                                .combinedClickable(
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        viewModel.quickRecordTemplate(t) { savedItem ->
+                                            coroutineScope.launch {
+                                                val result = snackbarHostState.showSnackbar(
+                                                    message = "${savedItem.title} を記録しました",
+                                                    actionLabel = "元に戻す",
+                                                    duration = SnackbarDuration.Short
+                                                )
+                                                if (result == SnackbarResult.ActionPerformed) {
+                                                    viewModel.undoLastItem()
+                                                }
                                             }
                                         }
+                                    },
+                                    onLongClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        showChipMenu = true
                                     }
+                                )
+                                .padding(horizontal = 13.dp, vertical = 7.dp)
+                        ) {
+                            Text(
+                                text = chipLabel,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = chipBorderColor
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showChipMenu,
+                            onDismissRequest = { showChipMenu = false },
+                            modifier = Modifier.background(colors.card)
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        if (t.isPinned) "ピン留めを解除" else "ピン留めする",
+                                        color = colors.textPrimary,
+                                        fontSize = 13.sp
+                                    )
                                 },
-                                onLongClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onClick = {
+                                    showChipMenu = false
+                                    viewModel.toggleTemplatePin(t)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        "テンプレートを編集...",
+                                        color = colors.textPrimary,
+                                        fontSize = 13.sp
+                                    )
+                                },
+                                onClick = {
+                                    showChipMenu = false
                                     showTemplateManagerDialog = true
                                 }
                             )
-                            .padding(horizontal = 13.dp, vertical = 7.dp)
-                    ) {
-                        Text(
-                            text = chipLabel,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = chipBorderColor
-                        )
+                        }
                     }
                 }
 
@@ -545,38 +580,10 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "今日の最初の行動をワンタップで記録しましょう",
-                                    fontSize = 12.sp,
+                                    text = "上の記録バーから、今日の最初の行動をワンタップで記録しましょう 🌿",
+                                    fontSize = 12.5.sp,
                                     color = colors.textSecondary
                                 )
-                                Spacer(modifier = Modifier.height(14.dp))
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.horizontalScroll(rememberScrollState())
-                                ) {
-                                    pinnedTemplates.take(4).forEach { t ->
-                                        OutlinedButton(
-                                            onClick = {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                viewModel.quickRecordTemplate(t) { saved ->
-                                                    coroutineScope.launch {
-                                                        snackbarHostState.showSnackbar("「${saved.title}」を記録しました！")
-                                                    }
-                                                }
-                                            },
-                                            shape = RoundedCornerShape(8.dp),
-                                            border = BorderStroke(1.dp, colors.border),
-                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp)
-                                        ) {
-                                            Text(
-                                                text = "${t.iconKey ?: "📌"} ${t.title}",
-                                                fontSize = 12.sp,
-                                                color = colors.textPrimary,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
-                                    }
-                                }
                             }
                         }
                     }
@@ -955,6 +962,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
     if (showAddSheet) {
         AddItemBottomSheet(
             templates = templates,
+            cutoffHour = cutoffHour,
             onDismiss = { showAddSheet = false },
             onManageTemplates = {
                 showAddSheet = false
@@ -1219,346 +1227,6 @@ fun ActiveTimerBottomBar(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun TaskitoAnytimeItemRow(
-    item: TimelineItemEntity,
-    isFirst: Boolean,
-    isLast: Boolean,
-    onToggle: () -> Unit,
-    onClick: () -> Unit,
-    onDelete: () -> Unit
-) {
-    val colors = LifeStreamTheme.colors
-    val haptic = LocalHapticFeedback.current
-
-    val checkScale by animateFloatAsState(
-        targetValue = if (item.isDone) 1.25f else 1.0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "anytimeCheckScale"
-    )
-
-    val dismissState = rememberSwipeToDismissBoxState(
-        confirmValueChange = { value ->
-            if (value == SwipeToDismissBoxValue.EndToStart || value == SwipeToDismissBoxValue.StartToEnd) {
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                onDelete()
-                true
-            } else false
-        }
-    )
-
-    SwipeToDismissBox(
-        state = dismissState,
-        backgroundContent = {
-            if (dismissState.targetValue != SwipeToDismissBoxValue.Settled || dismissState.currentValue != SwipeToDismissBoxValue.Settled) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color(0xFFEF4444).copy(alpha = 0.85f))
-                        .padding(horizontal = 20.dp),
-                    contentAlignment = Alignment.CenterEnd
-                ) {
-                    Text("削除", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                }
-            }
-        }
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(IntrinsicSize.Min)
-                .background(colors.background)
-                .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Continuous stem line
-            Box(
-                modifier = Modifier
-                    .width(36.dp)
-                    .fillMaxHeight(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(modifier = Modifier.fillMaxHeight()) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .width(2.dp)
-                            .background(if (isFirst) Color.Transparent else colors.border)
-                            .align(Alignment.CenterHorizontally)
-                    )
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .width(2.dp)
-                            .background(if (isLast) Color.Transparent else colors.border)
-                            .align(Alignment.CenterHorizontally)
-                    )
-                }
-
-                // Hollow ToDo node with generous 48.dp touch target & spring animation
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clickable {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onToggle()
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .scale(checkScale)
-                            .size(20.dp)
-                            .clip(CircleShape)
-                            .border(2.dp, colors.primary, CircleShape)
-                            .background(colors.card),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (item.isDone) {
-                            Icon(
-                                Icons.Default.Check,
-                                contentDescription = "完了",
-                                tint = colors.statusDone,
-                                modifier = Modifier.size(13.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Title & Anytime indicator (Clicking card opens edit modal)
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(10.dp))
-                    .border(1.dp, colors.border, RoundedCornerShape(10.dp))
-                    .background(colors.card)
-                    .clickable { onClick() }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(colors.primary.copy(alpha = 0.12f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = "今日中",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.primary
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(6.dp))
-                        val cleanTitle = remember(item.title) {
-                            item.title
-                                .replace("\\s*\\(\\d+(分|秒)\\)".toRegex(), "")
-                                .replace("\\s*\\(\\d+[杯回個本皿枚]目?\\)".toRegex(), "")
-                                .trim()
-                        }
-                        Text(
-                            text = cleanTitle,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = colors.textPrimary,
-                            textDecoration = if (item.isDone) TextDecoration.LineThrough else null
-                        )
-                    }
-                    if (!item.note.isNullOrBlank()) {
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = item.note,
-                            fontSize = 11.sp,
-                            color = colors.textSecondary
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun TaskitoPeriodicSurfacedRow(
-    template: TemplateEntity,
-    isOverdue: Boolean,
-    elapsedDays: Long,
-    isFirst: Boolean,
-    isLast: Boolean,
-    onCompletedNow: () -> Unit,
-    onSkip: () -> Unit
-) {
-    val colors = LifeStreamTheme.colors
-    val badgeColor = if (isOverdue) colors.statusOverdue else colors.statusTarget
-    val badgeText = if (isOverdue) "期限超過" else "今日期日"
-
-    val dismissState = rememberSwipeToDismissBoxState(
-        confirmValueChange = { value ->
-            if (value == SwipeToDismissBoxValue.EndToStart || value == SwipeToDismissBoxValue.StartToEnd) {
-                onSkip()
-                true
-            } else false
-        }
-    )
-
-    SwipeToDismissBox(
-        state = dismissState,
-        backgroundContent = {
-            if (dismissState.targetValue != SwipeToDismissBoxValue.Settled || dismissState.currentValue != SwipeToDismissBoxValue.Settled) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color(0xFFF59E0B).copy(alpha = 0.85f))
-                        .padding(horizontal = 20.dp),
-                    contentAlignment = Alignment.CenterEnd
-                ) {
-                    Text("↷ スキップ", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                }
-            }
-        }
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(IntrinsicSize.Min)
-                .background(colors.background)
-                .clickable { onCompletedNow() }
-                .padding(vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Continuous stem line
-            Box(
-                modifier = Modifier
-                    .width(32.dp)
-                    .fillMaxHeight(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(modifier = Modifier.fillMaxHeight()) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .width(2.dp)
-                            .background(if (isFirst) Color.Transparent else colors.border)
-                            .align(Alignment.CenterHorizontally)
-                    )
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .width(2.dp)
-                            .background(if (isLast) Color.Transparent else colors.border)
-                            .align(Alignment.CenterHorizontally)
-                    )
-                }
-
-                // Compact Node Circle (Red or Purple)
-                Box(
-                    modifier = Modifier
-                        .size(18.dp)
-                        .clip(CircleShape)
-                        .border(2.dp, badgeColor, CircleShape)
-                        .background(badgeColor.copy(alpha = 0.15f))
-                        .clickable { onCompletedNow() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = if (isOverdue) "!" else "•",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = badgeColor
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // 1-line integrated row matching Taskito style
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(10.dp))
-                    .border(1.dp, badgeColor.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
-                    .background(badgeColor.copy(alpha = 0.05f))
-                    .padding(horizontal = 10.dp, vertical = 7.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(badgeColor.copy(alpha = 0.15f))
-                            .padding(horizontal = 5.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = badgeText,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = badgeColor
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "${template.iconKey ?: "🧹"} ${template.title}",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.textPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "(${elapsedDays}日前)",
-                        fontSize = 11.sp,
-                        color = colors.textSecondary
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(4.dp))
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    IconButton(
-                        onClick = onSkip,
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Text(
-                            text = "↷",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.textSecondary
-                        )
-                    }
-
-                    OutlinedButton(
-                        onClick = onCompletedNow,
-                        shape = RoundedCornerShape(8.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, badgeColor.copy(alpha = 0.6f)),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                        modifier = Modifier.height(28.dp)
-                    ) {
-                        Text("✓ 記録", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = badgeColor)
-                    }
-                }
-            }
-        }
-    }
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -2128,182 +1796,3 @@ fun SearchBottomSheet(
         }
     }
 }
-
-@Composable
-fun UpcomingSectionCard(
-    upcomingItems: List<TimelineItemEntity>,
-    onToggleDone: (TimelineItemEntity) -> Unit,
-    onRescheduleToToday: (TimelineItemEntity) -> Unit,
-    onClickItem: (TimelineItemEntity) -> Unit
-) {
-    val colors = LifeStreamTheme.colors
-    val haptic = LocalHapticFeedback.current
-    var isExpanded by remember { mutableStateOf(true) }
-    val zone = ZoneId.systemDefault()
-
-    val groupedByDate = remember(upcomingItems) {
-        upcomingItems.groupBy { item ->
-            val epoch = item.scheduledAt ?: 0L
-            LocalDateTime.ofInstant(Instant.ofEpochMilli(epoch), zone).toLocalDate()
-        }.toSortedMap()
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .border(1.dp, colors.border, RoundedCornerShape(14.dp))
-            .background(colors.card)
-    ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            // Header
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { isExpanded = !isExpanded },
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "📅",
-                        fontSize = 14.sp
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "近日・今後の予定",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.textPrimary
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(colors.primary.copy(alpha = 0.15f))
-                            .padding(horizontal = 7.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = "${upcomingItems.size}件",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.primary
-                        )
-                    }
-                }
-
-                Text(
-                    text = if (isExpanded) "折りたたむ ▲" else "開く ▼",
-                    fontSize = 11.sp,
-                    color = colors.textSecondary
-                )
-            }
-
-            AnimatedVisibility(
-                visible = isExpanded,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
-                Column(modifier = Modifier.padding(top = 10.dp)) {
-                    val today = LocalDate.now()
-                    groupedByDate.forEach { (date, items) ->
-                        val dateLabel = when {
-                            date == today.plusDays(1) -> "明日 (${date.monthValue}/${date.dayOfMonth})"
-                            date == today.plusDays(2) -> "明後日 (${date.monthValue}/${date.dayOfMonth})"
-                            else -> {
-                                val dayName = listOf("月", "火", "水", "木", "金", "土", "日")[date.dayOfWeek.value - 1]
-                                "${date.monthValue}月${date.dayOfMonth}日 ($dayName)"
-                            }
-                        }
-
-                        Text(
-                            text = dateLabel,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = colors.primary,
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        )
-
-                        items.forEach { item ->
-                            val timeStr = item.scheduledAt?.let {
-                                LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone)
-                                    .format(DateTimeFormatter.ofPattern("HH:mm"))
-                            }
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 3.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(colors.background.copy(alpha = 0.5f))
-                                    .clickable { onClickItem(item) }
-                                    .padding(horizontal = 10.dp, vertical = 7.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    // Check circle
-                                    Box(
-                                        modifier = Modifier
-                                            .size(20.dp)
-                                            .clip(CircleShape)
-                                            .border(1.5.dp, colors.border, CircleShape)
-                                            .clickable {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                onToggleDone(item)
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                    }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column {
-                                        Text(
-                                            text = item.title,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = colors.textPrimary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        if (timeStr != null && timeStr != "00:00") {
-                                            Text(
-                                                text = timeStr,
-                                                fontSize = 10.sp,
-                                                color = colors.textSecondary
-                                            )
-                                        }
-                                    }
-                                }
-
-                                // "今日やる" action pill
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(colors.primary.copy(alpha = 0.12f))
-                                        .border(0.5.dp, colors.primary.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
-                                        .clickable {
-                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                            onRescheduleToToday(item)
-                                        }
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Text(
-                                        text = "今日やる",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.primary
-                                    )
-                                }
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                    }
-                }
-            }
-        }
-    }
-}
-

@@ -45,6 +45,7 @@ import java.time.format.DateTimeFormatter
 fun ItemDetailBottomSheet(
     item: TimelineItemEntity,
     templates: List<TemplateEntity> = emptyList(),
+    cutoffHour: Int = 4,
     onDismiss: () -> Unit,
     onSave: (TimelineItemEntity) -> Unit,
     onDelete: () -> Unit,
@@ -244,7 +245,9 @@ fun ItemDetailBottomSheet(
                         val finalScheduledAt = if (!isDone) {
                             when (selectedTodoTiming) {
                                 "引き出し" -> {
-                                    finalCreatedAt = 1000L
+                                    val todayLogical = if (now.hour < cutoffHour) now.toLocalDate().minusDays(1) else now.toLocalDate()
+                                    val todayStartMillis = todayLogical.atTime(cutoffHour, 0).atZone(zone).toInstant().toEpochMilli()
+                                    finalCreatedAt = (todayStartMillis - 1000L).coerceAtLeast(1L)
                                     null
                                 }
                                 "今日" -> {
