@@ -39,53 +39,35 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
         val colors = WidgetSettingsManager.getThemeColors(context)
         val cutoffHour = WidgetSettingsManager.getCutoffHour(context)
 
-        val zone = ZoneId.systemDefault()
-        val now = LocalDateTime.now()
-        val today = if (now.hour < cutoffHour) now.toLocalDate().minusDays(1) else now.toLocalDate()
+        val dateProvider = com.forcusflow.lifestream.domain.LifeDateProvider()
+        val allItems = try { db.timelineItemDao().getAll() } catch (e: Exception) { emptyList() }
+        val templates = try { db.templateDao().getAll() } catch (e: Exception) { emptyList() }
 
-        val startDateTime = LocalDateTime.of(today, LocalTime.of(cutoffHour, 0))
-        val endDateTime = startDateTime.plusDays(1).minusNanos(1)
-        val todayStart = startDateTime.atZone(zone).toInstant().toEpochMilli()
-        val todayEnd = endDateTime.atZone(zone).toInstant().toEpochMilli()
+        val timelineData = com.forcusflow.lifestream.domain.TodayTimelineCalculator.calculate(
+            allItems = allItems,
+            templates = templates,
+            dateProvider = dateProvider,
+            cutoffHour = cutoffHour
+        )
 
-        val dateFormatted = today.format(DateTimeFormatter.ofPattern("M月d日 (E)", Locale.JAPANESE))
-        val nowTimeFormatted = now.format(DateTimeFormatter.ofPattern("HH:mm"))
+        val today = timelineData.logicalDate
+        val dateFormatted = timelineData.dateFormatted
+        val now = dateProvider.nowLocalDateTime()
+        val zone = dateProvider.zoneId
+        val nowTimeFormatted = dateProvider.formatTime(now.toLocalTime())
 
         val todayDateKey = today.toString()
         val dailyFocusEntity = try { db.dailyFocusDao().getByDate(todayDateKey) } catch (e: Exception) { null }
         val focusText = dailyFocusEntity?.content
 
-        val allItems = try { db.timelineItemDao().getAll() } catch (e: Exception) { emptyList() }
-        val templates = try { db.templateDao().getAll() } catch (e: Exception) { emptyList() }
+        // Periodic habits due today (excluding postponed)
+        val duePeriodicHabits = timelineData.duePeriodicTemplates.filter { it.isDueToday }.map { it.template }
 
-        // Due periodic habits today
-        val duePeriodicHabits = templates.filter { it.type == "INTERVAL" }.filter { tmpl ->
-            val lastDoneDate = tmpl.lastCompletedAt?.let {
-                LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
-            }
-            val elapsed = if (lastDoneDate != null) java.time.temporal.ChronoUnit.DAYS.between(lastDoneDate, today) else 999L
-            val interval = tmpl.intervalDays ?: 7
-            elapsed >= interval
-        }
-
-        // 1. DONE items today (completed during today's window)
-        val doneItems = allItems.filter { item ->
-            item.isDone && (
-                (item.completedAt != null && item.completedAt in todayStart..todayEnd) ||
-                (item.completedAt == null && item.scheduledAt != null && item.scheduledAt in todayStart..todayEnd)
-            )
-        }.sortedBy { it.completedAt ?: it.scheduledAt ?: 0L }
+        // 1. DONE items today
+        val doneItems = timelineData.doneItems
 
         // 2. Pending items today (timed tasks first, then anytime tasks created today)
-        val scheduledToday = allItems.filter { item ->
-            !item.isDone && item.scheduledAt != null && item.scheduledAt in todayStart..todayEnd
-        }.sortedBy { it.scheduledAt ?: 0L }
-
-        val anytimeToday = allItems.filter { item ->
-            !item.isDone && item.scheduledAt == null && item.createdAt >= todayStart
-        }.sortedBy { it.id }
-
-        val pendingItems = (scheduledToday + anytimeToday).distinctBy { it.id }
+        val pendingItems = timelineData.pendingHandItems
 
         val launchIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP

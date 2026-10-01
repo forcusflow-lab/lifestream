@@ -17,9 +17,22 @@ object WidgetSettingsManager {
     private const val KEY_FONT_SIZE = "widget_font_size"
     private const val KEY_THEME_MODE = "widget_theme_mode"
     private const val KEY_CUTOFF_HOUR = "widget_cutoff_hour"
+    private const val KEY_SHOW_STREAKS_AND_GOALS = "show_streaks_and_goals"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    }
+
+    fun getShowStreaksAndGoals(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_SHOW_STREAKS_AND_GOALS, false) // Default is FALSE as required
+    }
+
+    fun setShowStreaksAndGoals(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_SHOW_STREAKS_AND_GOALS, enabled).apply()
+    }
+
+    fun resetAllPreferences(context: Context) {
+        getPrefs(context).edit().clear().apply()
     }
 
     fun getOpacity(context: Context): Float {

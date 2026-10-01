@@ -22,4 +22,10 @@ interface DailyFocusDao {
 
     @Query("SELECT * FROM daily_focus ORDER BY date DESC")
     fun getAll(): Flow<List<DailyFocusEntity>>
+
+    @Query("SELECT * FROM daily_focus")
+    suspend fun getAllList(): List<DailyFocusEntity>
+
+    @Query("DELETE FROM daily_focus")
+    suspend fun deleteAll()
 }

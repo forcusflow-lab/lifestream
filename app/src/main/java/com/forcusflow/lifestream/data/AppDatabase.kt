@@ -9,8 +9,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [TimelineItemEntity::class, TemplateEntity::class, MemoEntity::class, DailyFocusEntity::class],
-    version = 9,
-    exportSchema = false
+    version = 10,
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun timelineItemDao(): TimelineItemDao
@@ -21,6 +21,18 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         @Volatile
         private var INSTANCE: AppDatabase? = null
+
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Initial schema stabilization
+            }
+        }
+
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Secondary schema stabilization
+            }
+        }
 
         val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -74,16 +86,45 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE templates ADD COLUMN postponedUntilDate TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE templates ADD COLUMN lastPostponedAt INTEGER DEFAULT NULL")
+                // Fix legacy records where createdAt was initialized to 0
+                db.execSQL("UPDATE timeline_items SET createdAt = COALESCE(completedAt, scheduledAt, 1) WHERE createdAt = 0")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
+                val builder = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "lifestream.db"
+                ).addMigrations(
+                    MIGRATION_1_2,
+                    MIGRATION_2_3,
+                    MIGRATION_3_4,
+                    MIGRATION_4_5,
+                    MIGRATION_5_6,
+                    MIGRATION_6_7,
+                    MIGRATION_7_8,
+                    MIGRATION_8_9,
+                    MIGRATION_9_10
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
-                    .fallbackToDestructiveMigration()
-                    .build()
+
+                // Fallback to destructive migration ONLY in debug mode to preserve production user data
+                val isDebug = try {
+                    val appInfo = context.packageManager.getApplicationInfo(context.packageName, 0)
+                    (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+                } catch (e: Exception) {
+                    false
+                }
+                if (isDebug) {
+                    builder.fallbackToDestructiveMigration()
+                }
+
+                val instance = builder.build()
                 INSTANCE = instance
                 instance
             }

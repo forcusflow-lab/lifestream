@@ -2,7 +2,9 @@ package com.forcusflow.lifestream.data
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import kotlinx.serialization.Serializable
 
+@Serializable
 @Entity(tableName = "memos")
 data class MemoEntity(
     @PrimaryKey(autoGenerate = true)

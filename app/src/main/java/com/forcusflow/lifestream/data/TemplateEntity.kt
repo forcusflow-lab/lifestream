@@ -22,5 +22,7 @@ data class TemplateEntity(
     val stepValue: Int = 1, // 1タップあたりの増分 (デフォルト: 1)
     val isPinned: Boolean = false, // クイックスタンプバーへのピン留め
     val displayOrder: Int = 0,
-    val timeOfDayZone: String = "ALL_DAY" // "ALL_DAY", "MORNING", "AFTERNOON", "EVENING_NIGHT"
+    val timeOfDayZone: String = "ALL_DAY", // "ALL_DAY", "MORNING", "AFTERNOON", "EVENING_NIGHT"
+    val postponedUntilDate: String? = null, // "YYYY-MM-DD" 次回目安日まで穏やかに見送り
+    val lastPostponedAt: Long? = null // 最終見送り日時
 )

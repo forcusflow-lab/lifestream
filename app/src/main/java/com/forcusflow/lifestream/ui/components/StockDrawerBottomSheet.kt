@@ -81,7 +81,7 @@ fun StockDrawerBottomSheet(
                     Text("📦", fontSize = 18.sp)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "引き出し",
+                        text = "引き出し (${upcomingItems.size}件)",
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
                         color = colors.textPrimary
@@ -94,7 +94,7 @@ fun StockDrawerBottomSheet(
 
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "明日以降の予定や、手元から一時退避したタスクが静かに待機しています。",
+                text = "急がない予定・過去の持ち越し・あとでやる項目を大切に保管しています。いつでも今日に出したり、日時を決めたり、完了・削除できます。",
                 fontSize = 12.5.sp,
                 color = colors.textSecondary,
                 lineHeight = 17.sp

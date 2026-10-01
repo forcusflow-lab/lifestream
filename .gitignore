@@ -12,3 +12,10 @@ build/
 *.apk
 *.aab
 !gradle/wrapper/gradle-wrapper.jar
+
+# Keystores & sensitive credentials
+keystore/
+*.keystore
+*.jks
+.env
+local.properties

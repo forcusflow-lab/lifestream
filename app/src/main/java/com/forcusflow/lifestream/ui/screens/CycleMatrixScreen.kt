@@ -101,6 +101,7 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
     val colors = LifeStreamTheme.colors
     val templates by viewModel.templates.collectAsState()
     val allItems by viewModel.allItems.collectAsState()
+    val showStreaksAndGoals by viewModel.showStreaksAndGoals.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     val zone = ZoneId.systemDefault()
@@ -245,6 +246,7 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                                     isDoneToday = false,
                                     isDoneInCycle = false,
                                     streak = streak,
+                                    showStreaksAndGoals = showStreaksAndGoals,
                                     onClick = { editingTemplate = template },
                                     onToggleToday = {
                                         viewModel.toggleCycleTask(template, today)
@@ -253,11 +255,10 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                                         }
                                     },
                                     onSkip = {
-                                        viewModel.skipCycleTask(template)
+                                        viewModel.postponeCycleTask(template, 1)
                                         coroutineScope.launch {
-                                            val interval = template.intervalDays ?: 7
-                                            val nextDate = today.plusDays(interval.toLong())
-                                            snackbarHostState.showSnackbar("「${template.title}」をスキップしました (次回: ${nextDate.monthValue}/${nextDate.dayOfMonth})")
+                                            val nextDate = today.plusDays(1)
+                                            snackbarHostState.showSnackbar("「${template.title}」を次回まで見送りました（次回目安: ${nextDate.monthValue}/${nextDate.dayOfMonth}）")
                                         }
                                     }
                                 )
@@ -298,6 +299,7 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                                     isDoneToday = false,
                                     isDoneInCycle = true,
                                     streak = streak,
+                                    showStreaksAndGoals = showStreaksAndGoals,
                                     onClick = { editingTemplate = template },
                                     onToggleToday = {
                                         viewModel.toggleCycleTask(template, today)
@@ -307,11 +309,10 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                                         }
                                     },
                                     onSkip = {
-                                        viewModel.skipCycleTask(template)
+                                        viewModel.postponeCycleTask(template, 1)
                                         coroutineScope.launch {
-                                            val interval = template.intervalDays ?: 7
-                                            val nextDate = today.plusDays(interval.toLong())
-                                            snackbarHostState.showSnackbar("「${template.title}」をスキップしました (次回: ${nextDate.monthValue}/${nextDate.dayOfMonth})")
+                                            val nextDate = today.plusDays(1)
+                                            snackbarHostState.showSnackbar("「${template.title}」を次回まで見送りました（次回目安: ${nextDate.monthValue}/${nextDate.dayOfMonth}）")
                                         }
                                     }
                                 )
@@ -352,6 +353,7 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                                     isDoneToday = true,
                                     isDoneInCycle = true,
                                     streak = streak,
+                                    showStreaksAndGoals = showStreaksAndGoals,
                                     onClick = { editingTemplate = template },
                                     onToggleToday = {
                                         viewModel.toggleCycleTask(template, today)
@@ -410,6 +412,7 @@ fun CycleMatrixScreen(viewModel: MainViewModel) {
                                 today = today,
                                 isDoneToday = isDoneToday,
                                 streak = 0,
+                                showStreaksAndGoals = showStreaksAndGoals,
                                 onClick = { editingTemplate = template },
                                 onToggleToday = {
                                     viewModel.toggleCycleTask(template, today)
@@ -503,6 +506,7 @@ fun MainTaskStyleCycleCard(
     isDoneToday: Boolean,
     isDoneInCycle: Boolean = isDoneToday,
     streak: Int = 0,
+    showStreaksAndGoals: Boolean = false,
     onClick: () -> Unit,
     onToggleToday: () -> Unit,
     onSkip: () -> Unit
@@ -618,7 +622,7 @@ fun MainTaskStyleCycleCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
-                    if (streak >= 2 && !isSomeday) {
+                    if (showStreaksAndGoals && streak >= 2 && !isSomeday) {
                         Spacer(modifier = Modifier.width(6.dp))
                         Surface(
                             shape = RoundedCornerShape(6.dp),

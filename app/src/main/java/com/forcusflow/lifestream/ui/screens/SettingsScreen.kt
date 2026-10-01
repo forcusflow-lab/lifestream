@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.forcusflow.lifestream.domain.*
 import com.forcusflow.lifestream.ui.components.AppHeader
 import com.forcusflow.lifestream.ui.theme.AppThemeMode
 import com.forcusflow.lifestream.ui.theme.LifeStreamTheme
@@ -46,15 +47,21 @@ fun SettingsScreen(viewModel: MainViewModel) {
     val currentTheme by viewModel.themeMode.collectAsState()
     val cutoffHour by viewModel.dayCutoffHour.collectAsState()
     val templates by viewModel.templates.collectAsState()
+    val showStreaksAndGoals by viewModel.showStreaksAndGoals.collectAsState()
 
     var widgetOpacity by remember { mutableStateOf(WidgetSettingsManager.getOpacity(context)) }
     var widgetFontSize by remember { mutableStateOf(WidgetSettingsManager.getFontSize(context)) }
 
     var showCutoffDialog by remember { mutableStateOf(false) }
     var showTemplatesDialog by remember { mutableStateOf(false) }
-    var showResetConfirmDialog by remember { mutableStateOf(false) }
+    var showResetDialog by remember { mutableStateOf(false) }
+    var selectedResetType by remember { mutableStateOf(ResetType.RELOAD_SAMPLE_DATA) }
+    var resetDataCounts by remember { mutableStateOf<DataCounts?>(null) }
+
     var showImportDialog by remember { mutableStateOf(false) }
     var importJsonText by remember { mutableStateOf("") }
+    var importValidation by remember { mutableStateOf<ImportValidationResult?>(null) }
+    var selectedImportMode by remember { mutableStateOf(ImportMode.APPEND) }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -401,6 +408,61 @@ fun SettingsScreen(viewModel: MainViewModel) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            // Section: 表示・フィロソフィー設定
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
+                Text(
+                    text = "表示・フィロソフィー設定",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textSecondary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = colors.card,
+                    border = BorderStroke(1.dp, colors.border),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "習慣の連続記録・達成率の表示",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.textPrimary
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "周期タスクの「○巡目」バッジや達成率を表示します。OFF（推奨）にすると、プレッシャーのない穏やかな表示になります。",
+                                fontSize = 11.sp,
+                                color = colors.textSecondary,
+                                lineHeight = 15.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Switch(
+                            checked = showStreaksAndGoals,
+                            onCheckedChange = { viewModel.setShowStreaksAndGoals(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = colors.onPrimary,
+                                checkedTrackColor = colors.primary,
+                                uncheckedThumbColor = colors.textSecondary,
+                                uncheckedTrackColor = colors.border
+                            )
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             // Section: 生活リズム & デイカットオフ設定
             Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
                 Text(
@@ -428,56 +490,74 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     actionLabel = "管理 >",
                     onClick = { showTemplatesDialog = true }
                 )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Section: データ管理 & バックアップ
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
+                Text(
+                    text = "データ管理 & バックアップ",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textSecondary
+                )
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Item 3: Data Export
+                // Item 1: Data Export
                 SettingActionCard(
                     title = "データ書き出し & バックアップ",
-                    subtitle = "SQLite DB / JSON 形式でエクスポート (クリップボードコピー可)",
-                    actionLabel = "実行 >",
+                    subtitle = "JSON形式でエクスポート (共有シート・クリップボード保存)",
+                    actionLabel = "書き出し >",
                     onClick = {
-                        val json = viewModel.exportJson()
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = ClipData.newPlainText("byLife Backup", json)
-                        clipboard.setPrimaryClip(clip)
-
-                        val sendIntent = Intent().apply {
-                            action = Intent.ACTION_SEND
-                            putExtra(Intent.EXTRA_TEXT, json)
-                            type = "application/json"
-                        }
-                        try {
-                            context.startActivity(Intent.createChooser(sendIntent, "byLife Backup JSON"))
-                        } catch (e: Exception) {
-                            // ignore if no share targets
-                        }
-
                         coroutineScope.launch {
-                            snackbarHostState.showSnackbar("JSONデータをクリップボードにコピーしました")
+                            val json = viewModel.exportJson()
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = ClipData.newPlainText("byLife Backup", json)
+                            clipboard.setPrimaryClip(clip)
+
+                            val sendIntent = Intent().apply {
+                                action = Intent.ACTION_SEND
+                                putExtra(Intent.EXTRA_TEXT, json)
+                                type = "application/json"
+                            }
+                            try {
+                                context.startActivity(Intent.createChooser(sendIntent, "byLife バックアップデータ"))
+                            } catch (e: Exception) {
+                                // Chooser fallback
+                            }
+                            snackbarHostState.showSnackbar("バックアップJSONをクリップボードにコピーしました")
                         }
                     }
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Item 3.5: Data Import
+                // Item 2: Data Import
                 SettingActionCard(
                     title = "データ取り込み & 復元 (インポート)",
-                    subtitle = "JSON形式のバックアップテキストから記録と設定をインポート",
+                    subtitle = "JSON形式のバックアップテキストから記録と設定を取り込み",
                     actionLabel = "取り込み >",
                     onClick = {
                         importJsonText = ""
+                        importValidation = null
+                        selectedImportMode = ImportMode.APPEND
                         showImportDialog = true
                     }
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
-
-                // Item 5: Reset / Sample Data
+                // Item 3: Reset / Initialize Data
                 SettingActionCard(
-                    title = "初期データの復元・再投入",
-                    subtitle = "初期データ（クイック記録4種、周期2種）へリセット",
-                    actionLabel = "復元 >",
-                    onClick = { showResetConfirmDialog = true }
+                    title = "データ初期化・リセット",
+                    subtitle = "サンプル再表示、記録とテンプレート削除、全初期化を選択して実行",
+                    actionLabel = "初期化 >",
+                    onClick = {
+                        coroutineScope.launch {
+                            resetDataCounts = viewModel.getDataCounts()
+                            selectedResetType = ResetType.RELOAD_SAMPLE_DATA
+                            showResetDialog = true
+                        }
+                    }
                 )
             }
 
@@ -567,10 +647,10 @@ fun SettingsScreen(viewModel: MainViewModel) {
         )
     }
 
-    // Reset Sample Data Confirm Dialog
-    if (showResetConfirmDialog) {
+    // 3-way Reset Dialog
+    if (showResetDialog) {
         ModalBottomSheet(
-            onDismissRequest = { showResetConfirmDialog = false },
+            onDismissRequest = { showResetDialog = false },
             containerColor = colors.card,
             dragHandle = { BottomSheetDefaults.DragHandle() }
         ) {
@@ -578,31 +658,128 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
+                    .verticalScroll(rememberScrollState())
                     .navigationBarsPadding()
-                    .padding(bottom = 32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .padding(bottom = 32.dp)
             ) {
                 Text(
-                    text = "サンプルデータの復元",
+                    text = "データの初期化・リセット",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = colors.textPrimary,
-                    modifier = Modifier.padding(bottom = 12.dp)
+                    modifier = Modifier.padding(bottom = 6.dp)
                 )
                 Text(
-                    text = "データベースを初期化し、初期デフォルトデータ（クイック記録4種、周期2種）を再投入します。よろしいですか？",
-                    fontSize = 14.sp,
+                    text = "実行したいリセットの種類を選択してください：",
+                    fontSize = 13.sp,
                     color = colors.textSecondary,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 20.sp,
-                    modifier = Modifier.padding(bottom = 24.dp)
+                    modifier = Modifier.padding(bottom = 16.dp)
                 )
+
+                // Option 1: Reload Sample Data
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (selectedResetType == ResetType.RELOAD_SAMPLE_DATA) colors.primary.copy(alpha = 0.08f) else Color.Transparent,
+                    border = BorderStroke(1.dp, if (selectedResetType == ResetType.RELOAD_SAMPLE_DATA) colors.primary else colors.border.copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { selectedResetType = ResetType.RELOAD_SAMPLE_DATA }
+                        .padding(bottom = 10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        RadioButton(
+                            selected = selectedResetType == ResetType.RELOAD_SAMPLE_DATA,
+                            onClick = { selectedResetType = ResetType.RELOAD_SAMPLE_DATA }
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text("1. サンプルデータを再表示", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = colors.textPrimary)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                "基本の記録テンプレートと周期タスクを再投入します。あなたが作成した既存のデータは削除されず残ります。",
+                                fontSize = 12.sp,
+                                color = colors.textSecondary,
+                                lineHeight = 16.sp
+                            )
+                        }
+                    }
+                }
+
+                // Option 2: Clear Records and Templates
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (selectedResetType == ResetType.CLEAR_RECORDS_AND_TEMPLATES) Color(0xFFEF4444).copy(alpha = 0.08f) else Color.Transparent,
+                    border = BorderStroke(1.dp, if (selectedResetType == ResetType.CLEAR_RECORDS_AND_TEMPLATES) Color(0xFFEF4444) else colors.border.copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { selectedResetType = ResetType.CLEAR_RECORDS_AND_TEMPLATES }
+                        .padding(bottom = 10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        RadioButton(
+                            selected = selectedResetType == ResetType.CLEAR_RECORDS_AND_TEMPLATES,
+                            onClick = { selectedResetType = ResetType.CLEAR_RECORDS_AND_TEMPLATES },
+                            colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFEF4444))
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text("2. 記録とテンプレートを削除", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = colors.textPrimary)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                "タイムライン記録 (${resetDataCounts?.timelineItemCount ?: 0}件) とテンプレート (${resetDataCounts?.templateCount ?: 0}件) を削除します。メモや目標、設定は保持されます。",
+                                fontSize = 12.sp,
+                                color = colors.textSecondary,
+                                lineHeight = 16.sp
+                            )
+                        }
+                    }
+                }
+
+                // Option 3: Full Initialize
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (selectedResetType == ResetType.FULL_INITIALIZE) Color(0xFFEF4444).copy(alpha = 0.12f) else Color.Transparent,
+                    border = BorderStroke(1.dp, if (selectedResetType == ResetType.FULL_INITIALIZE) Color(0xFFEF4444) else colors.border.copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { selectedResetType = ResetType.FULL_INITIALIZE }
+                        .padding(bottom = 16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        RadioButton(
+                            selected = selectedResetType == ResetType.FULL_INITIALIZE,
+                            onClick = { selectedResetType = ResetType.FULL_INITIALIZE },
+                            colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFEF4444))
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text("3. すべてのデータを初期化", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFFEF4444))
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                "記録・テンプレート・メモ (${resetDataCounts?.memoCount ?: 0}件)・日々の目標 (${resetDataCounts?.dailyFocusCount ?: 0}件)・ウィジェット設定を含む全データを初期状態に戻します。",
+                                fontSize = 12.sp,
+                                color = colors.textSecondary,
+                                lineHeight = 16.sp
+                            )
+                        }
+                    }
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     OutlinedButton(
-                        onClick = { showResetConfirmDialog = false },
+                        onClick = { showResetDialog = false },
                         modifier = Modifier
                             .weight(1f)
                             .height(48.dp),
@@ -611,28 +788,41 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     ) {
                         Text("キャンセル", color = colors.textPrimary)
                     }
+                    val isDestructive = selectedResetType != ResetType.RELOAD_SAMPLE_DATA
                     Button(
                         onClick = {
-                            viewModel.reloadSampleData()
-                            showResetConfirmDialog = false
-                            coroutineScope.launch {
-                                snackbarHostState.showSnackbar("サンプルデータを復元しました")
+                            viewModel.executeReset(selectedResetType) {
+                                coroutineScope.launch {
+                                    val msg = when (selectedResetType) {
+                                        ResetType.RELOAD_SAMPLE_DATA -> "サンプルデータを再表示しました"
+                                        ResetType.CLEAR_RECORDS_AND_TEMPLATES -> "記録とテンプレートを削除しました"
+                                        ResetType.FULL_INITIALIZE -> "すべてのデータを初期化しました"
+                                    }
+                                    snackbarHostState.showSnackbar(msg)
+                                }
                             }
+                            showResetDialog = false
                         },
                         modifier = Modifier
                             .weight(1f)
                             .height(48.dp),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isDestructive) Color(0xFFEF4444) else colors.primary
+                        )
                     ) {
-                        Text("復元する", color = colors.onPrimary, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = if (isDestructive) "削除を実行" else "復元する",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
         }
     }
 
-    // Import JSON Dialog
+    // Hardened Import JSON Dialog (Validation + Mode Selection)
     if (showImportDialog) {
         ModalBottomSheet(
             onDismissRequest = { showImportDialog = false },
@@ -657,50 +847,54 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         Text("キャンセル", color = colors.textSecondary, fontSize = 15.sp)
                     }
                     Text(
-                        text = "データ取り込み",
+                        text = "データ取り込み (復元)",
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
                         color = colors.textPrimary
                     )
                     TextButton(
                         onClick = {
-                            if (importJsonText.isNotBlank()) {
+                            val payload = importValidation?.payload
+                            if (payload != null) {
                                 coroutineScope.launch {
-                                    val (tCount, iCount) = viewModel.importJson(importJsonText)
-                                    if (tCount >= 0) {
-                                        showImportDialog = false
-                                        snackbarHostState.showSnackbar("復元完了: テンプレート${tCount}件、タイムライン記録${iCount}件を取り込みました")
+                                    val res = viewModel.executeImport(payload, selectedImportMode)
+                                    showImportDialog = false
+                                    if (res.success) {
+                                        snackbarHostState.showSnackbar(
+                                            "取り込み完了: テンプレート${res.importedTemplates}件、記録${res.importedItems}件、メモ${res.importedMemos}件"
+                                        )
                                     } else {
-                                        snackbarHostState.showSnackbar("JSONの解析に失敗しました。フォーマットをご確認ください")
+                                        snackbarHostState.showSnackbar("取り込み失敗: ${res.errorMessage ?: "不明なエラー"}")
                                     }
                                 }
                             }
                         },
-                        enabled = importJsonText.isNotBlank()
+                        enabled = importValidation?.isValid == true
                     ) {
                         Text(
-                            "取り込む",
+                            "実行する",
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
-                            color = if (importJsonText.isNotBlank()) colors.primary else colors.textSecondary.copy(alpha = 0.5f)
+                            color = if (importValidation?.isValid == true) colors.primary else colors.textSecondary.copy(alpha = 0.4f)
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 Text(
-                    text = "エクスポートしたバックアップJSONを貼り付けて復元します：",
+                    text = "バックアップJSONを貼り付けて復元します：",
                     fontSize = 13.sp,
                     color = colors.textSecondary
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 OutlinedButton(
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         val clipText = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
                         if (clipText.isNotBlank()) {
                             importJsonText = clipText
+                            importValidation = viewModel.validateBackupJson(clipText)
                         } else {
                             coroutineScope.launch {
                                 snackbarHostState.showSnackbar("クリップボードが空です")
@@ -712,7 +906,9 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 ) {
                     Text("📋 クリップボードから貼り付け", fontSize = 13.sp)
                 }
-                Spacer(modifier = Modifier.height(12.dp))
+
+                Spacer(modifier = Modifier.height(10.dp))
+
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = colors.card,
@@ -721,10 +917,13 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 ) {
                     OutlinedTextField(
                         value = importJsonText,
-                        onValueChange = { importJsonText = it },
+                        onValueChange = {
+                            importJsonText = it
+                            importValidation = if (it.isNotBlank()) viewModel.validateBackupJson(it) else null
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(180.dp),
+                            .height(140.dp),
                         placeholder = { Text("ここにJSONテキストを貼り付け...", fontSize = 12.sp, color = colors.textSecondary.copy(alpha = 0.5f)) },
                         shape = RoundedCornerShape(12.dp),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -734,6 +933,113 @@ fun SettingsScreen(viewModel: MainViewModel) {
                             unfocusedTextColor = colors.textPrimary
                         )
                     )
+                }
+
+                // Validation Status Display
+                val validation = importValidation
+                if (validation != null) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    if (validation.isValid) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFF10B981).copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.4f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    text = "✓ 有効なバックアップデータです",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = Color(0xFF10B981)
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "・テンプレート: ${validation.templateCount}件\n・タイムライン記録: ${validation.timelineItemCount}件\n・メモ: ${validation.memoCount}件",
+                                    fontSize = 12.sp,
+                                    color = colors.textPrimary,
+                                    lineHeight = 17.sp
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Import Mode Selection
+                        Text(
+                            text = "取り込み方式の選択：",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        // Append Mode
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (selectedImportMode == ImportMode.APPEND) colors.primary.copy(alpha = 0.08f) else Color.Transparent,
+                            border = BorderStroke(1.dp, if (selectedImportMode == ImportMode.APPEND) colors.primary else colors.border.copy(alpha = 0.4f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedImportMode = ImportMode.APPEND }
+                                .padding(bottom = 6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = selectedImportMode == ImportMode.APPEND,
+                                    onClick = { selectedImportMode = ImportMode.APPEND }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text("追加 (既存データに残して追加)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textPrimary)
+                                    Text("IDを新しく採番し、現在のデータと共存させます", fontSize = 11.sp, color = colors.textSecondary)
+                                }
+                            }
+                        }
+
+                        // Replace Mode
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (selectedImportMode == ImportMode.REPLACE) Color(0xFFEF4444).copy(alpha = 0.08f) else Color.Transparent,
+                            border = BorderStroke(1.dp, if (selectedImportMode == ImportMode.REPLACE) Color(0xFFEF4444) else colors.border.copy(alpha = 0.4f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedImportMode = ImportMode.REPLACE }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = selectedImportMode == ImportMode.REPLACE,
+                                    onClick = { selectedImportMode = ImportMode.REPLACE },
+                                    colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFEF4444))
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text("全置換 (既存データをすべて置き換え)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFEF4444))
+                                    Text("既存データを削除し、バックアップの内容と完全一致させます", fontSize = 11.sp, color = colors.textSecondary)
+                                }
+                            }
+                        }
+                    } else {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFEF4444).copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.4f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "⚠️ ${validation.errorMessage ?: "無効なデータ形式です"}",
+                                fontSize = 12.sp,
+                                color = Color(0xFFEF4444),
+                                modifier = Modifier.padding(12.dp)
+                            )
+                        }
+                    }
                 }
             }
         }

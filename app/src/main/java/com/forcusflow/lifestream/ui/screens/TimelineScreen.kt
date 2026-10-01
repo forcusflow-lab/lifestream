@@ -97,91 +97,52 @@ fun TimelineScreen(viewModel: MainViewModel) {
         }
     }
 
-    val zone = ZoneId.systemDefault()
-    var currentTime by remember { mutableStateOf(LocalDateTime.now()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            kotlinx.coroutines.delay(10_000L)
-            currentTime = LocalDateTime.now()
-        }
-    }
-    val nowTimeStr = currentTime.format(DateTimeFormatter.ofPattern("HH:mm"))
-
     val cutoffHour by viewModel.dayCutoffHour.collectAsState()
-    val today = remember(currentTime, cutoffHour) {
-        viewModel.getLogicalDate(currentTime, cutoffHour)
-    }
-    val todayDateFormatted = remember(today) {
-        today.format(DateTimeFormatter.ofPattern("M月d日 (E)", Locale.JAPANESE))
-    }
-    val todayDateKey = remember(today) { today.toString() }
-    val dailyFocus by viewModel.getDailyFocus(todayDateKey).collectAsState(initial = null)
 
-    val (todayStart, todayEnd) = remember(today, cutoffHour) {
-        viewModel.getDayRange(today, cutoffHour)
-    }
-
-    // 1. Today's Completed Items (DONE Logs: Always placed ABOVE the NOW line!)
-    val todayDoneItems = remember(allItems, todayStart, todayEnd) {
-        allItems.filter { item ->
-            item.isDone && (
-                (item.completedAt != null && item.completedAt in todayStart..todayEnd) ||
-                (item.completedAt == null && item.scheduledAt != null && item.scheduledAt in todayStart..todayEnd)
-            )
-        }.sortedBy { it.completedAt ?: it.scheduledAt ?: 0L }
-    }
-
-    // 2. Today's Pending Hand Tasks (Focus Tray items)
-    // Timed tasks for today are sorted to the VERY TOP in chronological order,
-    // followed by anytime tasks created today. Past unfinished tasks roll over to the drawer!
-    val todayPendingItems = remember(allItems, todayStart, todayEnd) {
-        val scheduledToday = allItems.filter { item ->
-            !item.isDone && item.scheduledAt != null && item.scheduledAt in todayStart..todayEnd
-        }.sortedBy { it.scheduledAt ?: 0L }
-
-        val anytimeToday = allItems.filter { item ->
-            !item.isDone && item.scheduledAt == null && item.createdAt >= todayStart
-        }.sortedBy { it.id }
-
-        (scheduledToday + anytimeToday).distinctBy { it.id }
-    }
-
-    val todayItems = remember(todayDoneItems, todayPendingItems) {
-        todayDoneItems + todayPendingItems
-    }
-
-    // 3. Stock in drawer (Future scheduled tasks + Past unfinished rollover tasks)
-    val upcomingItems = remember(allItems, todayStart, todayEnd) {
-        allItems.filter { item ->
-            !item.isDone && (
-                // Future scheduled tasks
-                (item.scheduledAt != null && item.scheduledAt > todayEnd) ||
-                // Past scheduled unfinished tasks (rolled over into drawer!)
-                (item.scheduledAt != null && item.scheduledAt < todayStart) ||
-                // Past anytime unfinished tasks (rolled over into drawer!)
-                (item.scheduledAt == null && item.createdAt in 1 until todayStart)
-            )
-        }.sortedWith(
-            compareBy<TimelineItemEntity> { it.scheduledAt == null }
-                .thenBy { it.scheduledAt ?: 0L }
-                .thenByDescending { it.createdAt }
+    // タイムライン計算を一元化（10秒ごとの無駄な全体再計算を防止）
+    val timelineData = remember(allItems, templates, cutoffHour) {
+        com.forcusflow.lifestream.domain.TodayTimelineCalculator.calculate(
+            allItems = allItems,
+            templates = templates,
+            dateProvider = viewModel.dateProvider,
+            cutoffHour = cutoffHour
         )
     }
 
-    // Periodic tasks due today or overdue AND matching active time of day zone!
-    val dueOrOverduePeriodic = remember(templates, today, currentTime) {
-        templates.filter { it.type == "INTERVAL" }.mapNotNull { tmpl ->
-            val lastDoneDate = tmpl.lastCompletedAt?.let {
-                LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone).toLocalDate()
-            }
-            val elapsed = if (lastDoneDate != null) ChronoUnit.DAYS.between(lastDoneDate, today) else 999L
-            val interval = tmpl.intervalDays ?: 7
-            if (elapsed >= interval) {
-                if (viewModel.isTemplateInActiveZone(tmpl, currentTime.toLocalTime())) {
-                    Triple(tmpl, elapsed > interval, elapsed)
-                } else null
-            } else null
+    val today = timelineData.logicalDate
+    val todayDateFormatted = timelineData.dateFormatted
+    val todayDateKey = remember(today) { today.toString() }
+    val zone = viewModel.dateProvider.zoneId
+    val dailyFocus by viewModel.getDailyFocus(todayDateKey).collectAsState(initial = null)
+
+    val todayDoneItems = timelineData.doneItems
+    val todayPendingItems = timelineData.pendingHandItems
+    val todayItems = remember(todayDoneItems, todayPendingItems) {
+        todayDoneItems + todayPendingItems
+    }
+    val upcomingItems = timelineData.drawerStockItems
+
+    // 完了ログの折りたたみ状態（件数が多い場合は折りたたみ可能）
+    var isDoneSectionExpanded by remember { mutableStateOf(todayDoneItems.size < 4) }
+
+    // NOWライン表示用時刻のみを定期更新（全体再コンポーズを防止）
+    var nowTimeStr by remember { mutableStateOf(viewModel.dateProvider.formatTime(viewModel.dateProvider.nowLocalTime())) }
+    var currentHour by remember { mutableIntStateOf(viewModel.dateProvider.nowLocalTime().hour) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(30_000L) // 30秒更新で十分
+            val nowTime = viewModel.dateProvider.nowLocalTime()
+            nowTimeStr = viewModel.dateProvider.formatTime(nowTime)
+            currentHour = nowTime.hour
         }
+    }
+
+    // 周期タスク（今日実施推奨のもの、見送り中のものは除外）
+    val dueOrOverduePeriodic = remember(timelineData, currentHour) {
+        val nowTime = viewModel.dateProvider.nowLocalTime()
+        timelineData.duePeriodicTemplates
+            .filter { it.isDueToday && viewModel.isTemplateInActiveZone(it.template, nowTime) }
+            .map { Triple(it.template, (it.daysSinceLastDone ?: 0L) > (it.template.intervalDays ?: 7), it.daysSinceLastDone ?: 0L) }
     }
 
     val listState = rememberLazyListState()
@@ -189,7 +150,6 @@ fun TimelineScreen(viewModel: MainViewModel) {
 
     // Ambient gradient based on time of day (Morning / Afternoon / Twilight / Night)
     // 選択中のテーマ背景色をベースに、時間帯による明度（ルミナンス）を微細に変化させる
-    val currentHour = currentTime.hour
     val isDarkTheme = colors.isDark
     val ambientGradientBrush = remember(currentHour, colors.background, isDarkTheme) {
         val base = colors.background
@@ -525,30 +485,57 @@ fun TimelineScreen(viewModel: MainViewModel) {
                     .padding(horizontal = 20.dp),
                 contentPadding = PaddingValues(top = 4.dp, bottom = 80.dp)
             ) {
-                // 1. 過去の実績ログ（DONEログ）：何があっても一律NOWラインの上に配置！
+                // 1. 過去の実績ログ（DONEログ）：折りたたみ・サマリー化対応
                 if (todayDoneItems.isNotEmpty()) {
-                    itemsIndexed(todayDoneItems, key = { _, item -> item.id }) { index, item ->
-                        TaskitoTimelineItemRow(
-                            item = item,
-                            templates = templates,
-                            isFirst = index == 0,
-                            isLast = false,
-                            onToggle = { viewModel.toggleItemDone(item) },
-                            onClick = { itemToEdit = item },
-                            onDelete = {
-                                viewModel.deleteItem(item)
-                                coroutineScope.launch {
-                                    val res = snackbarHostState.showSnackbar(
-                                        message = "${item.title} を削除しました",
-                                        actionLabel = "元に戻す",
-                                        duration = SnackbarDuration.Short
-                                    )
-                                    if (res == SnackbarResult.ActionPerformed) {
-                                        viewModel.restoreItem(item)
+                    item(key = "done_summary_header") {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { isDoneSectionExpanded = !isDoneSectionExpanded }
+                                .padding(vertical = 4.dp, horizontal = 2.dp)
+                        ) {
+                            Text(
+                                text = "🌿 本日の完了記録 (${todayDoneItems.size}件)",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.primary.copy(alpha = 0.85f),
+                                letterSpacing = 0.2.sp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isDoneSectionExpanded) "▲" else "▼",
+                                fontSize = 10.sp,
+                                color = colors.textSecondary.copy(alpha = 0.6f)
+                            )
+                        }
+                    }
+
+                    if (isDoneSectionExpanded) {
+                        itemsIndexed(todayDoneItems, key = { _, item -> item.id }) { index, item ->
+                            TaskitoTimelineItemRow(
+                                item = item,
+                                templates = templates,
+                                isFirst = index == 0,
+                                isLast = false,
+                                onToggle = { viewModel.toggleItemDone(item) },
+                                onClick = { itemToEdit = item },
+                                onDelete = {
+                                    viewModel.deleteItem(item)
+                                    coroutineScope.launch {
+                                        val res = snackbarHostState.showSnackbar(
+                                            message = "${item.title} を削除しました",
+                                            actionLabel = "元に戻す",
+                                            duration = SnackbarDuration.Short
+                                        )
+                                        if (res == SnackbarResult.ActionPerformed) {
+                                            viewModel.restoreItem(item)
+                                        }
                                     }
                                 }
-                            }
-                        )
+                            )
+                        }
                     }
                 }
 
@@ -644,7 +631,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                 Text("📦", fontSize = 11.5.sp)
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "引き出し",
+                                    text = "引き出し (${upcomingItems.size})",
                                     fontSize = 11.5.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = colors.textSecondary
@@ -731,19 +718,18 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                                 overflow = TextOverflow.Ellipsis
                                             )
 
-                                            // スキップは主張せず、控えめな文字リンク
+                                            // 「今回は見送る」（完了とは別扱い・穏やかな表現）
                                             Text(
-                                                text = "スキップ",
+                                                text = "今回は見送る",
                                                 fontSize = 10.5.sp,
-                                                color = colors.textSecondary.copy(alpha = 0.5f),
+                                                color = colors.textSecondary.copy(alpha = 0.6f),
                                                 modifier = Modifier
                                                     .clip(RoundedCornerShape(4.dp))
                                                     .clickable {
-                                                        viewModel.skipCycleTask(tmpl)
+                                                        viewModel.postponeCycleTask(tmpl, 1)
                                                         coroutineScope.launch {
-                                                            val interval = tmpl.intervalDays ?: 7
-                                                            val nextDate = today.plusDays(interval.toLong())
-                                                            snackbarHostState.showSnackbar("「${tmpl.title}」をスキップしました (次回: ${nextDate.monthValue}/${nextDate.dayOfMonth})")
+                                                            val nextDate = today.plusDays(1)
+                                                            snackbarHostState.showSnackbar("「${tmpl.title}」を次回まで見送りました（次回目安: ${nextDate.monthValue}/${nextDate.dayOfMonth}）")
                                                         }
                                                     }
                                                     .padding(horizontal = 6.dp, vertical = 2.dp)

@@ -9,16 +9,17 @@ import com.forcusflow.lifestream.data.DatabaseSeeder
 import com.forcusflow.lifestream.data.MemoEntity
 import com.forcusflow.lifestream.data.TemplateEntity
 import com.forcusflow.lifestream.data.TimelineItemEntity
+import com.forcusflow.lifestream.data.TimerStateManager
+import com.forcusflow.lifestream.domain.*
 import com.forcusflow.lifestream.ui.theme.AppThemeMode
 import com.forcusflow.lifestream.widget.TodayTimelineWidgetReceiver
 import com.forcusflow.lifestream.widget.WidgetSettingsManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.*
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -32,17 +33,26 @@ enum class TimeOfDayZone(val code: String, val label: String, val description: S
     EVENING_NIGHT("EVENING_NIGHT", "夜 🌙", "夕方・夜の活動")
 }
 
+@OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val db = AppDatabase.getInstance(application)
     private val itemDao = db.timelineItemDao()
     private val templateDao = db.templateDao()
     private val memoDao = db.memoDao()
     private val dailyFocusDao = db.dailyFocusDao()
-    private val zone = ZoneId.systemDefault()
+
+    // Centralized Domain Services & UseCases
+    val dateProvider = LifeDateProvider()
+    val undoManager = UndoActionManager()
+    val backupUseCase = BackupUseCase(db)
+    val resetDataUseCase = ResetDataUseCase(db, application)
+    val periodicTaskUseCase = PeriodicTaskUseCase(db, dateProvider)
+    val memoPromotionUseCase = MemoPromotionUseCase(db, undoManager)
 
     // Preferences state
     val themeMode = MutableStateFlow(WidgetSettingsManager.getThemeMode(application))
     val dayCutoffHour = MutableStateFlow(WidgetSettingsManager.getCutoffHour(application))
+    val showStreaksAndGoals = MutableStateFlow(WidgetSettingsManager.getShowStreaksAndGoals(application))
 
     // Navigation and Sheet state
     val currentTab = MutableStateFlow(0) // 0: 今日, 1: 履歴, 2: 周期, 3: メモ, 4: 設定
@@ -57,7 +67,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Time of day zone helpers
-    fun getCurrentTimeOfDayZone(time: LocalTime = LocalTime.now()): TimeOfDayZone {
+    fun getCurrentTimeOfDayZone(time: LocalTime = dateProvider.nowLocalTime()): TimeOfDayZone {
         val hour = time.hour
         return when {
             hour in 4..10 -> TimeOfDayZone.MORNING
@@ -66,7 +76,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun isTemplateInActiveZone(template: TemplateEntity, currentTime: LocalTime = LocalTime.now()): Boolean {
+    fun isTemplateInActiveZone(template: TemplateEntity, currentTime: LocalTime = dateProvider.nowLocalTime()): Boolean {
         val zoneStr = template.timeOfDayZone
         if (zoneStr == "ALL_DAY" || zoneStr.isBlank()) return true
         val currentZone = getCurrentTimeOfDayZone(currentTime)
@@ -94,41 +104,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val memos: StateFlow<List<MemoEntity>> = memoDao.getAllFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Badge count for Today tab: pending ToDos + overdue periodic tasks
+    // Badge count for Today tab: ONLY today's scheduled ToDo count!
+    // Never includes overdue periodic tasks, drawer items, streaks, or uncompleted targets.
     val todayBadgeCount: StateFlow<Int> = combine(
-        anytimePendingItems,
+        allItems,
         templates,
         dayCutoffHour
-    ) { pending, tmplList, cutoff ->
-        val logicalToday = getLogicalDate(LocalDateTime.now(), cutoff)
-        val (todayStart, _) = getDayRange(logicalToday, cutoff)
-        val overdueCount = tmplList.count { tmpl ->
-            if (tmpl.type != "INTERVAL") return@count false
-            val lastDoneMillis = tmpl.lastCompletedAt ?: return@count true
-            val lastDate = java.time.Instant.ofEpochMilli(lastDoneMillis)
-                .atZone(zone).toLocalDate()
-            val elapsed = java.time.temporal.ChronoUnit.DAYS.between(lastDate, logicalToday)
-            elapsed >= (tmpl.intervalDays ?: 7)
-        }
-        val todayPendingCount = pending.count { it.createdAt >= todayStart }
-        todayPendingCount + overdueCount
+    ) { items, tmplList, cutoff ->
+        val timelineData = TodayTimelineCalculator.calculate(items, tmplList, dateProvider, cutoff)
+        timelineData.todayBadgeCount
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    // Search query
+    // Debounced Search query (reduces excessive DB queries)
     val searchQuery = MutableStateFlow("")
 
-    @OptIn(ExperimentalCoroutinesApi::class)
     val searchResults: StateFlow<List<TimelineItemEntity>> = searchQuery
+        .debounce(300)
         .flatMapLatest { q ->
             if (q.isBlank()) itemDao.getAllFlow() else itemDao.searchFlow(q)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Calendar state (support dynamic browsing across months, default to today)
-    val calendarYearMonth = MutableStateFlow(YearMonth.from(LocalDate.now()))
-    val selectedCalendarDate = MutableStateFlow(LocalDate.now())
+    // Calendar state
+    val calendarYearMonth = MutableStateFlow(YearMonth.from(dateProvider.nowLocalDate()))
+    val selectedCalendarDate = MutableStateFlow(dateProvider.nowLocalDate())
 
-    // Last deleted / added item for Undo snackbar
+    // Backward compatible last deleted/added item reference for simple UI listeners
     val undoItem = MutableStateFlow<TimelineItemEntity?>(null)
 
     // Active Timer state for actionType = "TIMER"
@@ -139,9 +140,42 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var timerJob: kotlinx.coroutines.Job? = null
 
     init {
+        // Safe database seeding (never deletes or alters user-created data)
         viewModelScope.launch(Dispatchers.IO) {
-            DatabaseSeeder.seed(templateDao, itemDao)
+            DatabaseSeeder.seed(templateDao, itemDao, force = false)
         }
+
+        // Restore active timer if interrupted by process death or reboot
+        viewModelScope.launch(Dispatchers.IO) {
+            val persisted = TimerStateManager.getTimer(getApplication())
+            if (persisted != null) {
+                val start = persisted.startTimeMillis
+                val elapsed = ((System.currentTimeMillis() - start) / 1000).coerceAtLeast(0L)
+                if (persisted.templateId != null) {
+                    val tmpl = templateDao.getById(persisted.templateId)
+                    if (tmpl != null) {
+                        withContext(Dispatchers.Main) {
+                            activeTimerTemplate.value = tmpl
+                            timerStartTimeMillis = start
+                            timerElapsedSeconds.value = elapsed
+                            startTimerTicker(start)
+                        }
+                    }
+                } else if (persisted.itemId != null) {
+                    val item = itemDao.getById(persisted.itemId)
+                    if (item != null) {
+                        withContext(Dispatchers.Main) {
+                            activeTimerItem.value = item
+                            timerStartTimeMillis = start
+                            timerElapsedSeconds.value = elapsed
+                            startTimerTicker(start)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Trigger widget refresh on changes
         viewModelScope.launch(Dispatchers.IO) {
             combine(
                 allItems,
@@ -159,21 +193,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         TodayTimelineWidgetReceiver.updateAll(getApplication())
     }
 
-    // Determine Day boundaries taking cutoff hour into account
-    fun getLogicalDate(now: LocalDateTime = LocalDateTime.now(), cutoffHour: Int = dayCutoffHour.value): LocalDate {
-        return if (now.hour < cutoffHour) {
-            now.toLocalDate().minusDays(1)
-        } else {
-            now.toLocalDate()
-        }
+    // Logical date and day boundaries
+    fun getLogicalDate(
+        now: LocalDateTime = dateProvider.nowLocalDateTime(),
+        cutoffHour: Int = dayCutoffHour.value
+    ): LocalDate {
+        return dateProvider.getLogicalDate(now, cutoffHour)
     }
 
-    fun getDayRange(date: LocalDate, cutoffHour: Int = dayCutoffHour.value): Pair<Long, Long> {
-        val startDateTime = LocalDateTime.of(date, LocalTime.of(cutoffHour, 0))
-        val endDateTime = startDateTime.plusDays(1).minusNanos(1)
-        val startMillis = startDateTime.atZone(zone).toInstant().toEpochMilli()
-        val endMillis = endDateTime.atZone(zone).toInstant().toEpochMilli()
-        return Pair(startMillis, endMillis)
+    fun getDayRange(
+        date: LocalDate,
+        cutoffHour: Int = dayCutoffHour.value
+    ): Pair<Long, Long> {
+        return dateProvider.getDayRange(date, cutoffHour)
     }
 
     fun previousMonth() {
@@ -189,7 +221,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun goToToday() {
-        val today = LocalDate.now()
+        val today = dateProvider.nowLocalDate()
         calendarYearMonth.value = YearMonth.from(today)
         selectedCalendarDate.value = today
     }
@@ -214,6 +246,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun startTimerTicker(startMillis: Long) {
+        timerJob?.cancel()
+        timerJob = viewModelScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(1000)
+                timerElapsedSeconds.value = ((System.currentTimeMillis() - startMillis) / 1000).coerceAtLeast(0L)
+            }
+        }
+    }
+
     fun startTimer(template: TemplateEntity) {
         if (activeTimerTemplate.value?.id == template.id) {
             stopAndSaveTimer {}
@@ -222,17 +264,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (activeTimerItem.value != null) {
             stopAndSaveItemTimer {}
         }
-        timerJob?.cancel()
         val start = System.currentTimeMillis()
         timerStartTimeMillis = start
         activeTimerTemplate.value = template
         timerElapsedSeconds.value = 0L
-        timerJob = viewModelScope.launch {
-            while (true) {
-                kotlinx.coroutines.delay(1000)
-                timerElapsedSeconds.value = ((System.currentTimeMillis() - start) / 1000).coerceAtLeast(0L)
-            }
-        }
+        TimerStateManager.saveTimer(getApplication(), template.id, null, start)
+        startTimerTicker(start)
     }
 
     fun stopAndSaveTimer(onRecorded: (TimelineItemEntity) -> Unit = {}) {
@@ -248,6 +285,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         activeTimerTemplate.value = null
         timerStartTimeMillis = null
         timerElapsedSeconds.value = 0L
+        TimerStateManager.clearTimer(getApplication())
 
         val now = System.currentTimeMillis()
         viewModelScope.launch(Dispatchers.IO) {
@@ -260,11 +298,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 note = null,
                 templateId = template.id,
                 durationSeconds = seconds.toInt(),
-                countValue = null
+                countValue = null,
+                createdAt = now
             )
             val id = itemDao.insert(newItem)
             val savedItem = newItem.copy(id = id)
             templateDao.recordCompletion(template.id, now)
+
+            val action = undoManager.registerAction(
+                description = "${template.title} を記録しました（${seconds / 60}分）",
+                payload = UndoPayload.TimerComplete(savedItem, template.id)
+            )
             undoItem.value = savedItem
             onRecorded(savedItem)
         }
@@ -277,6 +321,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         activeTimerItem.value = null
         timerStartTimeMillis = null
         timerElapsedSeconds.value = 0L
+        TimerStateManager.clearTimer(getApplication())
     }
 
     fun startItemTimer(item: TimelineItemEntity) {
@@ -287,17 +332,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (activeTimerTemplate.value != null) {
             stopAndSaveTimer {}
         }
-        timerJob?.cancel()
         val start = System.currentTimeMillis()
         timerStartTimeMillis = start
         activeTimerItem.value = item
         timerElapsedSeconds.value = 0L
-        timerJob = viewModelScope.launch {
-            while (true) {
-                kotlinx.coroutines.delay(1000)
-                timerElapsedSeconds.value = ((System.currentTimeMillis() - start) / 1000).coerceAtLeast(0L)
-            }
-        }
+        TimerStateManager.saveTimer(getApplication(), null, item.id, start)
+        startTimerTicker(start)
     }
 
     fun stopAndSaveItemTimer(onRecorded: (TimelineItemEntity) -> Unit = {}) {
@@ -313,6 +353,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         activeTimerItem.value = null
         timerStartTimeMillis = null
         timerElapsedSeconds.value = 0L
+        TimerStateManager.clearTimer(getApplication())
 
         val now = System.currentTimeMillis()
         viewModelScope.launch(Dispatchers.IO) {
@@ -322,6 +363,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 durationSeconds = (item.durationSeconds ?: 0) + seconds.toInt()
             )
             itemDao.update(updated)
+
+            val action = undoManager.registerAction(
+                description = "${item.title} を完了しました",
+                payload = UndoPayload.QuickRecord(updated, item.templateId)
+            )
             undoItem.value = updated
             onRecorded(updated)
         }
@@ -333,6 +379,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         activeTimerItem.value = null
         timerStartTimeMillis = null
         timerElapsedSeconds.value = 0L
+        TimerStateManager.clearTimer(getApplication())
     }
 
     fun quickRecordTemplate(template: TemplateEntity, onRecorded: (TimelineItemEntity) -> Unit) {
@@ -361,20 +408,45 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 note = null,
                 templateId = template.id,
                 durationSeconds = null,
-                countValue = countValue
+                countValue = countValue,
+                createdAt = now
             )
             val id = itemDao.insert(newItem)
             val savedItem = newItem.copy(id = id)
             templateDao.recordCompletion(template.id, now)
+
+            undoManager.registerAction(
+                description = "${template.title} を記録しました",
+                payload = UndoPayload.QuickRecord(savedItem, template.id)
+            )
             undoItem.value = savedItem
             onRecorded(savedItem)
         }
     }
 
     fun undoLastItem() {
-        val item = undoItem.value ?: return
+        val action = undoManager.getLatestAction() ?: return
+        executeUndo(action.actionId)
+    }
+
+    fun executeUndo(actionId: String) {
+        val action = undoManager.getAction(actionId) ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            itemDao.delete(item)
+            when (val payload = action.payload) {
+                is UndoPayload.DeleteItem -> {
+                    itemDao.insert(payload.item)
+                }
+                is UndoPayload.QuickRecord -> {
+                    itemDao.delete(payload.createdItem)
+                }
+                is UndoPayload.MemoPromotion -> {
+                    memoPromotionUseCase.undoPromotion(action.actionId)
+                }
+                is UndoPayload.TimerComplete -> {
+                    itemDao.delete(payload.createdItem)
+                }
+            }
+            undoManager.markConsumed(action.actionId)
             undoItem.value = null
         }
     }
@@ -382,6 +454,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteItem(item: TimelineItemEntity) {
         viewModelScope.launch(Dispatchers.IO) {
             itemDao.delete(item)
+            val action = undoManager.registerAction(
+                description = "${item.title} を削除しました",
+                payload = UndoPayload.DeleteItem(item)
+            )
             undoItem.value = item
         }
     }
@@ -426,23 +502,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun recordCycleTask(template: TemplateEntity, targetDate: LocalDate) {
         viewModelScope.launch(Dispatchers.IO) {
-            val logicalToday = getLogicalDate()
-            val millis = if (targetDate == logicalToday) {
-                System.currentTimeMillis()
-            } else {
-                val time = LocalTime.now()
-                LocalDateTime.of(targetDate, time).atZone(zone).toInstant().toEpochMilli()
-            }
-            val item = TimelineItemEntity(
-                title = template.title,
-                isDone = true,
-                completedAt = millis,
-                note = null,
-                templateId = template.id
-            )
-            itemDao.insert(item)
-            val latestMillis = maxOf(millis, template.lastCompletedAt ?: 0L)
-            templateDao.update(template.copy(usageCount = template.usageCount + 1, lastCompletedAt = latestMillis))
+            periodicTaskUseCase.recordCompletion(template, targetDate, dayCutoffHour.value)
         }
     }
 
@@ -461,18 +521,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun skipCycleTask(template: TemplateEntity) {
+    /**
+     * 周期タスクの「今回は見送る」
+     * 完了ログを作らず、lastCompletedAt も更新せず、次回目安日を延長する。
+     */
+    fun postponeCycleTask(template: TemplateEntity, delayDays: Int = 1) {
         viewModelScope.launch(Dispatchers.IO) {
-            val now = System.currentTimeMillis()
-            // 完了ログは作らず、次回予定日を本日起点に繰り延べるため lastCompletedAt のみを更新
-            val updated = template.copy(lastCompletedAt = now)
-            templateDao.update(updated)
+            periodicTaskUseCase.postponeTask(template, dayCutoffHour.value, delayDays)
+            notifyWidgetUpdate()
         }
     }
 
-    /**
-     * Doneアイテム（またはToDo）を周期タスク（習慣・ルーティン）へ昇格登録する
-     */
+    fun skipCycleTask(template: TemplateEntity) {
+        postponeCycleTask(template, 1)
+    }
+
+    fun cancelCyclePostponement(template: TemplateEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            periodicTaskUseCase.cancelPostponement(template)
+            notifyWidgetUpdate()
+        }
+    }
+
     fun promoteItemToPeriodicTemplate(
         item: TimelineItemEntity,
         intervalDays: Int = 7,
@@ -573,6 +643,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * テンプレート削除:
+     * 過去ログは削除せず保持し、参照整合性を維持する。
+     */
     fun deleteTemplate(template: TemplateEntity) {
         viewModelScope.launch(Dispatchers.IO) {
             templateDao.delete(template)
@@ -580,10 +654,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun reloadSampleData() {
+        executeReset(ResetType.RELOAD_SAMPLE_DATA)
+    }
+
+    suspend fun getDataCounts(): DataCounts {
+        return resetDataUseCase.getDataCounts()
+    }
+
+    fun executeReset(type: ResetType, onComplete: (() -> Unit)? = null) {
         viewModelScope.launch(Dispatchers.IO) {
-            itemDao.deleteAll()
-            templateDao.deleteAll()
-            DatabaseSeeder.seed(templateDao, itemDao)
+            resetDataUseCase.executeReset(type)
+            notifyWidgetUpdate()
+            onComplete?.invoke()
         }
     }
 
@@ -599,43 +681,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         notifyWidgetUpdate()
     }
 
-    fun exportJson(): String {
-        val currentItems = allItems.value
-        val currentTemplates = templates.value
-        val data = mapOf(
-            "templates" to currentTemplates,
-            "timeline_items" to currentItems
-        )
-        val json = Json { prettyPrint = true }
-        return json.encodeToString(data)
+    fun setShowStreaksAndGoals(enabled: Boolean) {
+        showStreaksAndGoals.value = enabled
+        WidgetSettingsManager.setShowStreaksAndGoals(getApplication(), enabled)
     }
 
-    suspend fun importJson(jsonStr: String): Pair<Int, Int> {
-        return withContext(Dispatchers.IO) {
-            val json = Json { ignoreUnknownKeys = true }
-            val root = json.parseToJsonElement(jsonStr).jsonObject
-            val templatesJson = root["templates"]
-            val itemsJson = root["timeline_items"]
+    suspend fun exportJson(): String {
+        return backupUseCase.exportJson()
+    }
 
-            var importedTemplates = 0
-            var importedItems = 0
+    fun validateBackupJson(jsonStr: String): ImportValidationResult {
+        return backupUseCase.validateJson(jsonStr)
+    }
 
-            if (templatesJson != null) {
-                val tmpls = json.decodeFromJsonElement<List<TemplateEntity>>(templatesJson)
-                tmpls.forEach { t ->
-                    templateDao.insert(t)
-                    importedTemplates++
-                }
-            }
-            if (itemsJson != null) {
-                val its = json.decodeFromJsonElement<List<TimelineItemEntity>>(itemsJson)
-                its.forEach { item ->
-                    itemDao.insert(item)
-                    importedItems++
-                }
-            }
-            Pair(importedTemplates, importedItems)
+    suspend fun executeImport(payload: BackupPayload, mode: ImportMode): ImportExecutionResult {
+        val result = backupUseCase.executeImport(payload, mode)
+        if (result.success) {
+            notifyWidgetUpdate()
         }
+        return result
     }
 
     // === Memo Management ===
@@ -684,56 +748,64 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // === Memo Promotion Engine (Actionable Integration) ===
-    fun promoteMemoToTodo(memo: MemoEntity, scheduledAt: Long?, deleteMemoAfter: Boolean = true) {
+    // === Memo Promotion Engine with full transactional undo ===
+    fun promoteMemoToTodo(
+        memo: MemoEntity,
+        scheduledAt: Long?,
+        deleteMemoAfter: Boolean = true,
+        onSuccess: ((UndoAction) -> Unit)? = null
+    ) {
         viewModelScope.launch(Dispatchers.IO) {
-            itemDao.insert(
-                TimelineItemEntity(
-                    title = memo.content.trim(),
-                    isDone = false,
-                    scheduledAt = scheduledAt
-                )
+            val result = memoPromotionUseCase.promoteMemo(
+                memo = memo,
+                target = PromotionTarget.ToDo(scheduledAt = scheduledAt)
             )
-            if (deleteMemoAfter) {
-                memoDao.delete(memo)
+            if (result.success && result.undoAction != null) {
+                onSuccess?.invoke(result.undoAction)
             }
         }
     }
 
-    fun promoteMemoToDone(memo: MemoEntity, completedAt: Long = System.currentTimeMillis(), deleteMemoAfter: Boolean = true) {
+    fun promoteMemoToDone(
+        memo: MemoEntity,
+        completedAt: Long = System.currentTimeMillis(),
+        deleteMemoAfter: Boolean = true,
+        onSuccess: ((UndoAction) -> Unit)? = null
+    ) {
         viewModelScope.launch(Dispatchers.IO) {
-            itemDao.insert(
-                TimelineItemEntity(
-                    title = memo.content.trim(),
-                    isDone = true,
-                    completedAt = completedAt
-                )
+            val result = memoPromotionUseCase.promoteMemo(
+                memo = memo,
+                target = PromotionTarget.Done(completedAt = completedAt)
             )
-            if (deleteMemoAfter) {
-                memoDao.delete(memo)
+            if (result.success && result.undoAction != null) {
+                onSuccess?.invoke(result.undoAction)
             }
         }
     }
 
-    fun promoteMemoToPeriodic(memo: MemoEntity, intervalDays: Int, deleteMemoAfter: Boolean = false) {
+    fun promoteMemoToPeriodic(
+        memo: MemoEntity,
+        intervalDays: Int,
+        deleteMemoAfter: Boolean = false,
+        onSuccess: ((UndoAction) -> Unit)? = null
+    ) {
         viewModelScope.launch(Dispatchers.IO) {
-            templateDao.insert(
-                TemplateEntity(
-                    title = memo.content.trim(),
-                    type = "INTERVAL",
-                    intervalDays = intervalDays,
-                    iconKey = "🔄",
-                    colorHex = "#34C759",
-                    lastCompletedAt = System.currentTimeMillis()
-                )
+            val result = memoPromotionUseCase.promoteMemo(
+                memo = memo,
+                target = PromotionTarget.Periodic(intervalDays = intervalDays)
             )
-            if (deleteMemoAfter) {
-                memoDao.delete(memo)
+            if (result.success && result.undoAction != null) {
+                onSuccess?.invoke(result.undoAction)
             }
         }
     }
 
-    fun promoteMemoToTemplate(memo: MemoEntity, iconKey: String = "⚡", colorHex: String = "#FF9500", deleteMemoAfter: Boolean = false) {
+    fun promoteMemoToTemplate(
+        memo: MemoEntity,
+        iconKey: String = "⚡",
+        colorHex: String = "#FF9500",
+        deleteMemoAfter: Boolean = false
+    ) {
         viewModelScope.launch(Dispatchers.IO) {
             templateDao.insert(
                 TemplateEntity(
@@ -764,7 +836,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // === Reschedule Item to Drawer (Stock) ===
     fun rescheduleItemToDrawer(item: TimelineItemEntity) {
         viewModelScope.launch(Dispatchers.IO) {
-            val (todayStart, _) = getDayRange(LocalDate.now())
+            val (todayStart, _) = getDayRange(dateProvider.nowLocalDate())
             itemDao.update(
                 item.copy(
                     scheduledAt = null,
