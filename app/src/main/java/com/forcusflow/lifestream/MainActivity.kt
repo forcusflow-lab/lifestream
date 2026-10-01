@@ -32,6 +32,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handleIntent(intent)
+        com.forcusflow.lifestream.widget.TodayTimelineWidgetReceiver.updateAll(this)
         setContent {
             val themeMode by viewModel.themeMode.collectAsState()
             val currentTab by viewModel.currentTab.collectAsState()

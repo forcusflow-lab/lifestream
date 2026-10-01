@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -87,7 +88,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
     var showSearchSheet by remember { mutableStateOf(false) }
     var showFocusSheet by remember { mutableStateOf(false) }
     var showDrawerSheet by remember { mutableStateOf(false) }
-    var isFutureTrayExpanded by remember { mutableStateOf(true) }
+    var isFutureTrayExpanded by rememberSaveable { mutableStateOf(false) }
 
     val openAddRequested by viewModel.openAddSheetRequested.collectAsState()
     LaunchedEffect(openAddRequested) {
@@ -121,9 +122,6 @@ fun TimelineScreen(viewModel: MainViewModel) {
         todayDoneItems + todayPendingItems
     }
     val upcomingItems = timelineData.drawerStockItems
-
-    // 完了ログの折りたたみ状態（件数が多い場合は折りたたみ可能）
-    var isDoneSectionExpanded by remember { mutableStateOf(todayDoneItems.size < 4) }
 
     // NOWライン表示用時刻のみを定期更新（全体再コンポーズを防止）
     var nowTimeStr by remember { mutableStateOf(viewModel.dateProvider.formatTime(viewModel.dateProvider.nowLocalTime())) }
@@ -227,57 +225,42 @@ fun TimelineScreen(viewModel: MainViewModel) {
                     )
                 }
 
-                // Sticky-Note Style "Today's Focus" (付箋・帯デザイン)
-                Box(
+                // Quiet, borderless "Today's Focus" subtitle (手帳の静かな見出し)
+                val focusText = dailyFocus?.content
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 8.dp)
-                ) {
-                    val focusText = dailyFocus?.content
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = if (focusText.isNullOrBlank()) colors.card.copy(alpha = 0.6f) else colors.primary.copy(alpha = 0.08f),
-                        border = BorderStroke(
-                            width = 0.8.dp,
-                            color = if (focusText.isNullOrBlank()) colors.border.copy(alpha = 0.4f) else colors.primary.copy(alpha = 0.25f)
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                showFocusSheet = true
-                            }
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
-                        ) {
-                            if (focusText.isNullOrBlank()) {
-                                Text(
-                                    text = "📌 今日のフォーカスを記す...",
-                                    fontSize = 12.5.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = colors.textSecondary.copy(alpha = 0.75f),
-                                    letterSpacing = 0.2.sp
-                                )
-                            } else {
-                                Text(
-                                    text = "🎯",
-                                    fontSize = 13.sp
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = focusText,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = colors.textPrimary,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                    letterSpacing = 0.2.sp
-                                )
-                            }
+                        .padding(start = 22.dp, end = 22.dp, top = 0.dp, bottom = 6.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            showFocusSheet = true
                         }
+                        .padding(vertical = 4.dp)
+                ) {
+                    if (focusText.isNullOrBlank()) {
+                        Text(
+                            text = "今日のフォーカスを一言記す...",
+                            fontSize = 13.sp,
+                            color = colors.textSecondary.copy(alpha = 0.6f),
+                            letterSpacing = 0.2.sp
+                        )
+                    } else {
+                        Text(
+                            text = "🎯",
+                            fontSize = 13.sp
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = focusText,
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = colors.textPrimary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            letterSpacing = 0.2.sp
+                        )
                     }
                 }
 
@@ -361,10 +344,10 @@ fun TimelineScreen(viewModel: MainViewModel) {
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
-                                .border(
-                                    width = if (isTimerActive) 1.5.dp else 1.dp,
-                                    color = chipBorderColor.copy(alpha = if (isTimerActive) 1f else 0.6f),
-                                    shape = RoundedCornerShape(10.dp)
+                                .then(
+                                    if (isTimerActive) {
+                                        Modifier.border(1.5.dp, Color(0xFFEF4444), RoundedCornerShape(10.dp))
+                                    } else Modifier
                                 )
                                 .background(chipBgColor)
                                 .combinedClickable(
@@ -438,8 +421,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
                     modifier = Modifier
                         .size(34.dp)
                         .clip(CircleShape)
-                        .border(0.6.dp, colors.border.copy(alpha = 0.5f), CircleShape)
-                        .background(colors.card)
+                        .background(colors.card.copy(alpha = 0.6f))
                         .clickable {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             showTemplateManagerDialog = true
@@ -455,8 +437,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
                 if (pinnedTemplates.isEmpty()) {
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = colors.card,
-                        border = BorderStroke(0.6.dp, colors.border.copy(alpha = 0.6f)),
+                        color = colors.card.copy(alpha = 0.6f),
                         modifier = Modifier
                             .clip(RoundedCornerShape(10.dp))
                             .clickable {
@@ -485,57 +466,30 @@ fun TimelineScreen(viewModel: MainViewModel) {
                     .padding(horizontal = 20.dp),
                 contentPadding = PaddingValues(top = 4.dp, bottom = 80.dp)
             ) {
-                // 1. 過去の実績ログ（DONEログ）：折りたたみ・サマリー化対応
+                // 1. 過去の実績ログ（DONEログ）：見出し看板を排し、タイムライン上に直接自然に配置
                 if (todayDoneItems.isNotEmpty()) {
-                    item(key = "done_summary_header") {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable { isDoneSectionExpanded = !isDoneSectionExpanded }
-                                .padding(vertical = 4.dp, horizontal = 2.dp)
-                        ) {
-                            Text(
-                                text = "🌿 本日の完了記録 (${todayDoneItems.size}件)",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = colors.primary.copy(alpha = 0.85f),
-                                letterSpacing = 0.2.sp
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (isDoneSectionExpanded) "▲" else "▼",
-                                fontSize = 10.sp,
-                                color = colors.textSecondary.copy(alpha = 0.6f)
-                            )
-                        }
-                    }
-
-                    if (isDoneSectionExpanded) {
-                        itemsIndexed(todayDoneItems, key = { _, item -> item.id }) { index, item ->
-                            TaskitoTimelineItemRow(
-                                item = item,
-                                templates = templates,
-                                isFirst = index == 0,
-                                isLast = false,
-                                onToggle = { viewModel.toggleItemDone(item) },
-                                onClick = { itemToEdit = item },
-                                onDelete = {
-                                    viewModel.deleteItem(item)
-                                    coroutineScope.launch {
-                                        val res = snackbarHostState.showSnackbar(
-                                            message = "${item.title} を削除しました",
-                                            actionLabel = "元に戻す",
-                                            duration = SnackbarDuration.Short
-                                        )
-                                        if (res == SnackbarResult.ActionPerformed) {
-                                            viewModel.restoreItem(item)
-                                        }
+                    itemsIndexed(todayDoneItems, key = { _, item -> item.id }) { index, item ->
+                        TaskitoTimelineItemRow(
+                            item = item,
+                            templates = templates,
+                            isFirst = index == 0,
+                            isLast = false,
+                            onToggle = { viewModel.toggleItemDone(item) },
+                            onClick = { itemToEdit = item },
+                            onDelete = {
+                                viewModel.deleteItem(item)
+                                coroutineScope.launch {
+                                    val res = snackbarHostState.showSnackbar(
+                                        message = "${item.title} を削除しました",
+                                        actionLabel = "元に戻す",
+                                        duration = SnackbarDuration.Short
+                                    )
+                                    if (res == SnackbarResult.ActionPerformed) {
+                                        viewModel.restoreItem(item)
                                     }
                                 }
-                            )
-                        }
+                            }
+                        )
                     }
                 }
 
@@ -553,8 +507,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                 .fillMaxWidth()
                                 .padding(top = 16.dp, bottom = 12.dp)
                                 .clip(RoundedCornerShape(14.dp))
-                                .background(colors.card)
-                                .border(0.5.dp, colors.border, RoundedCornerShape(14.dp))
+                                .background(colors.card.copy(alpha = 0.5f))
                                 .padding(18.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -596,11 +549,12 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     isFutureTrayExpanded = !isFutureTrayExpanded
                                 }
-                                .padding(vertical = 2.dp, horizontal = 4.dp)
+                                .padding(vertical = 3.dp, horizontal = 4.dp)
                         ) {
+                            val futureCount = dueOrOverduePeriodic.size + todayPendingItems.size
                             Text(
-                                text = "これからの歩み",
-                                fontSize = 14.sp,
+                                text = if (futureCount > 0) "これからの歩み ($futureCount)" else "これからの歩み",
+                                fontSize = 13.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.textPrimary
                             )
@@ -612,11 +566,10 @@ fun TimelineScreen(viewModel: MainViewModel) {
                             )
                         }
 
-                        // トレイ見出し右端に昇格した「📦 引き出し」ボタン
+                        // トレイ見出し右端の「📦 引き出し」ボタン（枠線を排した柔らかなピル）
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = colors.card,
-                            border = BorderStroke(0.6.dp, colors.border.copy(alpha = 0.6f)),
+                            color = colors.card.copy(alpha = 0.6f),
                             modifier = Modifier
                                 .clip(RoundedCornerShape(12.dp))
                                 .clickable {
@@ -640,7 +593,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
                         }
                     }
 
-                    // 統一トレイ（Surface: 開閉アニメーション対応）
+                    // 統一トレイ（Surface: 枠線を排し背景と調和するアンビエント面）
                     AnimatedVisibility(
                         visible = isFutureTrayExpanded,
                         enter = fadeIn() + expandVertically(),
@@ -648,8 +601,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
                     ) {
                         Surface(
                             shape = RoundedCornerShape(16.dp),
-                            color = colors.card,
-                            border = BorderStroke(0.5.dp, colors.border.copy(alpha = 0.45f)),
+                            color = colors.card.copy(alpha = 0.65f),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(top = 4.dp)
@@ -1066,10 +1018,10 @@ fun TaskitoNowLineRow(
             .height(IntrinsicSize.Min),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Continuous stem line
+        // Continuous stem line (36.dp width exactly matches TaskitoTimelineItemRow)
         Box(
             modifier = Modifier
-                .width(32.dp)
+                .width(36.dp)
                 .fillMaxHeight(),
             contentAlignment = Alignment.Center
         ) {

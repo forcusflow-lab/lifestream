@@ -385,7 +385,7 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                 Box(
                                     modifier = GlanceModifier
                                         .size(13.dp)
-                                        .cornerRadius(6.5.dp)
+                                        .cornerRadius(6.dp)
                                         .background(if (isFirstTask) colors.primary.copy(alpha = 0.5f) else colors.border.copy(alpha = 0.6f)),
                                     contentAlignment = Alignment.Center
                                 ) {}
