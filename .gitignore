@@ -14,8 +14,8 @@ build/
 !gradle/wrapper/gradle-wrapper.jar
 
 # Keystores & sensitive credentials
-keystore/
-*.keystore
+keystore/*
+!keystore/debug.keystore
 *.jks
 .env
 local.properties

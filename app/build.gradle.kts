@@ -32,6 +32,8 @@ android {
                 storePassword = System.getenv("DEBUG_STORE_PASSWORD") ?: "android"
                 keyAlias = System.getenv("DEBUG_KEY_ALIAS") ?: "androiddebugkey"
                 keyPassword = System.getenv("DEBUG_KEY_PASSWORD") ?: "android"
+            } else {
+                error("Missing keystore/debug.keystore! Fixed keystore is required for reproducible update signatures.")
             }
         }
         create("release") {
