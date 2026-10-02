@@ -19,15 +19,26 @@ class TodayTimelineWidgetReceiver : GlanceAppWidgetReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        when (intent.action) {
+        val shouldRefresh = when (intent.action) {
             android.appwidget.AppWidgetManager.ACTION_APPWIDGET_UPDATE,
             Intent.ACTION_DATE_CHANGED,
             Intent.ACTION_TIMEZONE_CHANGED,
             Intent.ACTION_TIME_CHANGED,
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_MY_PACKAGE_REPLACED,
-            ACTION_SCHEDULED_WIDGET_REFRESH -> {
-                updateAll(context)
+            ACTION_SCHEDULED_WIDGET_REFRESH -> true
+            else -> false
+        }
+
+        if (shouldRefresh) {
+            // Keep the process alive until Glance has finished updating after boot/time events.
+            val pendingResult = goAsync()
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    updateAllSuspending(context)
+                } finally {
+                    pendingResult.finish()
+                }
             }
         }
     }
@@ -37,19 +48,23 @@ class TodayTimelineWidgetReceiver : GlanceAppWidgetReceiver() {
 
         fun updateAll(context: Context) {
             CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    val manager = GlanceAppWidgetManager(context)
-                    val glanceIds = manager.getGlanceIds(TodayTimelineGlanceWidget::class.java)
-                    if (glanceIds.isNotEmpty()) {
-                        val widget = TodayTimelineGlanceWidget()
-                        glanceIds.forEach { glanceId ->
-                            widget.update(context, glanceId)
-                        }
+                updateAllSuspending(context)
+            }
+        }
+
+        private suspend fun updateAllSuspending(context: Context) {
+            try {
+                val manager = GlanceAppWidgetManager(context)
+                val glanceIds = manager.getGlanceIds(TodayTimelineGlanceWidget::class.java)
+                if (glanceIds.isNotEmpty()) {
+                    val widget = TodayTimelineGlanceWidget()
+                    glanceIds.forEach { glanceId ->
+                        widget.update(context, glanceId)
                     }
-                    scheduleNextRefresh(context)
-                } catch (e: Exception) {
-                    e.printStackTrace()
                 }
+                scheduleNextRefresh(context)
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
 

@@ -226,7 +226,12 @@ fun AddItemBottomSheet(
                                                 else -> null
                                             }
                                             if (time != null) {
-                                                scheduledMillis = LocalDateTime.of(now.toLocalDate(), time).atZone(zone).toInstant().toEpochMilli()
+                                                val logicalToday = if (now.hour < cutoffHour) {
+                                                    now.toLocalDate().minusDays(1)
+                                                } else {
+                                                    now.toLocalDate()
+                                                }
+                                                scheduledMillis = LocalDateTime.of(logicalToday, time).atZone(zone).toInstant().toEpochMilli()
                                             }
                                         }
                                     }

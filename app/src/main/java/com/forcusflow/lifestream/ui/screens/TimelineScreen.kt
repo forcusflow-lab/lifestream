@@ -89,6 +89,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
     var showFocusSheet by remember { mutableStateOf(false) }
     var showDrawerSheet by remember { mutableStateOf(false) }
     var isFutureTrayExpanded by rememberSaveable { mutableStateOf(false) }
+    var isDoneLogExpanded by remember { mutableStateOf(false) }
 
     val openAddRequested by viewModel.openAddSheetRequested.collectAsState()
     LaunchedEffect(openAddRequested) {
@@ -109,7 +110,6 @@ fun TimelineScreen(viewModel: MainViewModel) {
             cutoffHour = cutoffHour
         )
     }
-
     val today = timelineData.logicalDate
     val todayDateFormatted = timelineData.dateFormatted
     val todayDateKey = remember(today) { today.toString() }
@@ -117,6 +117,13 @@ fun TimelineScreen(viewModel: MainViewModel) {
     val dailyFocus by viewModel.getDailyFocus(todayDateKey).collectAsState(initial = null)
 
     val todayDoneItems = timelineData.doneItems
+    // Keep the current line and future actions visible even after many completions.
+    // The full history remains available by expanding the completion log.
+    val visibleTodayDoneItems = if (isDoneLogExpanded) {
+        todayDoneItems
+    } else {
+        todayDoneItems.takeLast(3)
+    }
     val todayPendingItems = timelineData.pendingHandItems
     val todayItems = remember(todayDoneItems, todayPendingItems) {
         todayDoneItems + todayPendingItems
@@ -176,12 +183,6 @@ fun TimelineScreen(viewModel: MainViewModel) {
         Brush.verticalGradient(
             listOf(adjustLuminance(base, topFactor), adjustLuminance(base, bottomFactor))
         )
-    }
-
-    LaunchedEffect(Unit) {
-        if (todayDoneItems.isNotEmpty()) {
-            listState.scrollToItem((todayDoneItems.size - 1).coerceAtLeast(0))
-        }
     }
 
     Scaffold(
@@ -468,7 +469,30 @@ fun TimelineScreen(viewModel: MainViewModel) {
             ) {
                 // 1. 過去の実績ログ（DONEログ）：見出し看板を排し、タイムライン上に直接自然に配置
                 if (todayDoneItems.isNotEmpty()) {
-                    itemsIndexed(todayDoneItems, key = { _, item -> item.id }) { index, item ->
+                    item(key = "done_summary") {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { isDoneLogExpanded = !isDoneLogExpanded }
+                                .padding(horizontal = 8.dp, vertical = 5.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "今日の完了 ${todayDoneItems.size}件",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.textSecondary
+                            )
+                            Text(
+                                text = if (isDoneLogExpanded) "▲" else "▼",
+                                fontSize = 10.sp,
+                                color = colors.textSecondary.copy(alpha = 0.65f)
+                            )
+                        }
+                    }
+                    itemsIndexed(visibleTodayDoneItems, key = { _, item -> item.id }) { index, item ->
                         TaskitoTimelineItemRow(
                             item = item,
                             templates = templates,
@@ -497,7 +521,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
                 item(key = "now_line") {
                     TaskitoNowLineRow(
                         timeStr = nowTimeStr,
-                        isFirst = todayDoneItems.isEmpty(),
+                        isFirst = visibleTodayDoneItems.isEmpty(),
                         isLast = false
                     )
 
