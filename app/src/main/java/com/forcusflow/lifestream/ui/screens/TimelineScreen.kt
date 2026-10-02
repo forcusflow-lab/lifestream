@@ -159,7 +159,9 @@ fun TimelineScreen(viewModel: MainViewModel) {
         if ((isInitialLoad && (currentCount > 0 || todayPendingItems.isNotEmpty())) ||
             (completionAdded && wasNearNow)
         ) {
-            listState.animateScrollToItem(currentCount)
+            // Show the latest three completed items by default; older items remain
+            // reachable by swiping upward in the same LazyColumn.
+            listState.animateScrollToItem((currentCount - 3).coerceAtLeast(0))
         }
         previousDoneCount = currentCount
     }
