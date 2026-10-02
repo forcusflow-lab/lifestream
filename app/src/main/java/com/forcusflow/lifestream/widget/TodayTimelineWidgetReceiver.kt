@@ -20,7 +20,8 @@ class TodayTimelineWidgetReceiver : GlanceAppWidgetReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         val shouldRefresh = when (intent.action) {
-            android.appwidget.AppWidgetManager.ACTION_APPWIDGET_UPDATE,
+            // APPWIDGET_UPDATE is already handled by GlanceAppWidgetReceiver.super.
+            // Handling it again here can race the initial render after launcher restore.
             Intent.ACTION_DATE_CHANGED,
             Intent.ACTION_TIMEZONE_CHANGED,
             Intent.ACTION_TIME_CHANGED,
