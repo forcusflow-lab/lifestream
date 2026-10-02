@@ -89,7 +89,6 @@ fun TimelineScreen(viewModel: MainViewModel) {
     var showFocusSheet by remember { mutableStateOf(false) }
     var showDrawerSheet by remember { mutableStateOf(false) }
     var isFutureTrayExpanded by rememberSaveable { mutableStateOf(false) }
-    var isDoneLogExpanded by remember { mutableStateOf(false) }
 
     val openAddRequested by viewModel.openAddSheetRequested.collectAsState()
     LaunchedEffect(openAddRequested) {
@@ -117,13 +116,6 @@ fun TimelineScreen(viewModel: MainViewModel) {
     val dailyFocus by viewModel.getDailyFocus(todayDateKey).collectAsState(initial = null)
 
     val todayDoneItems = timelineData.doneItems
-    // Keep the current line and future actions visible even after many completions.
-    // The full history remains available by expanding the completion log.
-    val visibleTodayDoneItems = if (isDoneLogExpanded) {
-        todayDoneItems
-    } else {
-        todayDoneItems.takeLast(3)
-    }
     val todayPendingItems = timelineData.pendingHandItems
     val todayItems = remember(todayDoneItems, todayPendingItems) {
         todayDoneItems + todayPendingItems
@@ -152,6 +144,25 @@ fun TimelineScreen(viewModel: MainViewModel) {
 
     val listState = rememberLazyListState()
     var completingItemIds by remember { mutableStateOf(setOf<Long>()) }
+    var previousDoneCount by rememberSaveable { mutableIntStateOf(-1) }
+
+    // Open around NOW once, then preserve the user's scroll position.
+    // When a new completion is added, follow NOW only if it was already visible.
+    LaunchedEffect(today, todayDoneItems.size) {
+        val previousCount = previousDoneCount
+        val currentCount = todayDoneItems.size
+        val isInitialLoad = previousCount < 0
+        val completionAdded = previousCount >= 0 && currentCount > previousCount
+        val wasNearNow = listState.layoutInfo.visibleItemsInfo.any { it.key == "now_line" } ||
+            listState.firstVisibleItemIndex >= (previousCount - 2).coerceAtLeast(0)
+
+        if ((isInitialLoad && (currentCount > 0 || todayPendingItems.isNotEmpty())) ||
+            (completionAdded && wasNearNow)
+        ) {
+            listState.animateScrollToItem(currentCount)
+        }
+        previousDoneCount = currentCount
+    }
 
     // Ambient gradient based on time of day (Morning / Afternoon / Twilight / Night)
     // 選択中のテーマ背景色をベースに、時間帯による明度（ルミナンス）を微細に変化させる
@@ -467,32 +478,9 @@ fun TimelineScreen(viewModel: MainViewModel) {
                     .padding(horizontal = 20.dp),
                 contentPadding = PaddingValues(top = 4.dp, bottom = 80.dp)
             ) {
-                // 1. 過去の実績ログ（DONEログ）：見出し看板を排し、タイムライン上に直接自然に配置
+                // 1. 過去の実績ログ（DONEログ）：全件を通常スクロールで振り返れる
                 if (todayDoneItems.isNotEmpty()) {
-                    item(key = "done_summary") {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable { isDoneLogExpanded = !isDoneLogExpanded }
-                                .padding(horizontal = 8.dp, vertical = 5.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "今日の完了 ${todayDoneItems.size}件",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = colors.textSecondary
-                            )
-                            Text(
-                                text = if (isDoneLogExpanded) "▲" else "▼",
-                                fontSize = 10.sp,
-                                color = colors.textSecondary.copy(alpha = 0.65f)
-                            )
-                        }
-                    }
-                    itemsIndexed(visibleTodayDoneItems, key = { _, item -> item.id }) { index, item ->
+                    itemsIndexed(todayDoneItems, key = { _, item -> item.id }) { index, item ->
                         TaskitoTimelineItemRow(
                             item = item,
                             templates = templates,
@@ -521,7 +509,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
                 item(key = "now_line") {
                     TaskitoNowLineRow(
                         timeStr = nowTimeStr,
-                        isFirst = visibleTodayDoneItems.isEmpty(),
+                        isFirst = todayDoneItems.isEmpty(),
                         isLast = false
                     )
 
