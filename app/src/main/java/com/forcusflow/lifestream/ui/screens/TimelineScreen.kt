@@ -39,7 +39,9 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import com.forcusflow.lifestream.widget.WidgetSettingsManager
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -88,7 +90,10 @@ fun TimelineScreen(viewModel: MainViewModel) {
     var showSearchSheet by remember { mutableStateOf(false) }
     var showFocusSheet by remember { mutableStateOf(false) }
     var showDrawerSheet by remember { mutableStateOf(false) }
-    var isFutureTrayExpanded by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
+    var isFutureTrayExpanded by remember {
+        mutableStateOf(WidgetSettingsManager.isFutureTrayExpanded(context))
+    }
 
     val openAddRequested by viewModel.openAddSheetRequested.collectAsState()
     LaunchedEffect(openAddRequested) {
@@ -623,7 +628,10 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                 .clip(RoundedCornerShape(8.dp))
                                 .clickable {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    isFutureTrayExpanded = !isFutureTrayExpanded
+                                    val next = !isFutureTrayExpanded
+                                    isFutureTrayExpanded = next
+                                    WidgetSettingsManager.setFutureTrayExpanded(context, next)
+                                    viewModel.notifyWidgetUpdate()
                                 }
                                 .padding(vertical = 3.dp, horizontal = 4.dp)
                         ) {

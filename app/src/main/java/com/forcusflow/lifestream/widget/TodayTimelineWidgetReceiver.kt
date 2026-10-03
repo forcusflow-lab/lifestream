@@ -53,7 +53,7 @@ class TodayTimelineWidgetReceiver : GlanceAppWidgetReceiver() {
             }
         }
 
-        private suspend fun updateAllSuspending(context: Context) {
+        suspend fun updateAllSuspending(context: Context) {
             try {
                 val manager = GlanceAppWidgetManager(context)
                 val glanceIds = manager.getGlanceIds(TodayTimelineGlanceWidget::class.java)

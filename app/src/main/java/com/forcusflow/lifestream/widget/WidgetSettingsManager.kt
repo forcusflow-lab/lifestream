@@ -18,26 +18,30 @@ object WidgetSettingsManager {
     private const val KEY_THEME_MODE = "widget_theme_mode"
     private const val KEY_CUTOFF_HOUR = "widget_cutoff_hour"
     private const val KEY_SHOW_STREAKS_AND_GOALS = "show_streaks_and_goals"
-    private const val KEY_WIDGET_TRAY_EXPANDED = "widget_tray_expanded"
+    private const val KEY_FUTURE_TRAY_EXPANDED = "future_tray_expanded"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 
-    fun isWidgetTrayExpanded(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_WIDGET_TRAY_EXPANDED, false) // Default is collapsed (false)
+    fun isFutureTrayExpanded(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_FUTURE_TRAY_EXPANDED, true) // Default is expanded (true)
     }
 
-    fun setWidgetTrayExpanded(context: Context, expanded: Boolean) {
-        getPrefs(context).edit().putBoolean(KEY_WIDGET_TRAY_EXPANDED, expanded).apply()
+    fun setFutureTrayExpanded(context: Context, expanded: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_FUTURE_TRAY_EXPANDED, expanded).apply()
     }
 
-    fun toggleWidgetTrayExpanded(context: Context): Boolean {
-        val current = isWidgetTrayExpanded(context)
-        val next = !current
-        setWidgetTrayExpanded(context, next)
+    fun toggleFutureTrayExpanded(context: Context): Boolean {
+        val next = !isFutureTrayExpanded(context)
+        setFutureTrayExpanded(context, next)
         return next
     }
+
+    // Backwards-compatible aliases
+    fun isWidgetTrayExpanded(context: Context): Boolean = isFutureTrayExpanded(context)
+    fun setWidgetTrayExpanded(context: Context, expanded: Boolean) = setFutureTrayExpanded(context, expanded)
+    fun toggleWidgetTrayExpanded(context: Context): Boolean = toggleFutureTrayExpanded(context)
 
     fun getShowStreaksAndGoals(context: Context): Boolean {
         return getPrefs(context).getBoolean(KEY_SHOW_STREAKS_AND_GOALS, false) // Default is FALSE as required

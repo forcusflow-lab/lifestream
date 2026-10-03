@@ -11,6 +11,7 @@ import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionParametersOf
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.action.actionStartActivity
@@ -28,10 +29,8 @@ import com.forcusflow.lifestream.domain.PeriodicTaskUseCase
 import com.forcusflow.lifestream.domain.TodayTimelineCalculator
 import java.time.Instant
 import java.time.LocalDateTime
-import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 class TodayTimelineGlanceWidget : GlanceAppWidget() {
 
@@ -41,7 +40,7 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
         val fontSizePref = WidgetSettingsManager.getFontSize(context)
         val colors = WidgetSettingsManager.getThemeColors(context)
         val cutoffHour = WidgetSettingsManager.getCutoffHour(context)
-        val isTrayExpanded = WidgetSettingsManager.isWidgetTrayExpanded(context)
+        val isTrayExpanded = WidgetSettingsManager.isFutureTrayExpanded(context)
 
         val dateProvider = LifeDateProvider()
         val allItems = try { db.timelineItemDao().getAll() } catch (e: Exception) { emptyList() }
@@ -102,13 +101,13 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                 alpha = baseColor.alpha
             ).copy(alpha = opacity.coerceIn(0.1f, 1.0f))
 
+            // Root container without clickable modifier to avoid RemoteViews touch event collisions
             Box(
                 modifier = GlanceModifier
                     .fillMaxSize()
                     .background(ambientCardBg)
                     .cornerRadius(18.dp)
-                    .padding(horizontal = 14.dp, vertical = 12.dp)
-                    .clickable(actionStartActivity(launchIntent))
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
                 Column(
                     modifier = GlanceModifier.fillMaxSize()
@@ -125,7 +124,9 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                 fontWeight = FontWeight.Bold,
                                 color = ColorProvider(colors.textPrimary)
                             ),
-                            modifier = GlanceModifier.defaultWeight()
+                            modifier = GlanceModifier
+                                .defaultWeight()
+                                .clickable(actionStartActivity(launchIntent))
                         )
 
                         // 🔄 手動更新 Button (タップで即時再描画)
@@ -170,7 +171,7 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
 
                     // Focus section
                     if (!focusText.isNullOrBlank()) {
-                        Spacer(modifier = GlanceModifier.height(3.dp))
+                        Spacer(modifier = GlanceModifier.height(2.dp))
                         Text(
                             text = "🎯 “$focusText”",
                             style = TextStyle(
@@ -179,11 +180,12 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                 fontStyle = FontStyle.Italic,
                                 color = ColorProvider(colors.primary)
                             ),
-                            maxLines = 1
+                            maxLines = 1,
+                            modifier = GlanceModifier.clickable(actionStartActivity(launchIntent))
                         )
                     }
 
-                    Spacer(modifier = GlanceModifier.height(6.dp))
+                    Spacer(modifier = GlanceModifier.height(5.dp))
 
                     // Thin Divider with high contrast
                     Box(
@@ -193,7 +195,7 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                             .background(colors.border.copy(alpha = 0.45f))
                     ) {}
 
-                    Spacer(modifier = GlanceModifier.height(6.dp))
+                    Spacer(modifier = GlanceModifier.height(5.dp))
 
                     val hasAnyTasks = surfacedHabits.isNotEmpty() || surfacedPendingItems.isNotEmpty() || totalTrayCount > 0
 
@@ -201,7 +203,9 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                     if (doneItems.isEmpty() && !hasAnyTasks) {
                         Spacer(modifier = GlanceModifier.height(10.dp))
                         Column(
-                            modifier = GlanceModifier.fillMaxWidth(),
+                            modifier = GlanceModifier
+                                .fillMaxWidth()
+                                .clickable(actionStartActivity(launchIntent)),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
@@ -223,16 +227,18 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                         }
                     }
 
-                    // 1. DONE items (過去の実績ログ：NOWラインの上、最新2件＋サマリー)
-                    if (doneItems.size > 2) {
+                    // 1. DONE items (過去の実績ログ：NOWラインの上、最新1〜2件＋サマリー)
+                    val maxDoneToShow = if (hasAnyTasks) 1 else 2
+                    if (doneItems.size > maxDoneToShow) {
                         Row(
                             modifier = GlanceModifier
                                 .fillMaxWidth()
-                                .padding(vertical = 1.dp, horizontal = 4.dp),
+                                .padding(vertical = 1.dp, horizontal = 4.dp)
+                                .clickable(actionStartActivity(launchIntent)),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "+ 他 ${doneItems.size - 2}件完了",
+                                text = "+ 他 ${doneItems.size - maxDoneToShow}件完了",
                                 style = TextStyle(
                                     fontSize = (10 * scale).sp,
                                     fontWeight = FontWeight.Medium,
@@ -242,7 +248,7 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                         }
                     }
 
-                    val visibleDone = doneItems.takeLast(2)
+                    val visibleDone = doneItems.takeLast(maxDoneToShow)
                     for (item in visibleDone) {
                         val timeStr = (item.completedAt ?: item.scheduledAt)?.let { ts ->
                             LocalDateTime.ofInstant(Instant.ofEpochMilli(ts), zone)
@@ -257,7 +263,7 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                         Row(
                             modifier = GlanceModifier
                                 .fillMaxWidth()
-                                .padding(vertical = 3.dp)
+                                .padding(vertical = 2.dp)
                                 .clickable(actionStartActivity(launchIntent)),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -292,9 +298,11 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                     }
 
                     // 2. NOW line (現在時刻)
-                    Spacer(modifier = GlanceModifier.height(4.dp))
+                    Spacer(modifier = GlanceModifier.height(3.dp))
                     Row(
-                        modifier = GlanceModifier.fillMaxWidth(),
+                        modifier = GlanceModifier
+                            .fillMaxWidth()
+                            .clickable(actionStartActivity(launchIntent)),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(
@@ -320,10 +328,10 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                 .background(colors.nowLine.copy(alpha = 0.6f))
                         ) {}
                     }
-                    Spacer(modifier = GlanceModifier.height(4.dp))
+                    Spacer(modifier = GlanceModifier.height(3.dp))
 
                     // 3. NOWライン直下：タイムライン浮上アイテム (アクティブ周期習慣 ＋ 接近/固定ToDo)
-                    for (habit in surfacedHabits) {
+                    for (habit in surfacedHabits.take(2)) {
                         Row(
                             modifier = GlanceModifier
                                 .fillMaxWidth()
@@ -380,7 +388,7 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                         }
                     }
 
-                    for ((index, item) in surfacedPendingItems.withIndex()) {
+                    for ((index, item) in surfacedPendingItems.take(2).withIndex()) {
                         val isFirstTask = (index == 0 && surfacedHabits.isEmpty())
                         val schedTimeStr = item.scheduledAt?.let { sched ->
                             val t = LocalDateTime.ofInstant(Instant.ofEpochMilli(sched), zone)
@@ -468,14 +476,14 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
 
                     // 4. 「これからの歩み」折り畳み/展開トレイ
                     if (totalTrayCount > 0) {
-                        Spacer(modifier = GlanceModifier.height(4.dp))
+                        Spacer(modifier = GlanceModifier.height(3.dp))
                         // ヘッダー1行：「これからの歩み (N件) ▼ / ▲」
                         Row(
                             modifier = GlanceModifier
                                 .fillMaxWidth()
                                 .cornerRadius(6.dp)
-                                .background(colors.card.copy(alpha = 0.5f))
-                                .padding(horizontal = 6.dp, vertical = 3.dp)
+                                .background(colors.card.copy(alpha = 0.55f))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
                                 .clickable(actionRunCallback<ToggleWidgetTrayActionCallback>()),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -555,7 +563,7 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                             }
 
                             // トレイ内の未到来/未固定ToDo
-                            val remainingSlot = (5 - trayHabits.take(3).size).coerceAtLeast(1)
+                            val remainingSlot = (4 - trayHabits.take(3).size).coerceAtLeast(1)
                             for (item in trayPendingItems.take(remainingSlot)) {
                                 val schedTimeStr = item.scheduledAt?.let { sched ->
                                     val t = LocalDateTime.ofInstant(Instant.ofEpochMilli(sched), zone)
@@ -593,7 +601,7 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                             modifier = GlanceModifier
                                                 .cornerRadius(4.dp)
                                                 .background(colors.card.copy(alpha = 0.6f))
-                                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                .padding(horizontal = 4.dp, vertical = 1.dp)
                                         ) {
                                             Text(
                                                 text = schedTimeStr,
@@ -625,7 +633,9 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                         fontSize = (10 * scale).sp,
                                         color = ColorProvider(colors.textSecondary.copy(alpha = 0.65f))
                                     ),
-                                    modifier = GlanceModifier.padding(start = 28.dp, top = 1.dp)
+                                    modifier = GlanceModifier
+                                        .padding(start = 28.dp, top = 1.dp)
+                                        .clickable(actionStartActivity(launchIntent))
                                 )
                             }
                         }
@@ -636,9 +646,13 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                             style = TextStyle(
                                 fontSize = (11 * scale).sp,
                                 color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
-                            )
+                            ),
+                            modifier = GlanceModifier.clickable(actionStartActivity(launchIntent))
                         )
                     }
+
+                    // Fill remaining empty space with a safe clickable launcher to allow opening app from empty space
+                    Spacer(modifier = GlanceModifier.defaultWeight().clickable(actionStartActivity(launchIntent)))
                 }
             }
         }
@@ -660,7 +674,12 @@ class ToggleItemDoneActionCallback : ActionCallback {
             completedAt = if (newDone) System.currentTimeMillis() else null
         )
         db.timelineItemDao().update(updated)
-        TodayTimelineWidgetReceiver.updateAll(context)
+        try {
+            TodayTimelineGlanceWidget().update(context, glanceId)
+            TodayTimelineWidgetReceiver.updateAllSuspending(context)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     companion object {
@@ -682,7 +701,12 @@ class RecordPeriodicGlanceActionCallback : ActionCallback {
         val logicalToday = dateProvider.getLogicalDate(cutoffHour = cutoffHour)
         val useCase = PeriodicTaskUseCase(db, dateProvider)
         useCase.recordCompletion(template, logicalToday, cutoffHour)
-        TodayTimelineWidgetReceiver.updateAll(context)
+        try {
+            TodayTimelineGlanceWidget().update(context, glanceId)
+            TodayTimelineWidgetReceiver.updateAllSuspending(context)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     companion object {
@@ -696,8 +720,13 @@ class ToggleWidgetTrayActionCallback : ActionCallback {
         glanceId: GlanceId,
         parameters: ActionParameters
     ) {
-        WidgetSettingsManager.toggleWidgetTrayExpanded(context)
-        TodayTimelineWidgetReceiver.updateAll(context)
+        WidgetSettingsManager.toggleFutureTrayExpanded(context)
+        try {
+            TodayTimelineGlanceWidget().update(context, glanceId)
+            TodayTimelineWidgetReceiver.updateAllSuspending(context)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 }
 
@@ -707,6 +736,11 @@ class RefreshWidgetActionCallback : ActionCallback {
         glanceId: GlanceId,
         parameters: ActionParameters
     ) {
-        TodayTimelineWidgetReceiver.updateAll(context)
+        try {
+            TodayTimelineGlanceWidget().update(context, glanceId)
+            TodayTimelineWidgetReceiver.updateAllSuspending(context)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 }
