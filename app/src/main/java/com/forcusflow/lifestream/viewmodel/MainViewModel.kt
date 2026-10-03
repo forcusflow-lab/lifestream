@@ -478,6 +478,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         templateId: Long?,
         durationSeconds: Int? = null,
         countValue: Int? = null,
+        showOnTimeline: Boolean = false,
         createdAt: Long = System.currentTimeMillis()
     ) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -491,6 +492,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 templateId = templateId,
                 durationSeconds = durationSeconds,
                 countValue = countValue,
+                showOnTimeline = showOnTimeline,
                 createdAt = createdAt
             )
             itemDao.insert(item)

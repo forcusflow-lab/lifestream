@@ -117,6 +117,8 @@ fun TimelineScreen(viewModel: MainViewModel) {
 
     val todayDoneItems = timelineData.doneItems
     val todayPendingItems = timelineData.pendingHandItems
+    val todayTimelinePendingItems = timelineData.timelinePendingItems
+    val todayTrayPendingItems = timelineData.trayPendingItems
     val todayItems = remember(todayDoneItems, todayPendingItems) {
         todayDoneItems + todayPendingItems
     }
@@ -135,10 +137,14 @@ fun TimelineScreen(viewModel: MainViewModel) {
     }
 
     // 周期タスク（今日実施推奨のもの、見送り中のものは除外）
-    val dueOrOverduePeriodic = remember(timelineData, currentHour) {
-        val nowTime = viewModel.dateProvider.nowLocalTime()
-        timelineData.duePeriodicTemplates
-            .filter { it.isDueToday && viewModel.isTemplateInActiveZone(it.template, nowTime) }
+    // NOWライン下に浮上するアクティブ周期タスク
+    val activePeriodicHabits = remember(timelineData) {
+        timelineData.activePeriodicTemplates
+            .map { Triple(it.template, (it.daysSinceLastDone ?: 0L) > (it.template.intervalDays ?: 7), it.daysSinceLastDone ?: 0L) }
+    }
+    // トレイ内で待機する周期タスク（指定時間帯以外のもの等）
+    val trayPeriodicHabits = remember(timelineData) {
+        timelineData.trayPeriodicTemplates
             .map { Triple(it.template, (it.daysSinceLastDone ?: 0L) > (it.template.intervalDays ?: 7), it.daysSinceLastDone ?: 0L) }
     }
 
@@ -509,13 +515,14 @@ fun TimelineScreen(viewModel: MainViewModel) {
 
                 // 2. NOWライン（現在時刻）
                 item(key = "now_line") {
+                    val hasSurfacedItems = activePeriodicHabits.isNotEmpty() || todayTimelinePendingItems.isNotEmpty()
                     TaskitoNowLineRow(
                         timeStr = nowTimeStr,
                         isFirst = todayDoneItems.isEmpty(),
-                        isLast = false
+                        isLast = !hasSurfacedItems && todayTrayPendingItems.isEmpty() && trayPeriodicHabits.isEmpty()
                     )
 
-                    if (todayDoneItems.isEmpty() && todayPendingItems.isEmpty() && dueOrOverduePeriodic.isEmpty()) {
+                    if (todayDoneItems.isEmpty() && todayPendingItems.isEmpty() && activePeriodicHabits.isEmpty() && trayPeriodicHabits.isEmpty()) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -543,6 +550,61 @@ fun TimelineScreen(viewModel: MainViewModel) {
                     }
                 }
 
+                // 2-B. タイムライン直載せ：現在アクティブな周期タスク（朝/昼/夜のゾーン合致）
+                if (activePeriodicHabits.isNotEmpty()) {
+                    itemsIndexed(activePeriodicHabits, key = { _, (t, _, _) -> "active_periodic_${t.id}" }) { index, (tmpl, _, _) ->
+                        TaskitoPeriodicSurfacedRow(
+                            template = tmpl,
+                            today = today,
+                            isFirst = false,
+                            isLast = false,
+                            onComplete = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.recordCycleTask(tmpl, today)
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("「${tmpl.title}」を完了しました！ 🌿")
+                                }
+                            },
+                            onPostpone = {
+                                viewModel.postponeCycleTask(tmpl, 1)
+                                coroutineScope.launch {
+                                    val nextDate = today.plusDays(1)
+                                    snackbarHostState.showSnackbar("「${tmpl.title}」を次回まで見送りました（次回目安: ${nextDate.monthValue}/${nextDate.dayOfMonth}）")
+                                }
+                            }
+                        )
+                    }
+                }
+
+                // 2-C. タイムライン直載せ：時間が近づいた/過ぎた予定ToDo ＆ 📌固定された終日ToDo
+                if (todayTimelinePendingItems.isNotEmpty()) {
+                    itemsIndexed(todayTimelinePendingItems, key = { _, item -> "timeline_pending_${item.id}" }) { index, item ->
+                        val isCompleting = completingItemIds.contains(item.id)
+                        val isTimerRunning = activeTimerItem?.id == item.id
+                        TaskitoTimelinePendingRow(
+                            item = item,
+                            templates = templates,
+                            isCompleting = isCompleting,
+                            isTimerRunning = isTimerRunning,
+                            isFirst = false,
+                            isLast = false,
+                            onToggle = {
+                                if (!isCompleting) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    completingItemIds = completingItemIds + item.id
+                                    coroutineScope.launch {
+                                        kotlinx.coroutines.delay(350)
+                                        viewModel.toggleItemDone(item)
+                                        completingItemIds = completingItemIds - item.id
+                                    }
+                                }
+                            },
+                            onStartTimer = { viewModel.startItemTimer(item) },
+                            onClick = { itemToEdit = item }
+                        )
+                    }
+                }
+
                 // 3. 「これからの歩み」統一トレイ
                 item(key = "focus_tray") {
                     Spacer(modifier = Modifier.height(10.dp))
@@ -565,7 +627,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                 }
                                 .padding(vertical = 3.dp, horizontal = 4.dp)
                         ) {
-                            val futureCount = dueOrOverduePeriodic.size + todayPendingItems.size
+                            val futureCount = trayPeriodicHabits.size + todayTrayPendingItems.size
                             Text(
                                 text = if (futureCount > 0) "これからの歩み ($futureCount)" else "これからの歩み",
                                 fontSize = 13.5.sp,
@@ -625,8 +687,8 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                     .fillMaxWidth()
                                     .padding(start = 12.dp, end = 10.dp, top = 8.dp, bottom = 8.dp)
                             ) {
-                                // A. 周期タスク（今日浮上したルーティン）
-                                if (dueOrOverduePeriodic.isNotEmpty()) {
+                                // A. 周期タスク（時間外または待機中のルーティン）
+                                if (trayPeriodicHabits.isNotEmpty()) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         modifier = Modifier.padding(vertical = 3.dp, horizontal = 2.dp)
@@ -640,7 +702,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                         )
                                     }
 
-                                    dueOrOverduePeriodic.forEachIndexed { index, (tmpl, _, _) ->
+                                    trayPeriodicHabits.forEachIndexed { index, (tmpl, _, _) ->
                                         if (index > 0) {
                                             HorizontalDivider(
                                                 color = colors.border.copy(alpha = 0.15f),
@@ -705,7 +767,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                 }
 
                                 // 周期タスクとToDoの間の仕切り
-                                if (dueOrOverduePeriodic.isNotEmpty() && todayPendingItems.isNotEmpty()) {
+                                if (trayPeriodicHabits.isNotEmpty() && todayTrayPendingItems.isNotEmpty()) {
                                     Spacer(modifier = Modifier.height(4.dp))
                                     HorizontalDivider(
                                         color = colors.border.copy(alpha = 0.25f),
@@ -714,9 +776,9 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                     )
                                 }
 
-                                // B. やること（未完了ToDo）
-                                if (todayPendingItems.isNotEmpty()) {
-                                    if (dueOrOverduePeriodic.isNotEmpty()) {
+                                // B. やること（待機中未完了ToDo）
+                                if (todayTrayPendingItems.isNotEmpty()) {
+                                    if (trayPeriodicHabits.isNotEmpty()) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
                                             modifier = Modifier.padding(vertical = 3.dp, horizontal = 2.dp)
@@ -731,7 +793,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                         }
                                     }
 
-                                    todayPendingItems.forEachIndexed { index, item ->
+                                    todayTrayPendingItems.forEachIndexed { index, item ->
                                         val isTimerRunning = activeTimerItem?.id == item.id
                                         val isCompleting = completingItemIds.contains(item.id)
                                         if (index > 0) {
@@ -856,7 +918,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                 }
 
                                 // 手元タスクが0件のとき
-                                if (todayPendingItems.isEmpty() && dueOrOverduePeriodic.isEmpty()) {
+                                if (todayTrayPendingItems.isEmpty() && trayPeriodicHabits.isEmpty()) {
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -920,8 +982,8 @@ fun TimelineScreen(viewModel: MainViewModel) {
                 showAddSheet = false
                 showTemplateManagerDialog = true
             },
-            onSave = { title, isDone, scheduledAt, completedAt, amount, note, templateId, durationSeconds, countValue, createdAt ->
-                viewModel.addTimelineItem(title, isDone, scheduledAt, completedAt, amount, note, templateId, durationSeconds, countValue, createdAt)
+            onSave = { title, isDone, scheduledAt, completedAt, amount, note, templateId, durationSeconds, countValue, showOnTimeline, createdAt ->
+                viewModel.addTimelineItem(title, isDone, scheduledAt, completedAt, amount, note, templateId, durationSeconds, countValue, showOnTimeline, createdAt)
             }
         )
     }
@@ -1437,6 +1499,303 @@ fun TaskitoTimelineItemRow(
                                 fontWeight = FontWeight.Bold,
                                 color = colors.primary
                             )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TaskitoPeriodicSurfacedRow(
+    template: TemplateEntity,
+    today: LocalDate,
+    isFirst: Boolean,
+    isLast: Boolean,
+    onComplete: () -> Unit,
+    onPostpone: () -> Unit
+) {
+    val colors = LifeStreamTheme.colors
+    val haptic = LocalHapticFeedback.current
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+            .padding(vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Continuous stem line
+        Box(
+            modifier = Modifier
+                .width(36.dp)
+                .fillMaxHeight(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(modifier = Modifier.fillMaxHeight()) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .width(2.dp)
+                        .background(if (isFirst) Color.Transparent else colors.border)
+                        .align(Alignment.CenterHorizontally)
+                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .width(2.dp)
+                        .background(if (isLast) Color.Transparent else colors.border)
+                        .align(Alignment.CenterHorizontally)
+                )
+            }
+
+            // Node Circle
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onComplete()
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .border(2.dp, colors.primary.copy(alpha = 0.8f), CircleShape)
+                        .background(Color.Transparent)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Surface Card
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = colors.card,
+            border = BorderStroke(1.dp, colors.primary.copy(alpha = 0.25f)),
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(12.dp))
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = colors.primary.copy(alpha = 0.12f),
+                        modifier = Modifier.padding(end = 6.dp)
+                    ) {
+                        Text(
+                            text = "習慣",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.primary,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                        )
+                    }
+                    Text(
+                        text = "${template.iconKey ?: "🔄"} ${template.title}",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Text(
+                    text = "今回は見送る",
+                    fontSize = 11.sp,
+                    color = colors.textSecondary.copy(alpha = 0.65f),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable { onPostpone() }
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun TaskitoTimelinePendingRow(
+    item: TimelineItemEntity,
+    templates: List<TemplateEntity>,
+    isCompleting: Boolean,
+    isTimerRunning: Boolean,
+    isFirst: Boolean,
+    isLast: Boolean,
+    onToggle: () -> Unit,
+    onStartTimer: () -> Unit,
+    onClick: () -> Unit
+) {
+    val colors = LifeStreamTheme.colors
+    val haptic = LocalHapticFeedback.current
+    val zone = remember { ZoneId.systemDefault() }
+
+    val schedTimeStr = remember(item.scheduledAt) {
+        item.scheduledAt?.let { sched ->
+            val t = LocalDateTime.ofInstant(Instant.ofEpochMilli(sched), zone)
+                .format(DateTimeFormatter.ofPattern("HH:mm"))
+            if (t != "00:00") t else null
+        }
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+            .padding(vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Continuous stem line
+        Box(
+            modifier = Modifier
+                .width(36.dp)
+                .fillMaxHeight(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(modifier = Modifier.fillMaxHeight()) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .width(2.dp)
+                        .background(if (isFirst) Color.Transparent else colors.border)
+                        .align(Alignment.CenterHorizontally)
+                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .width(2.dp)
+                        .background(if (isLast) Color.Transparent else colors.border)
+                        .align(Alignment.CenterHorizontally)
+                )
+            }
+
+            // Node Circle
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onToggle()
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .border(
+                            2.dp,
+                            if (isCompleting || item.isDone) colors.statusDone else colors.border.copy(alpha = 0.8f),
+                            CircleShape
+                        )
+                        .background(if (isCompleting || item.isDone) colors.statusDone else Color.Transparent),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isCompleting || item.isDone) {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Surface Card
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = if (item.showOnTimeline && item.scheduledAt == null) colors.primary.copy(alpha = 0.05f) else colors.card,
+            border = BorderStroke(
+                1.dp,
+                if (item.showOnTimeline && item.scheduledAt == null) colors.primary.copy(alpha = 0.35f) else colors.border.copy(alpha = 0.6f)
+            ),
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(12.dp))
+                .clickable { onClick() }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    if (schedTimeStr != null) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = colors.primary.copy(alpha = 0.12f),
+                            modifier = Modifier.padding(end = 6.dp)
+                        ) {
+                            Text(
+                                text = schedTimeStr,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.primary,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                            )
+                        }
+                    } else if (item.showOnTimeline) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = colors.primary.copy(alpha = 0.12f),
+                            modifier = Modifier.padding(end = 6.dp)
+                        ) {
+                            Text(
+                                text = "📌 今日",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.primary,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = item.title,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (isCompleting) colors.textSecondary.copy(alpha = 0.5f) else colors.textPrimary,
+                        textDecoration = if (isCompleting) TextDecoration.LineThrough else TextDecoration.None,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                // Start Timer Button
+                Surface(
+                    shape = CircleShape,
+                    color = if (isTimerRunning) colors.primary.copy(alpha = 0.15f) else Color.Transparent,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onStartTimer()
+                        }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        if (isTimerRunning) {
+                            Text(text = "⏹", fontSize = 11.sp, color = colors.primary)
+                        } else {
+                            Text(text = "▶", fontSize = 10.5.sp, color = colors.textSecondary.copy(alpha = 0.45f))
                         }
                     }
                 }

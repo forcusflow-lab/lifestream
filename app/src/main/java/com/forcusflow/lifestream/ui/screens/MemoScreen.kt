@@ -618,7 +618,7 @@ fun MemoScreen(viewModel: MainViewModel) {
             initialIsDone = false,
             initialTitle = firstLine,
             initialNote = memo.content,
-            onSave = { title, isDone, scheduledAt, completedAt, amount, note, templateId, durationSeconds, countValue, createdAt ->
+            onSave = { title, isDone, scheduledAt, completedAt, amount, note, templateId, durationSeconds, countValue, showOnTimeline, createdAt ->
                 viewModel.addTimelineItem(
                     title = title,
                     isDone = isDone,
@@ -629,6 +629,7 @@ fun MemoScreen(viewModel: MainViewModel) {
                     templateId = templateId,
                     durationSeconds = durationSeconds,
                     countValue = countValue,
+                    showOnTimeline = showOnTimeline,
                     createdAt = createdAt
                 )
                 viewModel.archiveMemo(memo)
@@ -656,7 +657,7 @@ fun MemoScreen(viewModel: MainViewModel) {
             initialIsDone = true,
             initialTitle = firstLine,
             initialNote = memo.content,
-            onSave = { title, isDone, scheduledAt, completedAt, amount, note, templateId, durationSeconds, countValue, createdAt ->
+            onSave = { title, isDone, scheduledAt, completedAt, amount, note, templateId, durationSeconds, countValue, showOnTimeline, createdAt ->
                 viewModel.addTimelineItem(
                     title = title,
                     isDone = isDone,
@@ -667,6 +668,7 @@ fun MemoScreen(viewModel: MainViewModel) {
                     templateId = templateId,
                     durationSeconds = durationSeconds,
                     countValue = countValue,
+                    showOnTimeline = showOnTimeline,
                     createdAt = createdAt
                 )
                 viewModel.archiveMemo(memo)

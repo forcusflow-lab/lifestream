@@ -18,5 +18,6 @@ data class TimelineItemEntity(
     val templateId: Long? = null,
     val durationSeconds: Int? = null,
     val countValue: Int? = null,
+    val showOnTimeline: Boolean = false,
     val createdAt: Long = System.currentTimeMillis()
 )

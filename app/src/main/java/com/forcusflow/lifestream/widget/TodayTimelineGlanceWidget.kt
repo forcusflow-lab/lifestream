@@ -23,6 +23,9 @@ import androidx.glance.unit.ColorProvider
 import com.forcusflow.lifestream.MainActivity
 import com.forcusflow.lifestream.data.AppDatabase
 import com.forcusflow.lifestream.data.TimelineItemEntity
+import com.forcusflow.lifestream.domain.LifeDateProvider
+import com.forcusflow.lifestream.domain.PeriodicTaskUseCase
+import com.forcusflow.lifestream.domain.TodayTimelineCalculator
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -38,12 +41,13 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
         val fontSizePref = WidgetSettingsManager.getFontSize(context)
         val colors = WidgetSettingsManager.getThemeColors(context)
         val cutoffHour = WidgetSettingsManager.getCutoffHour(context)
+        val isTrayExpanded = WidgetSettingsManager.isWidgetTrayExpanded(context)
 
-        val dateProvider = com.forcusflow.lifestream.domain.LifeDateProvider()
+        val dateProvider = LifeDateProvider()
         val allItems = try { db.timelineItemDao().getAll() } catch (e: Exception) { emptyList() }
         val templates = try { db.templateDao().getAll() } catch (e: Exception) { emptyList() }
 
-        val timelineData = com.forcusflow.lifestream.domain.TodayTimelineCalculator.calculate(
+        val timelineData = TodayTimelineCalculator.calculate(
             allItems = allItems,
             templates = templates,
             dateProvider = dateProvider,
@@ -60,14 +64,17 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
         val dailyFocusEntity = try { db.dailyFocusDao().getByDate(todayDateKey) } catch (e: Exception) { null }
         val focusText = dailyFocusEntity?.content
 
-        // Periodic habits due today (excluding postponed)
-        val duePeriodicHabits = timelineData.duePeriodicTemplates.filter { it.isDueToday }.map { it.template }
-
-        // 1. DONE items today
+        // 1. DONE items today (実績ログ：NOWラインの上)
         val doneItems = timelineData.doneItems
 
-        // 2. Pending items today (timed tasks first, then anytime tasks created today)
-        val pendingItems = timelineData.pendingHandItems
+        // 2. Surfaced items today (NOWライン直下に浮上：現在の時間帯に合致した周期習慣 ＋ 2時間以内のToDo/固定ToDo)
+        val surfacedHabits = timelineData.activePeriodicTemplates.filter { it.isDueToday }.map { it.template }
+        val surfacedPendingItems = timelineData.timelinePendingItems
+
+        // 3. Tray items (「これからの歩み」トレイ：時間帯が過ぎた習慣 ＋ 2時間以上先のToDo/未固定ToDo)
+        val trayHabits = timelineData.trayPeriodicTemplates.filter { it.isDueToday }.map { it.template }
+        val trayPendingItems = timelineData.trayPendingItems
+        val totalTrayCount = trayHabits.size + trayPendingItems.size
 
         val launchIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -106,7 +113,7 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                 Column(
                     modifier = GlanceModifier.fillMaxSize()
                 ) {
-                    // Header: Date & ＋ 追加 Button
+                    // Header: Date & [🔄 手動更新] [＋ 追加] Buttons
                     Row(
                         modifier = GlanceModifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -114,12 +121,32 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                         Text(
                             text = dateFormatted,
                             style = TextStyle(
-                                fontSize = (16 * scale).sp,
+                                fontSize = (15.5f * scale).sp,
                                 fontWeight = FontWeight.Bold,
                                 color = ColorProvider(colors.textPrimary)
                             ),
                             modifier = GlanceModifier.defaultWeight()
                         )
+
+                        // 🔄 手動更新 Button (タップで即時再描画)
+                        Box(
+                            modifier = GlanceModifier
+                                .cornerRadius(12.dp)
+                                .background(colors.border.copy(alpha = 0.25f))
+                                .padding(horizontal = 7.dp, vertical = 3.dp)
+                                .clickable(actionRunCallback<RefreshWidgetActionCallback>()),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "🔄",
+                                style = TextStyle(
+                                    fontSize = (11 * scale).sp,
+                                    color = ColorProvider(colors.textSecondary)
+                                )
+                            )
+                        }
+
+                        Spacer(modifier = GlanceModifier.width(6.dp))
 
                         // ＋ 追加 Button (ワンタップで直接アプリを開いてタスク追加シートを起動)
                         Box(
@@ -168,8 +195,10 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
 
                     Spacer(modifier = GlanceModifier.height(6.dp))
 
+                    val hasAnyTasks = surfacedHabits.isNotEmpty() || surfacedPendingItems.isNotEmpty() || totalTrayCount > 0
+
                     // Empty state when nothing today
-                    if (doneItems.isEmpty() && pendingItems.isEmpty()) {
+                    if (doneItems.isEmpty() && !hasAnyTasks) {
                         Spacer(modifier = GlanceModifier.height(10.dp))
                         Column(
                             modifier = GlanceModifier.fillMaxWidth(),
@@ -294,17 +323,35 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                     }
                     Spacer(modifier = GlanceModifier.height(4.dp))
 
-                    // 3. Pending items (これからの歩み：ルーティン＋ToDo、最大4件)
-                    // 習慣（周期タスク）が到来していれば表示
-                    val visibleHabits = duePeriodicHabits.take(2)
-                    for (habit in visibleHabits) {
+                    // 3. NOWライン直下：タイムライン浮上アイテム (アクティブ周期習慣 ＋ 接近/固定ToDo)
+                    for (habit in surfacedHabits) {
                         Row(
                             modifier = GlanceModifier
                                 .fillMaxWidth()
-                                .padding(vertical = 2.dp)
-                                .clickable(actionStartActivity(launchIntent)),
+                                .padding(vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            // タスク完了チェック（○）: タップで即時連動完了
+                            Box(
+                                modifier = GlanceModifier
+                                    .size(24.dp)
+                                    .clickable(
+                                        actionRunCallback<RecordPeriodicGlanceActionCallback>(
+                                            actionParametersOf(RecordPeriodicGlanceActionCallback.templateIdKey to habit.id)
+                                        )
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "○",
+                                    style = TextStyle(
+                                        fontSize = (14 * scale).sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ColorProvider(colors.primary)
+                                    )
+                                )
+                            }
+                            Spacer(modifier = GlanceModifier.width(4.dp))
                             Box(
                                 modifier = GlanceModifier
                                     .cornerRadius(4.dp)
@@ -329,42 +376,48 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                     color = ColorProvider(colors.textPrimary)
                                 ),
                                 maxLines = 1,
-                                modifier = GlanceModifier.defaultWeight()
+                                modifier = GlanceModifier.defaultWeight().clickable(actionStartActivity(launchIntent))
                             )
                         }
                     }
 
-                    // 手元タスク（ToDo）
-                    val maxPendingCount = (4 - visibleHabits.size).coerceAtLeast(1)
-                    val visiblePending = pendingItems.take(maxPendingCount)
-                    for ((index, item) in visiblePending.withIndex()) {
-                        val isFirstTask = (index == 0 && visibleHabits.isEmpty())
+                    for ((index, item) in surfacedPendingItems.withIndex()) {
+                        val isFirstTask = (index == 0 && surfacedHabits.isEmpty())
                         val schedTimeStr = item.scheduledAt?.let { sched ->
                             val t = LocalDateTime.ofInstant(Instant.ofEpochMilli(sched), zone)
                                 .format(DateTimeFormatter.ofPattern("HH:mm"))
                             if (t != "00:00") t else null
                         }
-
-                        // 先頭タスクの「チラ見ハイライト（Glanceability）」
-                        val rowModifier = if (isFirstTask) {
-                            GlanceModifier
-                                .fillMaxWidth()
-                                .cornerRadius(8.dp)
-                                .background(colors.primary.copy(alpha = 0.08f))
-                                .padding(horizontal = 6.dp, vertical = 3.dp)
-                                .clickable(actionStartActivity(launchIntent))
-                        } else {
-                            GlanceModifier
-                                .fillMaxWidth()
-                                .padding(vertical = 2.dp)
-                                .clickable(actionStartActivity(launchIntent))
-                        }
+                        val isPinnedToday = item.showOnTimeline && schedTimeStr == null
 
                         Row(
-                            modifier = rowModifier,
+                            modifier = GlanceModifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // 時刻指定があれば太字バッジ、なければ端正なドット
+                            // タスク完了チェック（○）: タップで即時連動完了
+                            Box(
+                                modifier = GlanceModifier
+                                    .size(24.dp)
+                                    .clickable(
+                                        actionRunCallback<ToggleItemDoneActionCallback>(
+                                            actionParametersOf(ToggleItemDoneActionCallback.itemIdKey to item.id)
+                                        )
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "○",
+                                    style = TextStyle(
+                                        fontSize = (14 * scale).sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ColorProvider(colors.primary)
+                                    )
+                                )
+                            }
+                            Spacer(modifier = GlanceModifier.width(4.dp))
+
                             if (schedTimeStr != null) {
                                 Box(
                                     modifier = GlanceModifier
@@ -382,14 +435,22 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                     )
                                 }
                                 Spacer(modifier = GlanceModifier.width(6.dp))
-                            } else {
+                            } else if (isPinnedToday) {
                                 Box(
                                     modifier = GlanceModifier
-                                        .size(13.dp)
-                                        .cornerRadius(6.dp)
-                                        .background(if (isFirstTask) colors.primary.copy(alpha = 0.5f) else colors.border.copy(alpha = 0.6f)),
-                                    contentAlignment = Alignment.Center
-                                ) {}
+                                        .cornerRadius(4.dp)
+                                        .background(colors.primary.copy(alpha = 0.12f))
+                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                ) {
+                                    Text(
+                                        text = "📌 今日",
+                                        style = TextStyle(
+                                            fontSize = (9.5f * scale).sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ColorProvider(colors.primary)
+                                        )
+                                    )
+                                }
                                 Spacer(modifier = GlanceModifier.width(6.dp))
                             }
 
@@ -401,22 +462,175 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                     color = ColorProvider(colors.textPrimary)
                                 ),
                                 maxLines = 1,
-                                modifier = GlanceModifier.defaultWeight()
+                                modifier = GlanceModifier.defaultWeight().clickable(actionStartActivity(launchIntent))
                             )
                         }
                     }
 
-                    val totalRemaining = (duePeriodicHabits.size - visibleHabits.size) + (pendingItems.size - visiblePending.size)
-                    if (totalRemaining > 0) {
-                        Spacer(modifier = GlanceModifier.height(2.dp))
-                        Text(
-                            text = "... 他 ${totalRemaining} 件",
-                            style = TextStyle(
-                                fontSize = (10 * scale).sp,
-                                color = ColorProvider(colors.textSecondary.copy(alpha = 0.65f))
+                    // 4. 「これからの歩み」折り畳み/展開トレイ
+                    if (totalTrayCount > 0) {
+                        Spacer(modifier = GlanceModifier.height(4.dp))
+                        // ヘッダー1行：「これからの歩み (N件) ▼ / ▲」
+                        Row(
+                            modifier = GlanceModifier
+                                .fillMaxWidth()
+                                .cornerRadius(6.dp)
+                                .background(colors.card.copy(alpha = 0.5f))
+                                .padding(horizontal = 6.dp, vertical = 3.dp)
+                                .clickable(actionRunCallback<ToggleWidgetTrayActionCallback>()),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "これからの歩み (${totalTrayCount}件)",
+                                style = TextStyle(
+                                    fontSize = (11.5f * scale).sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ColorProvider(colors.textPrimary)
+                                ),
+                                modifier = GlanceModifier.defaultWeight()
                             )
-                        )
-                    } else if (pendingItems.isEmpty() && duePeriodicHabits.isEmpty() && doneItems.isNotEmpty()) {
+                            Text(
+                                text = if (isTrayExpanded) "▲" else "▼",
+                                style = TextStyle(
+                                    fontSize = (10 * scale).sp,
+                                    color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
+                                )
+                            )
+                        }
+
+                        if (isTrayExpanded) {
+                            Spacer(modifier = GlanceModifier.height(2.dp))
+                            // トレイ内の時間帯経過習慣
+                            for (habit in trayHabits.take(3)) {
+                                Row(
+                                    modifier = GlanceModifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = GlanceModifier
+                                            .size(24.dp)
+                                            .clickable(
+                                                actionRunCallback<RecordPeriodicGlanceActionCallback>(
+                                                    actionParametersOf(RecordPeriodicGlanceActionCallback.templateIdKey to habit.id)
+                                                )
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "○",
+                                            style = TextStyle(
+                                                fontSize = (14 * scale).sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
+                                            )
+                                        )
+                                    }
+                                    Spacer(modifier = GlanceModifier.width(4.dp))
+                                    Box(
+                                        modifier = GlanceModifier
+                                            .cornerRadius(4.dp)
+                                            .background(colors.card.copy(alpha = 0.6f))
+                                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                                    ) {
+                                        Text(
+                                            text = "習慣",
+                                            style = TextStyle(
+                                                fontSize = (9 * scale).sp,
+                                                color = ColorProvider(colors.textSecondary)
+                                            )
+                                        )
+                                    }
+                                    Spacer(modifier = GlanceModifier.width(6.dp))
+                                    Text(
+                                        text = "${habit.iconKey ?: "🔄"} ${habit.title}",
+                                        style = TextStyle(
+                                            fontSize = (12 * scale).sp,
+                                            color = ColorProvider(colors.textPrimary)
+                                        ),
+                                        maxLines = 1,
+                                        modifier = GlanceModifier.defaultWeight().clickable(actionStartActivity(launchIntent))
+                                    )
+                                }
+                            }
+
+                            // トレイ内の未到来/未固定ToDo
+                            val remainingSlot = (5 - trayHabits.take(3).size).coerceAtLeast(1)
+                            for (item in trayPendingItems.take(remainingSlot)) {
+                                val schedTimeStr = item.scheduledAt?.let { sched ->
+                                    val t = LocalDateTime.ofInstant(Instant.ofEpochMilli(sched), zone)
+                                        .format(DateTimeFormatter.ofPattern("HH:mm"))
+                                    if (t != "00:00") t else null
+                                }
+                                Row(
+                                    modifier = GlanceModifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = GlanceModifier
+                                            .size(24.dp)
+                                            .clickable(
+                                                actionRunCallback<ToggleItemDoneActionCallback>(
+                                                    actionParametersOf(ToggleItemDoneActionCallback.itemIdKey to item.id)
+                                                )
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "○",
+                                            style = TextStyle(
+                                                fontSize = (14 * scale).sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
+                                            )
+                                        )
+                                    }
+                                    Spacer(modifier = GlanceModifier.width(4.dp))
+                                    if (schedTimeStr != null) {
+                                        Box(
+                                            modifier = GlanceModifier
+                                                .cornerRadius(4.dp)
+                                                .background(colors.card.copy(alpha = 0.6f))
+                                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                                        ) {
+                                            Text(
+                                                text = schedTimeStr,
+                                                style = TextStyle(
+                                                    fontSize = (9.5f * scale).sp,
+                                                    color = ColorProvider(colors.textSecondary)
+                                                )
+                                            )
+                                        }
+                                        Spacer(modifier = GlanceModifier.width(6.dp))
+                                    }
+                                    Text(
+                                        text = item.title,
+                                        style = TextStyle(
+                                            fontSize = (12 * scale).sp,
+                                            color = ColorProvider(colors.textPrimary)
+                                        ),
+                                        maxLines = 1,
+                                        modifier = GlanceModifier.defaultWeight().clickable(actionStartActivity(launchIntent))
+                                    )
+                                }
+                            }
+
+                            val hiddenCount = (trayHabits.size + trayPendingItems.size) - (trayHabits.take(3).size + trayPendingItems.take(remainingSlot).size)
+                            if (hiddenCount > 0) {
+                                Text(
+                                    text = "... 他 ${hiddenCount} 件",
+                                    style = TextStyle(
+                                        fontSize = (10 * scale).sp,
+                                        color = ColorProvider(colors.textSecondary.copy(alpha = 0.65f))
+                                    ),
+                                    modifier = GlanceModifier.padding(start = 28.dp, top = 1.dp)
+                                )
+                            }
+                        }
+                    } else if (surfacedHabits.isEmpty() && surfacedPendingItems.isEmpty() && doneItems.isNotEmpty()) {
                         Spacer(modifier = GlanceModifier.height(2.dp))
                         Text(
                             text = "手元のタスクはありません 🌿",
@@ -441,9 +655,10 @@ class ToggleItemDoneActionCallback : ActionCallback {
         val itemId = parameters[itemIdKey] ?: return
         val db = AppDatabase.getInstance(context)
         val item = db.timelineItemDao().getById(itemId) ?: return
+        val newDone = !item.isDone
         val updated = item.copy(
-            isDone = !item.isDone,
-            completedAt = if (!item.isDone) System.currentTimeMillis() else null
+            isDone = newDone,
+            completedAt = if (newDone) System.currentTimeMillis() else null
         )
         db.timelineItemDao().update(updated)
         TodayTimelineWidgetReceiver.updateAll(context)
@@ -451,5 +666,48 @@ class ToggleItemDoneActionCallback : ActionCallback {
 
     companion object {
         val itemIdKey = ActionParameters.Key<Long>("itemId")
+    }
+}
+
+class RecordPeriodicGlanceActionCallback : ActionCallback {
+    override suspend fun onAction(
+        context: Context,
+        glanceId: GlanceId,
+        parameters: ActionParameters
+    ) {
+        val templateId = parameters[templateIdKey] ?: return
+        val db = AppDatabase.getInstance(context)
+        val template = db.templateDao().getById(templateId) ?: return
+        val cutoffHour = WidgetSettingsManager.getCutoffHour(context)
+        val dateProvider = LifeDateProvider()
+        val logicalToday = dateProvider.getLogicalDate(cutoffHour = cutoffHour)
+        val useCase = PeriodicTaskUseCase(db, dateProvider)
+        useCase.recordCompletion(template, logicalToday, cutoffHour)
+        TodayTimelineWidgetReceiver.updateAll(context)
+    }
+
+    companion object {
+        val templateIdKey = ActionParameters.Key<Long>("templateId")
+    }
+}
+
+class ToggleWidgetTrayActionCallback : ActionCallback {
+    override suspend fun onAction(
+        context: Context,
+        glanceId: GlanceId,
+        parameters: ActionParameters
+    ) {
+        WidgetSettingsManager.toggleWidgetTrayExpanded(context)
+        TodayTimelineWidgetReceiver.updateAll(context)
+    }
+}
+
+class RefreshWidgetActionCallback : ActionCallback {
+    override suspend fun onAction(
+        context: Context,
+        glanceId: GlanceId,
+        parameters: ActionParameters
+    ) {
+        TodayTimelineWidgetReceiver.updateAll(context)
     }
 }

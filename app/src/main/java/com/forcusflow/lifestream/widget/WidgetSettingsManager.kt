@@ -18,9 +18,25 @@ object WidgetSettingsManager {
     private const val KEY_THEME_MODE = "widget_theme_mode"
     private const val KEY_CUTOFF_HOUR = "widget_cutoff_hour"
     private const val KEY_SHOW_STREAKS_AND_GOALS = "show_streaks_and_goals"
+    private const val KEY_WIDGET_TRAY_EXPANDED = "widget_tray_expanded"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    }
+
+    fun isWidgetTrayExpanded(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_WIDGET_TRAY_EXPANDED, false) // Default is collapsed (false)
+    }
+
+    fun setWidgetTrayExpanded(context: Context, expanded: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_WIDGET_TRAY_EXPANDED, expanded).apply()
+    }
+
+    fun toggleWidgetTrayExpanded(context: Context): Boolean {
+        val current = isWidgetTrayExpanded(context)
+        val next = !current
+        setWidgetTrayExpanded(context, next)
+        return next
     }
 
     fun getShowStreaksAndGoals(context: Context): Boolean {

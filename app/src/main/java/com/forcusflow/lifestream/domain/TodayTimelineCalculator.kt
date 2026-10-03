@@ -23,8 +23,12 @@ data class TodayTimelineData(
     val scheduledTodayItems: List<TimelineItemEntity>,
     val anytimeTodayItems: List<TimelineItemEntity>,
     val pendingHandItems: List<TimelineItemEntity>,
+    val timelinePendingItems: List<TimelineItemEntity>,
+    val trayPendingItems: List<TimelineItemEntity>,
     val drawerStockItems: List<TimelineItemEntity>,
     val duePeriodicTemplates: List<PeriodicTaskStatus>,
+    val activePeriodicTemplates: List<PeriodicTaskStatus>,
+    val trayPeriodicTemplates: List<PeriodicTaskStatus>,
     val todayBadgeCount: Int
 )
 
@@ -66,6 +70,30 @@ object TodayTimelineCalculator {
 
         // 4. Combined pending hand items (timed tasks first, then anytime)
         val pendingHandItems = (scheduledToday + anytimeToday).distinctBy { it.id }
+
+        // 4-B. Hybrid Timeline surfacing calculation
+        val nowMillis = dateProvider.nowEpochMilli()
+        val nowTime = dateProvider.nowLocalTime()
+        val twoHoursMillis = 2 * 3600 * 1000L
+
+        // Split ToDos:
+        // Surfaced on timeline:
+        //  - Anytime ToDos explicitly pinned with showOnTimeline = true
+        //  - Scheduled ToDos approaching within 2 hours or already passed (nowMillis >= scheduledAt - 2h)
+        // Hidden in tray (これからの歩み):
+        //  - Anytime ToDos without showOnTimeline
+        //  - Scheduled ToDos far in the future (> 2h ahead)
+        val timelinePendingItems = pendingHandItems.filter { item ->
+            if (item.scheduledAt != null) {
+                // Scheduled task: approaching or overdue
+                nowMillis >= (item.scheduledAt - twoHoursMillis)
+            } else {
+                // Anytime task: user opted into timeline display
+                item.showOnTimeline
+            }
+        }.sortedWith(compareBy<TimelineItemEntity> { it.scheduledAt ?: Long.MAX_VALUE }.thenBy { it.id })
+
+        val trayPendingItems = pendingHandItems.filter { it !in timelinePendingItems }
 
         // 5. Drawer stock items (future scheduled tasks, past unfinished roll-overs)
         val drawerStock = allItems.filter { item ->
@@ -121,6 +149,24 @@ object TodayTimelineCalculator {
                 )
             }
 
+        // Periodic habits zone classification
+        // Active periodic templates: due today AND current time matches the habit's zone
+        val activePeriodicTemplates = periodicStatuses.filter { status ->
+            if (!status.isDueToday) return@filter false
+            val zoneStr = status.template.timeOfDayZone
+            if (zoneStr == "ALL_DAY" || zoneStr.isBlank()) {
+                true
+            } else {
+                val currentZoneCode = when {
+                    nowTime.hour in 4..10 -> "MORNING"
+                    nowTime.hour in 11..16 -> "AFTERNOON"
+                    else -> "EVENING_NIGHT"
+                }
+                currentZoneCode == zoneStr
+            }
+        }
+        val trayPeriodicTemplates = periodicStatuses.filter { it.isDueToday && it !in activePeriodicTemplates }
+
         // 7. Today badge count: ONLY scheduled ToDos for today!
         // Overdue periodic tasks, drawer items, streaks, etc. are NOT included.
         val todayBadgeCount = scheduledToday.size
@@ -134,8 +180,12 @@ object TodayTimelineCalculator {
             scheduledTodayItems = scheduledToday,
             anytimeTodayItems = anytimeToday,
             pendingHandItems = pendingHandItems,
+            timelinePendingItems = timelinePendingItems,
+            trayPendingItems = trayPendingItems,
             drawerStockItems = drawerStock,
             duePeriodicTemplates = periodicStatuses,
+            activePeriodicTemplates = activePeriodicTemplates,
+            trayPeriodicTemplates = trayPeriodicTemplates,
             todayBadgeCount = todayBadgeCount
         )
     }

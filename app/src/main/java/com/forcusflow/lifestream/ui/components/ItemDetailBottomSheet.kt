@@ -162,6 +162,8 @@ fun ItemDetailBottomSheet(
         )
     }
 
+    var showOnTimeline by remember { mutableStateOf(item.showOnTimeline) }
+
     var selectedTodoTime by remember {
         mutableStateOf(
             if (item.scheduledAt == null) "終日"
@@ -290,7 +292,8 @@ fun ItemDetailBottomSheet(
                             scheduledAt = finalScheduledAt,
                             completedAt = finalCompletedAt,
                             durationSeconds = finalDurationSeconds,
-                            countValue = finalCountValue
+                            countValue = finalCountValue,
+                            showOnTimeline = if (finalScheduledAt == null && (selectedTodoTiming == "今日" || selectedTodoTiming == "引き出し")) showOnTimeline else false
                         )
                         onSave(updated)
                     },
@@ -576,6 +579,56 @@ fun ItemDetailBottomSheet(
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = colors.primary
+                            )
+                        }
+                    }
+                }
+
+                // 3段目: 時間指定なし（終日）の場合の「タイムラインに表示」トグル
+                if ((selectedTodoTiming == "今日" || selectedTodoTiming == "引き出し") && selectedTodoTime == "終日") {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (showOnTimeline) colors.primary.copy(alpha = 0.08f) else colors.card,
+                        border = BorderStroke(1.dp, if (showOnTimeline) colors.primary.copy(alpha = 0.35f) else colors.border.copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                showOnTimeline = !showOnTimeline
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "📌 今日のタイムライン上に表示",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (showOnTimeline) colors.primary else colors.textPrimary
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = if (showOnTimeline) "NOWラインの下に優しく固定表示されます" else "「これからの歩み」トレイに収まります",
+                                    fontSize = 11.sp,
+                                    color = colors.textSecondary.copy(alpha = 0.8f)
+                                )
+                            }
+                            Switch(
+                                checked = showOnTimeline,
+                                onCheckedChange = { showOnTimeline = it },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = colors.primary,
+                                    checkedTrackColor = colors.primary.copy(alpha = 0.3f),
+                                    uncheckedThumbColor = colors.border,
+                                    uncheckedTrackColor = colors.card
+                                )
                             )
                         }
                     }

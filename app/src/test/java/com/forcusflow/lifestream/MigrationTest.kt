@@ -41,4 +41,30 @@ class MigrationTest {
             executedSqls.any { it.contains("UPDATE timeline_items SET createdAt = COALESCE(completedAt, scheduledAt, 1) WHERE createdAt = 0") }
         )
     }
+
+    @Test
+    fun testMigration10To11ExecutesExpectedSql() {
+        val executedSqls = mutableListOf<String>()
+
+        val invocationHandler = java.lang.reflect.InvocationHandler { _, method, args ->
+            if (method.name == "execSQL" && args != null && args.isNotEmpty()) {
+                executedSqls.add(args[0] as String)
+            }
+            null
+        }
+
+        val fakeDb = Proxy.newProxyInstance(
+            SupportSQLiteDatabase::class.java.classLoader,
+            arrayOf(SupportSQLiteDatabase::class.java),
+            invocationHandler
+        ) as SupportSQLiteDatabase
+
+        // Execute migration 10 -> 11
+        AppDatabase.MIGRATION_10_11.migrate(fakeDb)
+
+        assertTrue(
+            "Should alter timeline_items table to add showOnTimeline",
+            executedSqls.any { it.contains("ALTER TABLE timeline_items ADD COLUMN showOnTimeline INTEGER NOT NULL DEFAULT 0") }
+        )
+    }
 }

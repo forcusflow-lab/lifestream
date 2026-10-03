@@ -57,6 +57,7 @@ fun AddItemBottomSheet(
         templateId: Long?,
         durationSeconds: Int?,
         countValue: Int?,
+        showOnTimeline: Boolean,
         createdAt: Long
     ) -> Unit
 ) {
@@ -84,6 +85,7 @@ fun AddItemBottomSheet(
     // 2段目: "終日", "10:00", "14:00", "18:00", or custom "HH:mm"
     var selectedTodoTime by remember { mutableStateOf("終日") }
     var customPickedTime by remember { mutableStateOf<LocalTime?>(null) }
+    var showOnTimeline by remember { mutableStateOf(false) }
 
     var selectedTemplateId by remember { mutableStateOf<Long?>(null) }
     val selectedTemplate = remember(selectedTemplateId, templates) {
@@ -205,7 +207,7 @@ fun AddItemBottomSheet(
                                     else -> now
                                 }
                                 val millis = doneTime.atZone(zone).toInstant().toEpochMilli()
-                                onSave(title.trim(), true, null, millis, amt, note.ifBlank { null }, selectedTemplateId, durationSec, countVal, System.currentTimeMillis())
+                                onSave(title.trim(), true, null, millis, amt, note.ifBlank { null }, selectedTemplateId, durationSec, countVal, false, System.currentTimeMillis())
                             } else {
                                 var scheduledMillis: Long? = null
                                 var createdAtMillis: Long = System.currentTimeMillis()
@@ -252,7 +254,8 @@ fun AddItemBottomSheet(
                                         }
                                     }
                                 }
-                                onSave(title.trim(), false, scheduledMillis, null, amt, note.ifBlank { null }, selectedTemplateId, durationSec, countVal, createdAtMillis)
+                                val effectiveShowOnTimeline = if (scheduledMillis == null && (selectedTodoTiming == "今日" || selectedTodoTiming == "引き出し")) showOnTimeline else false
+                                onSave(title.trim(), false, scheduledMillis, null, amt, note.ifBlank { null }, selectedTemplateId, durationSec, countVal, effectiveShowOnTimeline, createdAtMillis)
                             }
                             onDismiss()
                         }
@@ -605,6 +608,56 @@ fun AddItemBottomSheet(
                                         fontSize = 11.5.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = colors.primary
+                                    )
+                                }
+                            }
+                        }
+
+                        // 3段目: 時間指定なし（終日）の場合の「タイムラインに表示」トグル
+                        if ((selectedTodoTiming == "今日" || selectedTodoTiming == "引き出し") && selectedTodoTime == "終日") {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (showOnTimeline) colors.primary.copy(alpha = 0.08f) else colors.card,
+                                border = BorderStroke(1.dp, if (showOnTimeline) colors.primary.copy(alpha = 0.35f) else colors.border.copy(alpha = 0.5f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        showOnTimeline = !showOnTimeline
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "📌 今日のタイムライン上に表示",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (showOnTimeline) colors.primary else colors.textPrimary
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = if (showOnTimeline) "NOWラインの下に優しく固定表示されます" else "「これからの歩み」トレイに収まります",
+                                            fontSize = 11.sp,
+                                            color = colors.textSecondary.copy(alpha = 0.8f)
+                                        )
+                                    }
+                                    Switch(
+                                        checked = showOnTimeline,
+                                        onCheckedChange = { showOnTimeline = it },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = colors.primary,
+                                            checkedTrackColor = colors.primary.copy(alpha = 0.3f),
+                                            uncheckedThumbColor = colors.border,
+                                            uncheckedTrackColor = colors.card
+                                        )
                                     )
                                 }
                             }
