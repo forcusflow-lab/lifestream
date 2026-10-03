@@ -223,9 +223,8 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                         }
                     }
 
-                    // 1. DONE items (空間に余裕がある場合のみ表示)
-                    // 今日期限の未完了ToDoを優先し、下部のクリップで未来の歩みが消えないようにする。
-                    if (pendingItems.isEmpty() && doneItems.size > 2) {
+                    // 1. DONE items (過去の実績ログ：NOWラインの上、最新2件＋サマリー)
+                    if (doneItems.size > 2) {
                         Row(
                             modifier = GlanceModifier
                                 .fillMaxWidth()
@@ -243,7 +242,7 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                         }
                     }
 
-                    val visibleDone = if (pendingItems.isEmpty()) doneItems.takeLast(2) else emptyList()
+                    val visibleDone = doneItems.takeLast(2)
                     for (item in visibleDone) {
                         val timeStr = (item.completedAt ?: item.scheduledAt)?.let { ts ->
                             LocalDateTime.ofInstant(Instant.ofEpochMilli(ts), zone)
