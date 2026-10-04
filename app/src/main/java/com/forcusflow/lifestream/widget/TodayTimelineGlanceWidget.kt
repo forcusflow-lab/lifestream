@@ -228,6 +228,183 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                         }
                     }
 
+                    // 4. 「これからの歩み」折り畳み/展開トレイ
+                    // Keep the section visible even when empty, matching the main timeline.
+                    // Expanded mode renders the complete tray; the launcher decides how much
+                    // fits in the current widget size.
+                    Spacer(modifier = GlanceModifier.height(3.dp))
+                        // ヘッダー1行：「これからの歩み (N件) ▼ / ▲」
+                        Row(
+                            modifier = GlanceModifier
+                                .fillMaxWidth()
+                                .cornerRadius(6.dp)
+                                .background(colors.card.copy(alpha = 0.55f))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                .clickable(actionRunCallback<ToggleWidgetTrayActionCallback>()),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "これからの歩み (${totalTrayCount}件)",
+                                style = TextStyle(
+                                    fontSize = (11.5f * scale).sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ColorProvider(colors.textPrimary)
+                                ),
+                                modifier = GlanceModifier.defaultWeight()
+                            )
+                            Text(
+                                text = if (isTrayExpanded) "▲" else "▼",
+                                style = TextStyle(
+                                    fontSize = (10 * scale).sp,
+                                    color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
+                                )
+                            )
+                        }
+
+                        if (isTrayExpanded) {
+                            Spacer(modifier = GlanceModifier.height(2.dp))
+                            // トレイ内の時間帯経過習慣
+                            for (habit in trayHabits) {
+                                Row(
+                                    modifier = GlanceModifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = GlanceModifier
+                                            .size(24.dp)
+                                            .clickable(
+                                                actionRunCallback<RecordPeriodicGlanceActionCallback>(
+                                                    actionParametersOf(RecordPeriodicGlanceActionCallback.templateIdKey to habit.id)
+                                                )
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "○",
+                                            style = TextStyle(
+                                                fontSize = (14 * scale).sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
+                                            )
+                                        )
+                                    }
+                                    Spacer(modifier = GlanceModifier.width(4.dp))
+                                    Box(
+                                        modifier = GlanceModifier
+                                            .cornerRadius(4.dp)
+                                            .background(colors.card.copy(alpha = 0.6f))
+                                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                                    ) {
+                                        Text(
+                                            text = "習慣",
+                                            style = TextStyle(
+                                                fontSize = (9 * scale).sp,
+                                                color = ColorProvider(colors.textSecondary)
+                                            )
+                                        )
+                                    }
+                                    Spacer(modifier = GlanceModifier.width(6.dp))
+                                    Text(
+                                        text = "${habit.iconKey ?: "🔄"} ${habit.title}",
+                                        style = TextStyle(
+                                            fontSize = (12 * scale).sp,
+                                            color = ColorProvider(colors.textPrimary)
+                                        ),
+                                        maxLines = 1,
+                                        modifier = GlanceModifier.defaultWeight().clickable(actionStartActivity(launchIntent))
+                                    )
+                                    Text(
+                                        text = "今回は見送る",
+                                        style = TextStyle(
+                                            fontSize = (9 * scale).sp,
+                                            color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
+                                        ),
+                                        modifier = GlanceModifier.clickable(
+                                            actionRunCallback<PostponePeriodicGlanceActionCallback>(
+                                                actionParametersOf(PostponePeriodicGlanceActionCallback.templateIdKey to habit.id)
+                                            )
+                                        )
+                                    )
+                                }
+                            }
+
+                            // トレイ内の未到来/未固定ToDo
+                            for (item in trayPendingItems) {
+                                val schedTimeStr = item.scheduledAt?.let { sched ->
+                                    val t = LocalDateTime.ofInstant(Instant.ofEpochMilli(sched), zone)
+                                        .format(DateTimeFormatter.ofPattern("HH:mm"))
+                                    if (t != "00:00") t else null
+                                }
+                                Row(
+                                    modifier = GlanceModifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = GlanceModifier
+                                            .size(24.dp)
+                                            .clickable(
+                                                actionRunCallback<ToggleItemDoneActionCallback>(
+                                                    actionParametersOf(ToggleItemDoneActionCallback.itemIdKey to item.id)
+                                                )
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "○",
+                                            style = TextStyle(
+                                                fontSize = (14 * scale).sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
+                                            )
+                                        )
+                                    }
+                                    Spacer(modifier = GlanceModifier.width(4.dp))
+                                    if (schedTimeStr != null) {
+                                        Box(
+                                            modifier = GlanceModifier
+                                                .cornerRadius(4.dp)
+                                                .background(colors.card.copy(alpha = 0.6f))
+                                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                        ) {
+                                            Text(
+                                                text = schedTimeStr,
+                                                style = TextStyle(
+                                                    fontSize = (9.5f * scale).sp,
+                                                    color = ColorProvider(colors.textSecondary)
+                                                )
+                                            )
+                                        }
+                                        Spacer(modifier = GlanceModifier.width(6.dp))
+                                    }
+                                    Text(
+                                        text = item.title,
+                                        style = TextStyle(
+                                            fontSize = (12 * scale).sp,
+                                            color = ColorProvider(colors.textPrimary)
+                                        ),
+                                        maxLines = 1,
+                                        modifier = GlanceModifier.defaultWeight().clickable(actionStartActivity(launchIntent))
+                                    )
+                                }
+                            }
+
+                            if (trayHabits.isEmpty() && trayPendingItems.isEmpty()) {
+                                Text(
+                                    text = "手元のタスクはありません。穏やかな時間をお過ごしください 🌿",
+                                    style = TextStyle(
+                                        fontSize = (11 * scale).sp,
+                                        color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
+                                    ),
+                                    modifier = GlanceModifier.clickable(actionStartActivity(launchIntent))
+                                )
+                            }
+                        }
+
+
                     // 1. DONE items (過去の実績ログ：NOWラインの上、最新1〜2件＋サマリー)
                     val maxDoneToShow = if (hasAnyTasks) 1 else 2
                     if (doneItems.size > maxDoneToShow) {
@@ -474,182 +651,6 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                             )
                         }
                     }
-
-                    // 4. 「これからの歩み」折り畳み/展開トレイ
-                    // Keep the section visible even when empty, matching the main timeline.
-                    // Expanded mode renders the complete tray; the launcher decides how much
-                    // fits in the current widget size.
-                    Spacer(modifier = GlanceModifier.height(3.dp))
-                        // ヘッダー1行：「これからの歩み (N件) ▼ / ▲」
-                        Row(
-                            modifier = GlanceModifier
-                                .fillMaxWidth()
-                                .cornerRadius(6.dp)
-                                .background(colors.card.copy(alpha = 0.55f))
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                                .clickable(actionRunCallback<ToggleWidgetTrayActionCallback>()),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "これからの歩み (${totalTrayCount}件)",
-                                style = TextStyle(
-                                    fontSize = (11.5f * scale).sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = ColorProvider(colors.textPrimary)
-                                ),
-                                modifier = GlanceModifier.defaultWeight()
-                            )
-                            Text(
-                                text = if (isTrayExpanded) "▲" else "▼",
-                                style = TextStyle(
-                                    fontSize = (10 * scale).sp,
-                                    color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
-                                )
-                            )
-                        }
-
-                        if (isTrayExpanded) {
-                            Spacer(modifier = GlanceModifier.height(2.dp))
-                            // トレイ内の時間帯経過習慣
-                            for (habit in trayHabits) {
-                                Row(
-                                    modifier = GlanceModifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = GlanceModifier
-                                            .size(24.dp)
-                                            .clickable(
-                                                actionRunCallback<RecordPeriodicGlanceActionCallback>(
-                                                    actionParametersOf(RecordPeriodicGlanceActionCallback.templateIdKey to habit.id)
-                                                )
-                                            ),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "○",
-                                            style = TextStyle(
-                                                fontSize = (14 * scale).sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
-                                            )
-                                        )
-                                    }
-                                    Spacer(modifier = GlanceModifier.width(4.dp))
-                                    Box(
-                                        modifier = GlanceModifier
-                                            .cornerRadius(4.dp)
-                                            .background(colors.card.copy(alpha = 0.6f))
-                                            .padding(horizontal = 4.dp, vertical = 1.dp)
-                                    ) {
-                                        Text(
-                                            text = "習慣",
-                                            style = TextStyle(
-                                                fontSize = (9 * scale).sp,
-                                                color = ColorProvider(colors.textSecondary)
-                                            )
-                                        )
-                                    }
-                                    Spacer(modifier = GlanceModifier.width(6.dp))
-                                    Text(
-                                        text = "${habit.iconKey ?: "🔄"} ${habit.title}",
-                                        style = TextStyle(
-                                            fontSize = (12 * scale).sp,
-                                            color = ColorProvider(colors.textPrimary)
-                                        ),
-                                        maxLines = 1,
-                                        modifier = GlanceModifier.defaultWeight().clickable(actionStartActivity(launchIntent))
-                                    )
-                                    Text(
-                                        text = "今回は見送る",
-                                        style = TextStyle(
-                                            fontSize = (9 * scale).sp,
-                                            color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
-                                        ),
-                                        modifier = GlanceModifier.clickable(
-                                            actionRunCallback<PostponePeriodicGlanceActionCallback>(
-                                                actionParametersOf(PostponePeriodicGlanceActionCallback.templateIdKey to habit.id)
-                                            )
-                                        )
-                                    )
-                                }
-                            }
-
-                            // トレイ内の未到来/未固定ToDo
-                            for (item in trayPendingItems) {
-                                val schedTimeStr = item.scheduledAt?.let { sched ->
-                                    val t = LocalDateTime.ofInstant(Instant.ofEpochMilli(sched), zone)
-                                        .format(DateTimeFormatter.ofPattern("HH:mm"))
-                                    if (t != "00:00") t else null
-                                }
-                                Row(
-                                    modifier = GlanceModifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = GlanceModifier
-                                            .size(24.dp)
-                                            .clickable(
-                                                actionRunCallback<ToggleItemDoneActionCallback>(
-                                                    actionParametersOf(ToggleItemDoneActionCallback.itemIdKey to item.id)
-                                                )
-                                            ),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "○",
-                                            style = TextStyle(
-                                                fontSize = (14 * scale).sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
-                                            )
-                                        )
-                                    }
-                                    Spacer(modifier = GlanceModifier.width(4.dp))
-                                    if (schedTimeStr != null) {
-                                        Box(
-                                            modifier = GlanceModifier
-                                                .cornerRadius(4.dp)
-                                                .background(colors.card.copy(alpha = 0.6f))
-                                                .padding(horizontal = 4.dp, vertical = 1.dp)
-                                        ) {
-                                            Text(
-                                                text = schedTimeStr,
-                                                style = TextStyle(
-                                                    fontSize = (9.5f * scale).sp,
-                                                    color = ColorProvider(colors.textSecondary)
-                                                )
-                                            )
-                                        }
-                                        Spacer(modifier = GlanceModifier.width(6.dp))
-                                    }
-                                    Text(
-                                        text = item.title,
-                                        style = TextStyle(
-                                            fontSize = (12 * scale).sp,
-                                            color = ColorProvider(colors.textPrimary)
-                                        ),
-                                        maxLines = 1,
-                                        modifier = GlanceModifier.defaultWeight().clickable(actionStartActivity(launchIntent))
-                                    )
-                                }
-                            }
-
-                            if (trayHabits.isEmpty() && trayPendingItems.isEmpty()) {
-                                Text(
-                                    text = "手元のタスクはありません。穏やかな時間をお過ごしください 🌿",
-                                    style = TextStyle(
-                                        fontSize = (11 * scale).sp,
-                                        color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
-                                    ),
-                                    modifier = GlanceModifier.clickable(actionStartActivity(launchIntent))
-                                )
-                            }
-                        }
 
                     // Fill remaining empty space with a safe clickable launcher to allow opening app from empty space
                     Spacer(modifier = GlanceModifier.defaultWeight().clickable(actionStartActivity(launchIntent)))
