@@ -112,7 +112,7 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                 Column(
                     modifier = GlanceModifier.fillMaxSize()
                 ) {
-                    // Header: Date & [🔄 手動更新] [＋ 追加] Buttons
+            // Header: Date & [↻ 手動更新] [＋ 追加] Buttons
                     Row(
                         modifier = GlanceModifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -129,7 +129,7 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                 .clickable(actionStartActivity(launchIntent))
                         )
 
-                        // 🔄 手動更新 Button (タップで即時再描画)
+                        // ↻ 手動更新 Button (タップで即時再描画)
                         Box(
                             modifier = GlanceModifier
                                 .cornerRadius(12.dp)
@@ -139,9 +139,10 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "🔄",
+                                text = "↻",
                                 style = TextStyle(
-                                    fontSize = (11 * scale).sp,
+                                    fontSize = (16 * scale).sp,
+                                    fontWeight = FontWeight.Bold,
                                     color = ColorProvider(colors.textSecondary)
                                 )
                             )
