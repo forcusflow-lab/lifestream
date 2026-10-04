@@ -114,7 +114,7 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                 Column(
                     modifier = GlanceModifier.fillMaxSize()
                 ) {
-                    // Header: Date & [🔄 手動更新] [＋ 追加] Buttons
+            // Header: Date & [↻ 手動更新] [＋ 追加] Buttons
                     Row(
                         modifier = GlanceModifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -131,7 +131,7 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                 .clickable(actionStartActivity(launchIntent))
                         )
 
-                        // 🔄 手動更新 Button (タップで即時再描画)
+                        // ↻ 手動更新 Button (タップで即時再描画)
                         Box(
                             modifier = GlanceModifier
                                 .cornerRadius(12.dp)
@@ -141,9 +141,10 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "🔄",
+                                text = "↻",
                                 style = TextStyle(
-                                    fontSize = (11 * scale).sp,
+                                    fontSize = (16 * scale).sp,
+                                    fontWeight = FontWeight.Bold,
                                     color = ColorProvider(colors.textSecondary)
                                 )
                             )
@@ -919,6 +920,34 @@ class RecordPeriodicGlanceActionCallback : ActionCallback {
         val logicalToday = dateProvider.getLogicalDate(cutoffHour = cutoffHour)
         val useCase = PeriodicTaskUseCase(db, dateProvider)
         useCase.recordCompletion(template, logicalToday, cutoffHour)
+        try {
+            TodayTimelineGlanceWidget().update(context, glanceId)
+            TodayTimelineWidgetReceiver.updateAllSuspending(context)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    companion object {
+        val templateIdKey = ActionParameters.Key<Long>("templateId")
+    }
+}
+
+class PostponePeriodicGlanceActionCallback : ActionCallback {
+    override suspend fun onAction(
+        context: Context,
+        glanceId: GlanceId,
+        parameters: ActionParameters
+    ) {
+        val templateId = parameters[templateIdKey] ?: return
+        val db = AppDatabase.getInstance(context)
+        val template = db.templateDao().getById(templateId) ?: return
+        val cutoffHour = WidgetSettingsManager.getCutoffHour(context)
+        PeriodicTaskUseCase(db, LifeDateProvider()).postponeTask(
+            template,
+            cutoffHour,
+            delayDays = 1
+        )
         try {
             TodayTimelineGlanceWidget().update(context, glanceId)
             TodayTimelineWidgetReceiver.updateAllSuspending(context)
