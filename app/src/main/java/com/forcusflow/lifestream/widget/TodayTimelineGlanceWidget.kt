@@ -7,6 +7,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.ColorFilter
+import androidx.glance.Image
+import androidx.glance.ImageProvider
 import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionParametersOf
 import androidx.glance.action.clickable
@@ -24,6 +27,7 @@ import androidx.glance.layout.*
 import androidx.glance.text.*
 import androidx.glance.unit.ColorProvider
 import com.forcusflow.lifestream.MainActivity
+import com.forcusflow.lifestream.R
 import com.forcusflow.lifestream.data.AppDatabase
 import com.forcusflow.lifestream.data.TimelineItemEntity
 import com.forcusflow.lifestream.domain.LifeDateProvider
@@ -269,24 +273,16 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                             } ?: "--:--"
 
                             val cleanTitle = item.title
-                                .replace("\\s*\\(\\d+(分|秒)\\)".toRegex(), "")
-                                .replace("\\s*\\(\\d+[杯回個本皿枚]目?\\)".toRegex(), "")
-                                .trim()
-
                             val durationSec = item.durationSeconds
-                                ?: "\\((\\d+)分\\)".toRegex().find(item.title)?.groupValues?.get(1)?.toIntOrNull()?.times(60)
-                                ?: "\\((\\d+)秒\\)".toRegex().find(item.title)?.groupValues?.get(1)?.toIntOrNull()
-
                             val countVal = item.countValue
-                                ?: "\\((\\d+)[杯回個本皿枚]目?\\)".toRegex().find(item.title)?.groupValues?.get(1)?.toIntOrNull()
 
                             Row(
                                 modifier = GlanceModifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 2.dp),
+                                    .padding(vertical = 1.5.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // 幹ライン ＋ 完了チェック丸ノード (緑✓)
+                                // 幹ライン ＋ 完了チェック丸ノード (緑✓: ベクター画像で完全中央配置)
                                 Column(
                                     modifier = GlanceModifier.width(28.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally
@@ -294,7 +290,7 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                     Box(
                                         modifier = GlanceModifier
                                             .width(2.dp)
-                                            .height(5.dp)
+                                            .height(4.dp)
                                             .background(colors.border.copy(alpha = 0.45f))
                                     ) {}
                                     Box(
@@ -304,57 +300,44 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                             .background(colors.statusDone),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Text(
-                                            text = "✓",
-                                            style = TextStyle(
-                                                fontSize = (11 * scale).sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = ColorProvider(Color.White)
-                                            )
+                                        Image(
+                                            provider = ImageProvider(R.drawable.ic_widget_check),
+                                            contentDescription = "完了",
+                                            modifier = GlanceModifier.size(11.dp)
                                         )
                                     }
                                     Box(
                                         modifier = GlanceModifier
                                             .width(2.dp)
-                                            .height(5.dp)
+                                            .height(4.dp)
                                             .background(colors.border.copy(alpha = 0.45f))
                                     ) {}
                                 }
 
                                 Spacer(modifier = GlanceModifier.width(6.dp))
 
-                                // 角丸カード (本体と同じカード背景・上段時刻・下段太字タイトル・バッジ)
+                                // コンパクト2行カード (本体と同じカード背景・上段時刻+バッジ・下段太字タイトル)
                                 Box(
                                     modifier = GlanceModifier
                                         .defaultWeight()
-                                        .cornerRadius(10.dp)
+                                        .cornerRadius(8.dp)
                                         .background(colors.card.copy(alpha = 0.85f))
-                                        .padding(horizontal = 9.dp, vertical = 5.dp)
+                                        .padding(horizontal = 8.dp, vertical = 3.dp)
                                         .clickable(actionStartActivity(launchIntent))
                                 ) {
                                     Column(modifier = GlanceModifier.fillMaxWidth()) {
-                                        Text(
-                                            text = timeStr,
-                                            style = TextStyle(
-                                                fontSize = (9.5f * scale).sp,
-                                                fontWeight = FontWeight.Medium,
-                                                color = ColorProvider(colors.textSecondary.copy(alpha = 0.8f))
-                                            )
-                                        )
-                                        Spacer(modifier = GlanceModifier.height(1.dp))
+                                        // 上段：時刻 ＋ バッジ (なぞの空白を排して1行に凝縮)
                                         Row(
                                             modifier = GlanceModifier.fillMaxWidth(),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text(
-                                                text = cleanTitle,
+                                                text = timeStr,
                                                 style = TextStyle(
-                                                    fontSize = (12.5f * scale).sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = ColorProvider(colors.textPrimary)
-                                                ),
-                                                maxLines = 1,
-                                                modifier = GlanceModifier.defaultWeight()
+                                                    fontSize = (9.5f * scale).sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = ColorProvider(colors.textSecondary.copy(alpha = 0.8f))
+                                                )
                                             )
 
                                             if (durationSec != null && durationSec > 0) {
@@ -362,14 +345,14 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                                 val durText = if (durationSec >= 60) "${(durationSec + 30) / 60}分" else "${durationSec}秒"
                                                 Box(
                                                     modifier = GlanceModifier
-                                                        .cornerRadius(4.dp)
+                                                        .cornerRadius(3.dp)
                                                         .background(Color(0xFFEF4444).copy(alpha = 0.14f))
-                                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                        .padding(horizontal = 3.dp, vertical = 0.5.dp)
                                                 ) {
                                                     Text(
                                                         text = "⏱ $durText",
                                                         style = TextStyle(
-                                                            fontSize = (8.5f * scale).sp,
+                                                            fontSize = (8f * scale).sp,
                                                             fontWeight = FontWeight.Bold,
                                                             color = ColorProvider(Color(0xFFEF4444))
                                                         )
@@ -381,14 +364,14 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                                 Spacer(modifier = GlanceModifier.width(4.dp))
                                                 Box(
                                                     modifier = GlanceModifier
-                                                        .cornerRadius(4.dp)
+                                                        .cornerRadius(3.dp)
                                                         .background(Color(0xFF0284C7).copy(alpha = 0.14f))
-                                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                        .padding(horizontal = 3.dp, vertical = 0.5.dp)
                                                 ) {
                                                     Text(
                                                         text = "${countVal}回",
                                                         style = TextStyle(
-                                                            fontSize = (8.5f * scale).sp,
+                                                            fontSize = (8f * scale).sp,
                                                             fontWeight = FontWeight.Bold,
                                                             color = ColorProvider(Color(0xFF0284C7))
                                                         )
@@ -396,6 +379,17 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                                 }
                                             }
                                         }
+
+                                        // 下段：タイトル (余白なしで即座に連結)
+                                        Text(
+                                            text = cleanTitle,
+                                            style = TextStyle(
+                                                fontSize = (12f * scale).sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = ColorProvider(colors.textPrimary)
+                                            ),
+                                            maxLines = 1
+                                        )
                                     }
                                 }
                             }
@@ -452,7 +446,7 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                             Row(
                                 modifier = GlanceModifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 2.dp),
+                                    .padding(vertical = 1.5.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 // 幹ライン ＋ 未完了丸ノード (○: タップで即時連動完了)
@@ -463,12 +457,12 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                     Box(
                                         modifier = GlanceModifier
                                             .width(2.dp)
-                                            .height(4.dp)
+                                            .height(3.dp)
                                             .background(colors.border.copy(alpha = 0.45f))
                                     ) {}
                                     Box(
                                         modifier = GlanceModifier
-                                            .size(24.dp)
+                                            .size(22.dp)
                                             .clickable(
                                                 actionRunCallback<RecordPeriodicGlanceActionCallback>(
                                                     actionParametersOf(RecordPeriodicGlanceActionCallback.templateIdKey to habit.id)
@@ -476,19 +470,17 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                             ),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Text(
-                                            text = "○",
-                                            style = TextStyle(
-                                                fontSize = (15 * scale).sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = ColorProvider(colors.primary)
-                                            )
+                                        Image(
+                                            provider = ImageProvider(R.drawable.ic_widget_circle),
+                                            contentDescription = "未完了",
+                                            modifier = GlanceModifier.size(17.dp),
+                                            colorFilter = ColorFilter.tint(ColorProvider(colors.primary))
                                         )
                                     }
                                     Box(
                                         modifier = GlanceModifier
                                             .width(2.dp)
-                                            .height(4.dp)
+                                            .height(3.dp)
                                             .background(colors.border.copy(alpha = 0.45f))
                                     ) {}
                                 }
@@ -499,9 +491,9 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                 Box(
                                     modifier = GlanceModifier
                                         .defaultWeight()
-                                        .cornerRadius(10.dp)
+                                        .cornerRadius(8.dp)
                                         .background(colors.card.copy(alpha = 0.85f))
-                                        .padding(horizontal = 9.dp, vertical = 6.dp)
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
                                         .clickable(actionStartActivity(launchIntent))
                                 ) {
                                     Row(
@@ -510,24 +502,24 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                     ) {
                                         Box(
                                             modifier = GlanceModifier
-                                                .cornerRadius(4.dp)
+                                                .cornerRadius(3.dp)
                                                 .background(colors.primary.copy(alpha = 0.12f))
-                                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                .padding(horizontal = 4.dp, vertical = 0.5.dp)
                                         ) {
                                             Text(
                                                 text = "習慣",
                                                 style = TextStyle(
-                                                    fontSize = (9 * scale).sp,
+                                                    fontSize = (8.5f * scale).sp,
                                                     fontWeight = FontWeight.Bold,
                                                     color = ColorProvider(colors.primary)
                                                 )
                                             )
                                         }
-                                        Spacer(modifier = GlanceModifier.width(6.dp))
+                                        Spacer(modifier = GlanceModifier.width(5.dp))
                                         Text(
                                             text = "${habit.iconKey ?: "🔄"} ${habit.title}",
                                             style = TextStyle(
-                                                fontSize = (12.5f * scale).sp,
+                                                fontSize = (12f * scale).sp,
                                                 fontWeight = FontWeight.Medium,
                                                 color = ColorProvider(colors.textPrimary)
                                             ),
@@ -551,7 +543,7 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                             Row(
                                 modifier = GlanceModifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 2.dp),
+                                    .padding(vertical = 1.5.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 // 幹ライン ＋ 未完了丸ノード (○: タップで即時連動完了)
@@ -562,12 +554,12 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                     Box(
                                         modifier = GlanceModifier
                                             .width(2.dp)
-                                            .height(4.dp)
+                                            .height(3.dp)
                                             .background(colors.border.copy(alpha = 0.45f))
                                     ) {}
                                     Box(
                                         modifier = GlanceModifier
-                                            .size(24.dp)
+                                            .size(22.dp)
                                             .clickable(
                                                 actionRunCallback<ToggleItemDoneActionCallback>(
                                                     actionParametersOf(ToggleItemDoneActionCallback.itemIdKey to item.id)
@@ -575,19 +567,17 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                             ),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Text(
-                                            text = "○",
-                                            style = TextStyle(
-                                                fontSize = (15 * scale).sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = ColorProvider(colors.primary)
-                                            )
+                                        Image(
+                                            provider = ImageProvider(R.drawable.ic_widget_circle),
+                                            contentDescription = "未完了",
+                                            modifier = GlanceModifier.size(17.dp),
+                                            colorFilter = ColorFilter.tint(ColorProvider(colors.primary))
                                         )
                                     }
                                     Box(
                                         modifier = GlanceModifier
                                             .width(2.dp)
-                                            .height(4.dp)
+                                            .height(3.dp)
                                             .background(colors.border.copy(alpha = 0.45f))
                                     ) {}
                                 }
@@ -598,9 +588,9 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                 Box(
                                     modifier = GlanceModifier
                                         .defaultWeight()
-                                        .cornerRadius(10.dp)
+                                        .cornerRadius(8.dp)
                                         .background(colors.card.copy(alpha = 0.85f))
-                                        .padding(horizontal = 9.dp, vertical = 6.dp)
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
                                         .clickable(actionStartActivity(launchIntent))
                                 ) {
                                     Row(
@@ -610,43 +600,43 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                         if (schedTimeStr != null) {
                                             Box(
                                                 modifier = GlanceModifier
-                                                    .cornerRadius(4.dp)
+                                                    .cornerRadius(3.dp)
                                                     .background(colors.primary.copy(alpha = 0.16f))
-                                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                .padding(horizontal = 4.dp, vertical = 0.5.dp)
                                             ) {
                                                 Text(
                                                     text = schedTimeStr,
                                                     style = TextStyle(
-                                                        fontSize = (9.5f * scale).sp,
+                                                        fontSize = (9f * scale).sp,
                                                         fontWeight = FontWeight.Bold,
                                                         color = ColorProvider(colors.primary)
                                                     )
                                                 )
                                             }
-                                            Spacer(modifier = GlanceModifier.width(6.dp))
+                                            Spacer(modifier = GlanceModifier.width(5.dp))
                                         } else if (isPinnedToday) {
                                             Box(
                                                 modifier = GlanceModifier
-                                                    .cornerRadius(4.dp)
+                                                    .cornerRadius(3.dp)
                                                     .background(colors.primary.copy(alpha = 0.12f))
-                                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                .padding(horizontal = 4.dp, vertical = 0.5.dp)
                                             ) {
                                                 Text(
                                                     text = "📌 今日",
                                                     style = TextStyle(
-                                                        fontSize = (9 * scale).sp,
+                                                        fontSize = (8.5f * scale).sp,
                                                         fontWeight = FontWeight.Bold,
                                                         color = ColorProvider(colors.primary)
                                                     )
                                                 )
                                             }
-                                            Spacer(modifier = GlanceModifier.width(6.dp))
+                                            Spacer(modifier = GlanceModifier.width(5.dp))
                                         }
 
                                         Text(
                                             text = item.title,
                                             style = TextStyle(
-                                                fontSize = (12.5f * scale).sp,
+                                                fontSize = (12f * scale).sp,
                                                 fontWeight = FontWeight.Medium,
                                                 color = ColorProvider(colors.textPrimary)
                                             ),
@@ -666,49 +656,41 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                         .fillMaxWidth()
                                         .padding(top = 4.dp, bottom = 2.dp)
                                 ) {
-                                    // 見出し行：「これからの歩み (N件) ▲ / ▼」
+                                    // 見出し行：「これからの歩み (N件) ▲ / ▼」 (本体と同じく白枠を排したクリーンな見出し)
                                     Row(
                                         modifier = GlanceModifier
                                             .fillMaxWidth()
-                                            .padding(vertical = 3.dp),
+                                            .padding(top = 4.dp, bottom = 2.dp)
+                                            .clickable(actionRunCallback<ToggleWidgetTrayActionCallback>()),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Row(
-                                            modifier = GlanceModifier
-                                                .cornerRadius(8.dp)
-                                                .background(colors.card.copy(alpha = 0.65f))
-                                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                                                .clickable(actionRunCallback<ToggleWidgetTrayActionCallback>()),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = "これからの歩み (${totalTrayCount}件)",
-                                                style = TextStyle(
-                                                    fontSize = (11.5f * scale).sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = ColorProvider(colors.textPrimary)
-                                                )
+                                        Text(
+                                            text = "これからの歩み (${totalTrayCount}件)",
+                                            style = TextStyle(
+                                                fontSize = (11.5f * scale).sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = ColorProvider(colors.textPrimary)
                                             )
-                                            Spacer(modifier = GlanceModifier.width(4.dp))
-                                            Text(
-                                                text = if (isTrayExpanded) "▲" else "▼",
-                                                style = TextStyle(
-                                                    fontSize = (9.5f * scale).sp,
-                                                    color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
-                                                )
+                                        )
+                                        Spacer(modifier = GlanceModifier.width(5.dp))
+                                        Text(
+                                            text = if (isTrayExpanded) "▲" else "▼",
+                                            style = TextStyle(
+                                                fontSize = (9.5f * scale).sp,
+                                                color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
                                             )
-                                        }
+                                        )
                                     }
 
-                                    // 展開時：本体と同じく全体を角丸アンビエントカードで包む
+                                    // 展開時：無駄な余白を排し、チェック位置をタイムラインと寸分違わず整列させたアンビエント面
                                     if (isTrayExpanded) {
-                                        Spacer(modifier = GlanceModifier.height(3.dp))
+                                        Spacer(modifier = GlanceModifier.height(2.dp))
                                         Box(
                                             modifier = GlanceModifier
                                                 .fillMaxWidth()
-                                                .cornerRadius(14.dp)
+                                                .cornerRadius(12.dp)
                                                 .background(colors.card.copy(alpha = 0.65f))
-                                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                                .padding(start = 2.dp, end = 8.dp, top = 3.dp, bottom = 4.dp)
                                         ) {
                                             Column(modifier = GlanceModifier.fillMaxWidth()) {
                                                 // A. 🌿 今日のルーティン (周期習慣)
@@ -716,23 +698,25 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                                     Text(
                                                         text = "🌿 今日のルーティン",
                                                         style = TextStyle(
-                                                            fontSize = (10 * scale).sp,
-                                                            fontWeight = FontWeight.Medium,
+                                                            fontSize = (9.5f * scale).sp,
+                                                            fontWeight = FontWeight.Bold,
                                                             color = ColorProvider(colors.primary.copy(alpha = 0.85f))
                                                         ),
-                                                        modifier = GlanceModifier.padding(vertical = 2.dp)
+                                                        modifier = GlanceModifier.padding(start = 6.dp, top = 2.dp, bottom = 1.dp)
                                                     )
 
                                                     for (habit in trayHabits) {
                                                         Row(
                                                             modifier = GlanceModifier
                                                                 .fillMaxWidth()
-                                                                .padding(vertical = 2.dp),
+                                                                .padding(vertical = 1.dp),
                                                             verticalAlignment = Alignment.CenterVertically
                                                         ) {
+                                                            // 幹の28dpと完全同期させたチェック枠（ズレのない一直線グリッド）
                                                             Box(
                                                                 modifier = GlanceModifier
-                                                                    .size(24.dp)
+                                                                    .width(28.dp)
+                                                                    .height(20.dp)
                                                                     .clickable(
                                                                         actionRunCallback<RecordPeriodicGlanceActionCallback>(
                                                                             actionParametersOf(RecordPeriodicGlanceActionCallback.templateIdKey to habit.id)
@@ -740,20 +724,18 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                                                     ),
                                                                 contentAlignment = Alignment.Center
                                                             ) {
-                                                                Text(
-                                                                    text = "○",
-                                                                    style = TextStyle(
-                                                                        fontSize = (14 * scale).sp,
-                                                                        fontWeight = FontWeight.Bold,
-                                                                        color = ColorProvider(colors.textSecondary.copy(alpha = 0.75f))
-                                                                    )
+                                                                Image(
+                                                                    provider = ImageProvider(R.drawable.ic_widget_circle),
+                                                                    contentDescription = "未完了",
+                                                                    modifier = GlanceModifier.size(16.dp),
+                                                                    colorFilter = ColorFilter.tint(ColorProvider(colors.textSecondary.copy(alpha = 0.7f)))
                                                                 )
                                                             }
                                                             Spacer(modifier = GlanceModifier.width(4.dp))
                                                             Text(
                                                                 text = "${habit.iconKey ?: "🔄"} ${habit.title}",
                                                                 style = TextStyle(
-                                                                    fontSize = (12 * scale).sp,
+                                                                    fontSize = (11.5f * scale).sp,
                                                                     color = ColorProvider(colors.textPrimary)
                                                                 ),
                                                                 maxLines = 1,
@@ -765,14 +747,14 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
 
                                                 // 区切り線
                                                 if (trayHabits.isNotEmpty() && trayPendingItems.isNotEmpty()) {
-                                                    Spacer(modifier = GlanceModifier.height(3.dp))
+                                                    Spacer(modifier = GlanceModifier.height(2.dp))
                                                     Box(
                                                         modifier = GlanceModifier
                                                             .fillMaxWidth()
-                                                            .height(1.dp)
+                                                            .height(0.5.dp)
                                                             .background(colors.border.copy(alpha = 0.2f))
                                                     ) {}
-                                                    Spacer(modifier = GlanceModifier.height(3.dp))
+                                                    Spacer(modifier = GlanceModifier.height(2.dp))
                                                 }
 
                                                 // B. 📋 やること (ToDo)
@@ -780,11 +762,11 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                                     Text(
                                                         text = "📋 やること",
                                                         style = TextStyle(
-                                                            fontSize = (10 * scale).sp,
-                                                            fontWeight = FontWeight.Medium,
+                                                            fontSize = (9.5f * scale).sp,
+                                                            fontWeight = FontWeight.Bold,
                                                             color = ColorProvider(colors.primary.copy(alpha = 0.85f))
                                                         ),
-                                                        modifier = GlanceModifier.padding(vertical = 2.dp)
+                                                        modifier = GlanceModifier.padding(start = 6.dp, top = 2.dp, bottom = 1.dp)
                                                     )
 
                                                     for (item in trayPendingItems) {
@@ -796,12 +778,14 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                                         Row(
                                                             modifier = GlanceModifier
                                                                 .fillMaxWidth()
-                                                                .padding(vertical = 2.dp),
+                                                                .padding(vertical = 1.dp),
                                                             verticalAlignment = Alignment.CenterVertically
                                                         ) {
+                                                            // 幹の28dpと完全同期させたチェック枠（ズレのない一直線グリッド）
                                                             Box(
                                                                 modifier = GlanceModifier
-                                                                    .size(24.dp)
+                                                                    .width(28.dp)
+                                                                    .height(20.dp)
                                                                     .clickable(
                                                                         actionRunCallback<ToggleItemDoneActionCallback>(
                                                                             actionParametersOf(ToggleItemDoneActionCallback.itemIdKey to item.id)
@@ -809,28 +793,27 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                                                     ),
                                                                 contentAlignment = Alignment.Center
                                                             ) {
-                                                                Text(
-                                                                    text = "○",
-                                                                    style = TextStyle(
-                                                                        fontSize = (14 * scale).sp,
-                                                                        fontWeight = FontWeight.Bold,
-                                                                        color = ColorProvider(colors.textSecondary.copy(alpha = 0.75f))
-                                                                    )
+                                                                Image(
+                                                                    provider = ImageProvider(R.drawable.ic_widget_circle),
+                                                                    contentDescription = "未完了",
+                                                                    modifier = GlanceModifier.size(16.dp),
+                                                                    colorFilter = ColorFilter.tint(ColorProvider(colors.textSecondary.copy(alpha = 0.7f)))
                                                                 )
                                                             }
                                                             Spacer(modifier = GlanceModifier.width(4.dp))
                                                             if (schedTimeStr != null) {
                                                                 Box(
                                                                     modifier = GlanceModifier
-                                                                        .cornerRadius(4.dp)
-                                                                        .background(colors.card.copy(alpha = 0.6f))
-                                                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                                        .cornerRadius(3.dp)
+                                                                        .background(colors.primary.copy(alpha = 0.12f))
+                                                                        .padding(horizontal = 4.dp, vertical = 0.5.dp)
                                                                 ) {
                                                                     Text(
                                                                         text = schedTimeStr,
                                                                         style = TextStyle(
-                                                                            fontSize = (9 * scale).sp,
-                                                                            color = ColorProvider(colors.textSecondary)
+                                                                            fontSize = (8.5f * scale).sp,
+                                                                            fontWeight = FontWeight.Bold,
+                                                                            color = ColorProvider(colors.primary)
                                                                         )
                                                                     )
                                                                 }
@@ -839,7 +822,7 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                                             Text(
                                                                 text = item.title,
                                                                 style = TextStyle(
-                                                                    fontSize = (12 * scale).sp,
+                                                                    fontSize = (11.5f * scale).sp,
                                                                     color = ColorProvider(colors.textPrimary)
                                                                 ),
                                                                 maxLines = 1,
@@ -894,7 +877,7 @@ class ToggleItemDoneActionCallback : ActionCallback {
         )
         db.timelineItemDao().update(updated)
         try {
-            TodayTimelineGlanceWidget().update(context, glanceId)
+            // 一括更新のみ呼び出し、重複IPCおよび二重再描画を完全に排除（高速化）
             TodayTimelineWidgetReceiver.updateAllSuspending(context)
         } catch (e: Exception) {
             e.printStackTrace()
@@ -921,7 +904,7 @@ class RecordPeriodicGlanceActionCallback : ActionCallback {
         val useCase = PeriodicTaskUseCase(db, dateProvider)
         useCase.recordCompletion(template, logicalToday, cutoffHour)
         try {
-            TodayTimelineGlanceWidget().update(context, glanceId)
+            // 一括更新のみ呼び出し、重複IPCおよび二重再描画を完全に排除（高速化）
             TodayTimelineWidgetReceiver.updateAllSuspending(context)
         } catch (e: Exception) {
             e.printStackTrace()
@@ -949,7 +932,7 @@ class PostponePeriodicGlanceActionCallback : ActionCallback {
             delayDays = 1
         )
         try {
-            TodayTimelineGlanceWidget().update(context, glanceId)
+            // 一括更新のみ呼び出し、重複IPCおよび二重再描画を完全に排除（高速化）
             TodayTimelineWidgetReceiver.updateAllSuspending(context)
         } catch (e: Exception) {
             e.printStackTrace()
@@ -969,7 +952,7 @@ class ToggleWidgetTrayActionCallback : ActionCallback {
     ) {
         WidgetSettingsManager.toggleFutureTrayExpanded(context)
         try {
-            TodayTimelineGlanceWidget().update(context, glanceId)
+            // 一括更新のみ呼び出し、重複IPCおよび二重再描画を完全に排除（高速化）
             TodayTimelineWidgetReceiver.updateAllSuspending(context)
         } catch (e: Exception) {
             e.printStackTrace()
@@ -984,7 +967,7 @@ class RefreshWidgetActionCallback : ActionCallback {
         parameters: ActionParameters
     ) {
         try {
-            TodayTimelineGlanceWidget().update(context, glanceId)
+            // 一括更新のみ呼び出し、重複IPCおよび二重再描画を完全に排除（高速化）
             TodayTimelineWidgetReceiver.updateAllSuspending(context)
         } catch (e: Exception) {
             e.printStackTrace()
