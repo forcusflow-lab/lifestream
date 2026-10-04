@@ -476,8 +476,10 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                     }
 
                     // 4. 「これからの歩み」折り畳み/展開トレイ
-                    if (totalTrayCount > 0) {
-                        Spacer(modifier = GlanceModifier.height(3.dp))
+                    // Keep the section visible even when empty, matching the main timeline.
+                    // Expanded mode renders the complete tray; the launcher decides how much
+                    // fits in the current widget size.
+                    Spacer(modifier = GlanceModifier.height(3.dp))
                         // ヘッダー1行：「これからの歩み (N件) ▼ / ▲」
                         Row(
                             modifier = GlanceModifier
@@ -509,7 +511,7 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                         if (isTrayExpanded) {
                             Spacer(modifier = GlanceModifier.height(2.dp))
                             // トレイ内の時間帯経過習慣
-                            for (habit in trayHabits.take(3)) {
+                            for (habit in trayHabits) {
                                 Row(
                                     modifier = GlanceModifier
                                         .fillMaxWidth()
@@ -560,12 +562,23 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                         maxLines = 1,
                                         modifier = GlanceModifier.defaultWeight().clickable(actionStartActivity(launchIntent))
                                     )
+                                    Text(
+                                        text = "今回は見送る",
+                                        style = TextStyle(
+                                            fontSize = (9 * scale).sp,
+                                            color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
+                                        ),
+                                        modifier = GlanceModifier.clickable(
+                                            actionRunCallback<PostponePeriodicGlanceActionCallback>(
+                                                actionParametersOf(PostponePeriodicGlanceActionCallback.templateIdKey to habit.id)
+                                            )
+                                        )
+                                    )
                                 }
                             }
 
                             // トレイ内の未到来/未固定ToDo
-                            val remainingSlot = (4 - trayHabits.take(3).size).coerceAtLeast(1)
-                            for (item in trayPendingItems.take(remainingSlot)) {
+                            for (item in trayPendingItems) {
                                 val schedTimeStr = item.scheduledAt?.let { sched ->
                                     val t = LocalDateTime.ofInstant(Instant.ofEpochMilli(sched), zone)
                                         .format(DateTimeFormatter.ofPattern("HH:mm"))
@@ -626,31 +639,17 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                 }
                             }
 
-                            val hiddenCount = (trayHabits.size + trayPendingItems.size) - (trayHabits.take(3).size + trayPendingItems.take(remainingSlot).size)
-                            if (hiddenCount > 0) {
+                            if (trayHabits.isEmpty() && trayPendingItems.isEmpty()) {
                                 Text(
-                                    text = "... 他 ${hiddenCount} 件",
+                                    text = "手元のタスクはありません。穏やかな時間をお過ごしください 🌿",
                                     style = TextStyle(
-                                        fontSize = (10 * scale).sp,
-                                        color = ColorProvider(colors.textSecondary.copy(alpha = 0.65f))
+                                        fontSize = (11 * scale).sp,
+                                        color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
                                     ),
-                                    modifier = GlanceModifier
-                                        .padding(start = 28.dp, top = 1.dp)
-                                        .clickable(actionStartActivity(launchIntent))
+                                    modifier = GlanceModifier.clickable(actionStartActivity(launchIntent))
                                 )
                             }
                         }
-                    } else if (surfacedHabits.isEmpty() && surfacedPendingItems.isEmpty() && doneItems.isNotEmpty()) {
-                        Spacer(modifier = GlanceModifier.height(2.dp))
-                        Text(
-                            text = "手元のタスクはありません 🌿",
-                            style = TextStyle(
-                                fontSize = (11 * scale).sp,
-                                color = ColorProvider(colors.textSecondary.copy(alpha = 0.7f))
-                            ),
-                            modifier = GlanceModifier.clickable(actionStartActivity(launchIntent))
-                        )
-                    }
 
                     // Fill remaining empty space with a safe clickable launcher to allow opening app from empty space
                     Spacer(modifier = GlanceModifier.defaultWeight().clickable(actionStartActivity(launchIntent)))
@@ -702,6 +701,34 @@ class RecordPeriodicGlanceActionCallback : ActionCallback {
         val logicalToday = dateProvider.getLogicalDate(cutoffHour = cutoffHour)
         val useCase = PeriodicTaskUseCase(db, dateProvider)
         useCase.recordCompletion(template, logicalToday, cutoffHour)
+        try {
+            TodayTimelineGlanceWidget().update(context, glanceId)
+            TodayTimelineWidgetReceiver.updateAllSuspending(context)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    companion object {
+        val templateIdKey = ActionParameters.Key<Long>("templateId")
+    }
+}
+
+class PostponePeriodicGlanceActionCallback : ActionCallback {
+    override suspend fun onAction(
+        context: Context,
+        glanceId: GlanceId,
+        parameters: ActionParameters
+    ) {
+        val templateId = parameters[templateIdKey] ?: return
+        val db = AppDatabase.getInstance(context)
+        val template = db.templateDao().getById(templateId) ?: return
+        val cutoffHour = WidgetSettingsManager.getCutoffHour(context)
+        PeriodicTaskUseCase(db, LifeDateProvider()).postponeTask(
+            template,
+            cutoffHour,
+            delayDays = 1
+        )
         try {
             TodayTimelineGlanceWidget().update(context, glanceId)
             TodayTimelineWidgetReceiver.updateAllSuspending(context)
