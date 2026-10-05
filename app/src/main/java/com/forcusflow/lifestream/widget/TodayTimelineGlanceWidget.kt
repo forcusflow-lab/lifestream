@@ -36,6 +36,7 @@ import com.forcusflow.lifestream.domain.TodayTimelineCalculator
 import com.forcusflow.lifestream.domain.TodayTimelineData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -50,11 +51,26 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
         @Volatile private var cachedFocusText: String? = null
         @Volatile private var cacheTimestamp: Long = 0L
         private const val CACHE_TTL_MS = 15_000L
+        private val trayUpdateScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        private var trayUpdateJob: Job? = null
 
         fun invalidateCache() {
             cachedTimelineData = null
             cachedFocusText = null
             cacheTimestamp = 0L
+        }
+
+        fun scheduleTrayUpdate(context: Context, glanceId: GlanceId) {
+            synchronized(this) {
+                trayUpdateJob?.cancel()
+                trayUpdateJob = trayUpdateScope.launch {
+                    try {
+                        TodayTimelineGlanceWidget().update(context, glanceId)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
         }
     }
 
@@ -358,7 +374,10 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                         .padding(horizontal = 10.dp, vertical = 4.dp)
                                         .clickable(actionStartActivity(launchIntent))
                                 ) {
-                                    Column(modifier = GlanceModifier.fillMaxWidth()) {
+                                    Row(
+                                        modifier = GlanceModifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
                                         Text(
                                             text = timeStr,
                                             style = TextStyle(
@@ -366,59 +385,55 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                                 fontWeight = FontWeight.Medium,
                                                 color = ColorProvider(colors.textSecondary.copy(alpha = 0.85f))
                                             ),
+                                            modifier = GlanceModifier.width(34.dp),
                                             maxLines = 1
                                         )
-                                        Spacer(modifier = GlanceModifier.height(1.dp))
-                                        Row(
-                                            modifier = GlanceModifier.fillMaxWidth(),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = cleanTitle,
-                                                style = TextStyle(
-                                                    fontSize = (12.5f * scale).sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = ColorProvider(colors.textPrimary)
-                                                ),
-                                                maxLines = 1,
-                                                modifier = GlanceModifier.defaultWeight()
-                                            )
-                                            if (durationSec != null && durationSec > 0) {
-                                                Spacer(modifier = GlanceModifier.width(4.dp))
-                                                val durText = if (durationSec >= 60) "${(durationSec + 30) / 60}分" else "${durationSec}秒"
-                                                Box(
-                                                    modifier = GlanceModifier
-                                                        .cornerRadius(3.dp)
-                                                        .background(Color(0xFFEF4444).copy(alpha = 0.14f))
-                                                        .padding(horizontal = 3.5.dp, vertical = 0.5.dp)
-                                                ) {
-                                                    Text(
-                                                        text = "⏱ $durText",
-                                                        style = TextStyle(
-                                                            fontSize = (8f * scale).sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = ColorProvider(Color(0xFFEF4444))
-                                                        )
+                                        Spacer(modifier = GlanceModifier.width(5.dp))
+                                        Text(
+                                            text = cleanTitle,
+                                            style = TextStyle(
+                                                fontSize = (12.5f * scale).sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = ColorProvider(colors.textPrimary)
+                                            ),
+                                            maxLines = 1,
+                                            modifier = GlanceModifier.defaultWeight()
+                                        )
+                                        if (durationSec != null && durationSec > 0) {
+                                            Spacer(modifier = GlanceModifier.width(4.dp))
+                                            val durText = if (durationSec >= 60) "${(durationSec + 30) / 60}分" else "${durationSec}秒"
+                                            Box(
+                                                modifier = GlanceModifier
+                                                    .cornerRadius(3.dp)
+                                                    .background(Color(0xFFEF4444).copy(alpha = 0.14f))
+                                                    .padding(horizontal = 3.5.dp, vertical = 0.5.dp)
+                                            ) {
+                                                Text(
+                                                    text = "⏱ $durText",
+                                                    style = TextStyle(
+                                                        fontSize = (8f * scale).sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = ColorProvider(Color(0xFFEF4444))
                                                     )
-                                                }
+                                                )
                                             }
-                                            if (countVal != null && countVal > 0) {
-                                                Spacer(modifier = GlanceModifier.width(4.dp))
-                                                Box(
-                                                    modifier = GlanceModifier
-                                                        .cornerRadius(3.dp)
-                                                        .background(Color(0xFF0284C7).copy(alpha = 0.14f))
-                                                        .padding(horizontal = 3.5.dp, vertical = 0.5.dp)
-                                                ) {
-                                                    Text(
-                                                        text = "${countVal}回",
-                                                        style = TextStyle(
-                                                            fontSize = (8f * scale).sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = ColorProvider(Color(0xFF0284C7))
-                                                        )
+                                        }
+                                        if (countVal != null && countVal > 0) {
+                                            Spacer(modifier = GlanceModifier.width(4.dp))
+                                            Box(
+                                                modifier = GlanceModifier
+                                                    .cornerRadius(3.dp)
+                                                    .background(Color(0xFF0284C7).copy(alpha = 0.14f))
+                                                    .padding(horizontal = 3.5.dp, vertical = 0.5.dp)
+                                            ) {
+                                                Text(
+                                                    text = "${countVal}回",
+                                                    style = TextStyle(
+                                                        fontSize = (8f * scale).sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = ColorProvider(Color(0xFF0284C7))
                                                     )
-                                                }
+                                                )
                                             }
                                         }
                                     }
@@ -985,15 +1000,9 @@ class ToggleWidgetTrayActionCallback : ActionCallback {
         parameters: ActionParameters
     ) {
         WidgetSettingsManager.toggleFutureTrayExpanded(context)
-        // 状態保存を先に完了し、RemoteViews/LazyColumnの再構築をCallbackの待ち時間から切り離す。
-        // 展開内容はキャッシュ済みデータを使うため、DB再読込や全ウィジェット更新は行わない。
-        CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
-            try {
-                TodayTimelineGlanceWidget().update(context, glanceId)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
+        // 状態保存を先に完了し、描画は単一の最新ジョブだけに任せる。
+        // 連打時に古いRemoteViews更新が残らないため、開閉の競合と待ち時間を抑える。
+        TodayTimelineGlanceWidget.scheduleTrayUpdate(context, glanceId)
     }
 }
 
