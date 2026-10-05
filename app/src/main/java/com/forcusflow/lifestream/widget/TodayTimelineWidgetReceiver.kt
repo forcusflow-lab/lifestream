@@ -1,119 +1,105 @@
 package com.forcusflow.lifestream.widget
 
-import android.app.AlarmManager
-import android.app.PendingIntent
+import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
-import android.os.Build
-import androidx.glance.appwidget.GlanceAppWidget
-import androidx.glance.appwidget.GlanceAppWidgetManager
-import androidx.glance.appwidget.GlanceAppWidgetReceiver
+import android.os.Bundle
+import com.forcusflow.lifestream.data.AppDatabase
+import com.forcusflow.lifestream.domain.LifeDateProvider
+import com.forcusflow.lifestream.domain.PeriodicTaskUseCase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.time.LocalDateTime
-import java.time.ZoneId
 
-class TodayTimelineWidgetReceiver : GlanceAppWidgetReceiver() {
-    override val glanceAppWidget: GlanceAppWidget = TodayTimelineGlanceWidget()
-
-    override fun onReceive(context: Context, intent: Intent) {
-        super.onReceive(context, intent)
-        val shouldRefresh = when (intent.action) {
-            // APPWIDGET_UPDATE is already handled by GlanceAppWidgetReceiver.super.
-            // Handling it again here can race the initial render after launcher restore.
-            Intent.ACTION_DATE_CHANGED,
-            Intent.ACTION_TIMEZONE_CHANGED,
-            Intent.ACTION_TIME_CHANGED,
-            Intent.ACTION_BOOT_COMPLETED,
-            Intent.ACTION_MY_PACKAGE_REPLACED,
-            ACTION_SCHEDULED_WIDGET_REFRESH -> true
-            else -> false
-        }
-
-        if (shouldRefresh) {
-            // Keep the process alive until Glance has finished updating after boot/time events.
-            val pendingResult = goAsync()
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    TodayTimelineGlanceWidget.invalidateCache()
-                    updateAllSuspending(context)
-                } finally {
-                    pendingResult.finish()
-                }
+class TodayTimelineWidgetReceiver : AppWidgetProvider() {
+    override fun onUpdate(context: Context, manager: AppWidgetManager, appWidgetIds: IntArray) {
+        val pendingResult = goAsync()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                TodayTimelineRemoteViews.updateAll(context.applicationContext)
+            } finally {
+                pendingResult.finish()
             }
         }
     }
 
+    override fun onReceive(context: Context, intent: Intent) {
+        when (intent.action) {
+            ACTION_TOGGLE -> {
+                val id = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+                TodayTimelineRemoteViews.updateTrayVisibility(context, id)
+                return
+            }
+            ACTION_REFRESH,
+            ACTION_COMPLETE_ITEM,
+            ACTION_COMPLETE_TEMPLATE,
+            Intent.ACTION_DATE_CHANGED,
+            Intent.ACTION_TIME_CHANGED,
+            Intent.ACTION_TIMEZONE_CHANGED,
+            Intent.ACTION_BOOT_COMPLETED,
+            Intent.ACTION_MY_PACKAGE_REPLACED,
+            ACTION_SCHEDULED_WIDGET_REFRESH -> {
+                val pendingResult = goAsync()
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        handleAsyncAction(context.applicationContext, intent)
+                    } finally {
+                        pendingResult.finish()
+                    }
+                }
+                return
+            }
+        }
+        super.onReceive(context, intent)
+    }
+
+    private suspend fun handleAsyncAction(context: Context, intent: Intent) {
+        when (intent.action) {
+            ACTION_COMPLETE_ITEM -> {
+                val itemId = intent.getLongExtra(EXTRA_ITEM_ID, 0L)
+                if (itemId != 0L) {
+                    val dao = AppDatabase.getInstance(context).timelineItemDao()
+                    dao.getById(itemId)?.let { item ->
+                        dao.update(
+                            item.copy(
+                                isDone = !item.isDone,
+                                completedAt = if (!item.isDone) System.currentTimeMillis() else null
+                            )
+                        )
+                    }
+                }
+                TodayTimelineRemoteViews.updateAll(context)
+            }
+            ACTION_COMPLETE_TEMPLATE -> {
+                val templateId = intent.getLongExtra(EXTRA_TEMPLATE_ID, 0L)
+                if (templateId != 0L) {
+                    val db = AppDatabase.getInstance(context)
+                    db.templateDao().getById(templateId)?.let { template ->
+                        val cutoffHour = WidgetSettingsManager.getCutoffHour(context)
+                        val dateProvider = LifeDateProvider()
+                        val logicalToday = dateProvider.getLogicalDate(cutoffHour = cutoffHour)
+                        PeriodicTaskUseCase(db, dateProvider).recordCompletion(template, logicalToday, cutoffHour)
+                    }
+                }
+                TodayTimelineRemoteViews.updateAll(context)
+            }
+            else -> TodayTimelineRemoteViews.updateAll(context)
+        }
+    }
+
     companion object {
+        const val ACTION_TOGGLE = "com.forcusflow.lifestream.ACTION_TOGGLE_WIDGET_TRAY"
+        const val ACTION_REFRESH = "com.forcusflow.lifestream.ACTION_REFRESH_WIDGET"
+        const val ACTION_COMPLETE_ITEM = "com.forcusflow.lifestream.ACTION_COMPLETE_WIDGET_ITEM"
+        const val ACTION_COMPLETE_TEMPLATE = "com.forcusflow.lifestream.ACTION_COMPLETE_WIDGET_TEMPLATE"
         const val ACTION_SCHEDULED_WIDGET_REFRESH = "com.forcusflow.lifestream.ACTION_SCHEDULED_WIDGET_REFRESH"
+        const val EXTRA_ITEM_ID = "item_id"
+        const val EXTRA_TEMPLATE_ID = "template_id"
 
         fun updateAll(context: Context) {
-            TodayTimelineGlanceWidget.invalidateCache()
             CoroutineScope(Dispatchers.IO).launch {
-                updateAllSuspending(context)
-            }
-        }
-
-        suspend fun updateAllSuspending(context: Context) {
-            try {
-                val manager = GlanceAppWidgetManager(context)
-                val glanceIds = manager.getGlanceIds(TodayTimelineGlanceWidget::class.java)
-                if (glanceIds.isNotEmpty()) {
-                    val widget = TodayTimelineGlanceWidget()
-                    glanceIds.forEach { glanceId ->
-                        widget.update(context, glanceId)
-                    }
-                }
-                scheduleNextRefresh(context)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-
-        fun updateOtherWidgets(context: Context, currentGlanceId: androidx.glance.GlanceId) {
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    val manager = GlanceAppWidgetManager(context)
-                    val glanceIds = manager.getGlanceIds(TodayTimelineGlanceWidget::class.java)
-                    val otherIds = glanceIds.filter { it != currentGlanceId }
-                    if (otherIds.isNotEmpty()) {
-                        val widget = TodayTimelineGlanceWidget()
-                        otherIds.forEach { glanceId ->
-                            widget.update(context, glanceId)
-                        }
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
-        }
-
-        private fun scheduleNextRefresh(context: Context) {
-            try {
-                val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-                val now = LocalDateTime.now()
-                val zone = ZoneId.systemDefault()
-                val nextHour = now.plusHours(1).withMinute(0).withSecond(0).withNano(0)
-                val triggerMillis = nextHour.atZone(zone).toInstant().toEpochMilli()
-
-                val intent = Intent(context, TodayTimelineWidgetReceiver::class.java).apply {
-                    action = ACTION_SCHEDULED_WIDGET_REFRESH
-                }
-                val pendingIntent = PendingIntent.getBroadcast(
-                    context,
-                    9001,
-                    intent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    alarmManager.setAndAllowWhileIdle(AlarmManager.RTC, triggerMillis, pendingIntent)
-                } else {
-                    alarmManager.set(AlarmManager.RTC, triggerMillis, pendingIntent)
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
+                TodayTimelineRemoteViews.updateAll(context.applicationContext)
             }
         }
     }
