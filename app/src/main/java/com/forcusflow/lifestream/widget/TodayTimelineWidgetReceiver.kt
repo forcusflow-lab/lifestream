@@ -36,6 +36,7 @@ class TodayTimelineWidgetReceiver : GlanceAppWidgetReceiver() {
             val pendingResult = goAsync()
             CoroutineScope(Dispatchers.IO).launch {
                 try {
+                    TodayTimelineGlanceWidget.invalidateCache()
                     updateAllSuspending(context)
                 } finally {
                     pendingResult.finish()
@@ -48,6 +49,7 @@ class TodayTimelineWidgetReceiver : GlanceAppWidgetReceiver() {
         const val ACTION_SCHEDULED_WIDGET_REFRESH = "com.forcusflow.lifestream.ACTION_SCHEDULED_WIDGET_REFRESH"
 
         fun updateAll(context: Context) {
+            TodayTimelineGlanceWidget.invalidateCache()
             CoroutineScope(Dispatchers.IO).launch {
                 updateAllSuspending(context)
             }
@@ -66,6 +68,24 @@ class TodayTimelineWidgetReceiver : GlanceAppWidgetReceiver() {
                 scheduleNextRefresh(context)
             } catch (e: Exception) {
                 e.printStackTrace()
+            }
+        }
+
+        fun updateOtherWidgets(context: Context, currentGlanceId: androidx.glance.GlanceId) {
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val manager = GlanceAppWidgetManager(context)
+                    val glanceIds = manager.getGlanceIds(TodayTimelineGlanceWidget::class.java)
+                    val otherIds = glanceIds.filter { it != currentGlanceId }
+                    if (otherIds.isNotEmpty()) {
+                        val widget = TodayTimelineGlanceWidget()
+                        otherIds.forEach { glanceId ->
+                            widget.update(context, glanceId)
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
         }
 

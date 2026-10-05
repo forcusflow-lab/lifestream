@@ -33,12 +33,26 @@ import com.forcusflow.lifestream.data.TimelineItemEntity
 import com.forcusflow.lifestream.domain.LifeDateProvider
 import com.forcusflow.lifestream.domain.PeriodicTaskUseCase
 import com.forcusflow.lifestream.domain.TodayTimelineCalculator
+import com.forcusflow.lifestream.domain.TodayTimelineData
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 class TodayTimelineGlanceWidget : GlanceAppWidget() {
+
+    companion object {
+        @Volatile private var cachedTimelineData: TodayTimelineData? = null
+        @Volatile private var cachedFocusText: String? = null
+        @Volatile private var cacheTimestamp: Long = 0L
+        private const val CACHE_TTL_MS = 15_000L
+
+        fun invalidateCache() {
+            cachedTimelineData = null
+            cachedFocusText = null
+            cacheTimestamp = 0L
+        }
+    }
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val db = AppDatabase.getInstance(context)
@@ -49,15 +63,24 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
         val isTrayExpanded = WidgetSettingsManager.isFutureTrayExpanded(context)
 
         val dateProvider = LifeDateProvider()
-        val allItems = try { db.timelineItemDao().getAll() } catch (e: Exception) { emptyList() }
-        val templates = try { db.templateDao().getAll() } catch (e: Exception) { emptyList() }
+        val nowMs = System.currentTimeMillis()
+        val cached = cachedTimelineData
 
-        val timelineData = TodayTimelineCalculator.calculate(
-            allItems = allItems,
-            templates = templates,
-            dateProvider = dateProvider,
-            cutoffHour = cutoffHour
-        )
+        val timelineData = if (cached != null && (nowMs - cacheTimestamp < CACHE_TTL_MS)) {
+            cached
+        } else {
+            val allItems = try { db.timelineItemDao().getAll() } catch (e: Exception) { emptyList() }
+            val templates = try { db.templateDao().getAll() } catch (e: Exception) { emptyList() }
+            val data = TodayTimelineCalculator.calculate(
+                allItems = allItems,
+                templates = templates,
+                dateProvider = dateProvider,
+                cutoffHour = cutoffHour
+            )
+            cachedTimelineData = data
+            cacheTimestamp = nowMs
+            data
+        }
 
         val today = timelineData.logicalDate
         val dateFormatted = timelineData.dateFormatted
@@ -66,8 +89,14 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
         val nowTimeFormatted = dateProvider.formatTime(now.toLocalTime())
 
         val todayDateKey = today.toString()
-        val dailyFocusEntity = try { db.dailyFocusDao().getByDate(todayDateKey) } catch (e: Exception) { null }
-        val focusText = dailyFocusEntity?.content
+        val focusText = if (nowMs - cacheTimestamp < CACHE_TTL_MS && cachedFocusText != null) {
+            cachedFocusText
+        } else {
+            val dailyFocusEntity = try { db.dailyFocusDao().getByDate(todayDateKey) } catch (e: Exception) { null }
+            val text = dailyFocusEntity?.content
+            cachedFocusText = text
+            text
+        }
 
         // 1. DONE items today (実績ログ：NOWラインの上)
         val doneItems = timelineData.doneItems
@@ -316,17 +345,28 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
 
                                 Spacer(modifier = GlanceModifier.width(6.dp))
 
-                                // コンパクト2行カード (上段：時刻+バッジ、下段：タイトル。余白ゼロの極小2行レイアウト)
+                                // コンパクト2行カード (Pattern A: 上段＝タイトル、下段＝時刻＋所要時間・回数バッジ。本体と統一した高視認性レイアウト)
                                 Box(
                                     modifier = GlanceModifier
                                         .defaultWeight()
                                         .cornerRadius(8.dp)
                                         .background(colors.card.copy(alpha = 0.85f))
-                                        .padding(horizontal = 8.dp, vertical = 2.5.dp)
+                                        .padding(horizontal = 8.dp, vertical = 2.dp)
                                         .clickable(actionStartActivity(launchIntent))
                                 ) {
                                     Column(modifier = GlanceModifier.fillMaxWidth()) {
-                                        // 1行目：時刻 ＋ 所要時間・回数バッジ (余白なく密接配置)
+                                        // 1行目：タイトル (チェックノードの基準線と一致し、横幅いっぱいに太字で読みやすく配置)
+                                        Text(
+                                            text = cleanTitle,
+                                            style = TextStyle(
+                                                fontSize = (11.5f * scale).sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = ColorProvider(colors.textPrimary)
+                                            ),
+                                            maxLines = 1
+                                        )
+
+                                        // 2行目：時刻 ＋ ⏱所要時間 ＋ 回数バッジ (メタ情報を下段に一括集約して余白ゼロ化)
                                         Row(
                                             modifier = GlanceModifier.fillMaxWidth(),
                                             verticalAlignment = Alignment.CenterVertically
@@ -379,19 +419,15 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
                                                 }
                                             }
                                         }
-
-                                        // 2行目：タイトル (スペーサーを挟まず直下に配置し、タイトルを十分に読める2行目を確保)
-                                        Text(
-                                            text = cleanTitle,
-                                            style = TextStyle(
-                                                fontSize = (11.5f * scale).sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = ColorProvider(colors.textPrimary)
-                                            ),
-                                            maxLines = 1
-                                        )
                                     }
                                 }
+                            }
+                        }
+
+                        // DONEカードとNOWラインとの間の適度な余白 (密集感を解消)
+                        if (doneItems.isNotEmpty()) {
+                            item {
+                                Spacer(modifier = GlanceModifier.height(5.dp))
                             }
                         }
 
@@ -865,10 +901,11 @@ class ToggleItemDoneActionCallback : ActionCallback {
         )
         db.timelineItemDao().update(updated)
         try {
+            TodayTimelineGlanceWidget.invalidateCache()
             // タップされたウィジェットを直接即時更新（最速レスポンス）
             TodayTimelineGlanceWidget().update(context, glanceId)
-            // 他のインスタンスがあれば非同期バックグラウンドで同期
-            TodayTimelineWidgetReceiver.updateAll(context)
+            // 他のインスタンスがあれば非同期バックグラウンドで更新（ロック競合を完全回避）
+            TodayTimelineWidgetReceiver.updateOtherWidgets(context, glanceId)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -894,10 +931,11 @@ class RecordPeriodicGlanceActionCallback : ActionCallback {
         val useCase = PeriodicTaskUseCase(db, dateProvider)
         useCase.recordCompletion(template, logicalToday, cutoffHour)
         try {
+            TodayTimelineGlanceWidget.invalidateCache()
             // タップされたウィジェットを直接即時更新（最速レスポンス）
             TodayTimelineGlanceWidget().update(context, glanceId)
-            // 他のインスタンスがあれば非同期バックグラウンドで同期
-            TodayTimelineWidgetReceiver.updateAll(context)
+            // 他のインスタンスがあれば非同期バックグラウンドで更新（ロック競合を完全回避）
+            TodayTimelineWidgetReceiver.updateOtherWidgets(context, glanceId)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -924,10 +962,11 @@ class PostponePeriodicGlanceActionCallback : ActionCallback {
             delayDays = 1
         )
         try {
+            TodayTimelineGlanceWidget.invalidateCache()
             // タップされたウィジェットを直接即時更新（最速レスポンス）
             TodayTimelineGlanceWidget().update(context, glanceId)
-            // 他のインスタンスがあれば非同期バックグラウンドで同期
-            TodayTimelineWidgetReceiver.updateAll(context)
+            // 他のインスタンスがあれば非同期バックグラウンドで更新（ロック競合を完全回避）
+            TodayTimelineWidgetReceiver.updateOtherWidgets(context, glanceId)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -946,7 +985,7 @@ class ToggleWidgetTrayActionCallback : ActionCallback {
     ) {
         WidgetSettingsManager.toggleFutureTrayExpanded(context)
         try {
-            // トレイ開閉は最速で当該ウィジェットのみを直接更新（もっさり感を完全解消）
+            // トレイ開閉はキャッシュをそのまま再利用し、当該ウィジェットのみを直接更新（0ms DBアクセス、超高速レスポンス）
             TodayTimelineGlanceWidget().update(context, glanceId)
         } catch (e: Exception) {
             e.printStackTrace()
@@ -961,8 +1000,9 @@ class RefreshWidgetActionCallback : ActionCallback {
         parameters: ActionParameters
     ) {
         try {
+            TodayTimelineGlanceWidget.invalidateCache()
             TodayTimelineGlanceWidget().update(context, glanceId)
-            TodayTimelineWidgetReceiver.updateAll(context)
+            TodayTimelineWidgetReceiver.updateOtherWidgets(context, glanceId)
         } catch (e: Exception) {
             e.printStackTrace()
         }
