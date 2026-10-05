@@ -34,6 +34,10 @@ import com.forcusflow.lifestream.domain.LifeDateProvider
 import com.forcusflow.lifestream.domain.PeriodicTaskUseCase
 import com.forcusflow.lifestream.domain.TodayTimelineCalculator
 import com.forcusflow.lifestream.domain.TodayTimelineData
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -984,11 +988,14 @@ class ToggleWidgetTrayActionCallback : ActionCallback {
         parameters: ActionParameters
     ) {
         WidgetSettingsManager.toggleFutureTrayExpanded(context)
-        try {
-            // トレイ開閉はキャッシュをそのまま再利用し、当該ウィジェットのみを直接更新（0ms DBアクセス、超高速レスポンス）
-            TodayTimelineGlanceWidget().update(context, glanceId)
-        } catch (e: Exception) {
-            e.printStackTrace()
+        // 状態保存を先に完了し、RemoteViews/LazyColumnの再構築をCallbackの待ち時間から切り離す。
+        // 展開内容はキャッシュ済みデータを使うため、DB再読込や全ウィジェット更新は行わない。
+        CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
+            try {
+                TodayTimelineGlanceWidget().update(context, glanceId)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 }
