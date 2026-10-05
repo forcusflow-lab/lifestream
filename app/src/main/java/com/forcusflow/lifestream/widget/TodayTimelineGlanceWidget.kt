@@ -316,90 +316,80 @@ class TodayTimelineGlanceWidget : GlanceAppWidget() {
 
                                 Spacer(modifier = GlanceModifier.width(6.dp))
 
-                                // コンパクト1行カード (NOWライン直下の浮上タスクと同一の高さ・余白ゼロの洗練デザイン)
+                                // コンパクト2行カード (上段：時刻+バッジ、下段：タイトル。余白ゼロの極小2行レイアウト)
                                 Box(
                                     modifier = GlanceModifier
                                         .defaultWeight()
                                         .cornerRadius(8.dp)
                                         .background(colors.card.copy(alpha = 0.85f))
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        .padding(horizontal = 8.dp, vertical = 2.5.dp)
                                         .clickable(actionStartActivity(launchIntent))
                                 ) {
-                                    Row(
-                                        modifier = GlanceModifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        // [10:30] 完了時刻バッジ
-                                        Box(
-                                            modifier = GlanceModifier
-                                                .cornerRadius(3.dp)
-                                                .background(colors.statusDone.copy(alpha = 0.14f))
-                                                .padding(horizontal = 4.dp, vertical = 0.5.dp)
+                                    Column(modifier = GlanceModifier.fillMaxWidth()) {
+                                        // 1行目：時刻 ＋ 所要時間・回数バッジ (余白なく密接配置)
+                                        Row(
+                                            modifier = GlanceModifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text(
                                                 text = timeStr,
                                                 style = TextStyle(
                                                     fontSize = (9f * scale).sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = ColorProvider(colors.statusDone)
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = ColorProvider(colors.textSecondary.copy(alpha = 0.85f))
                                                 )
                                             )
+
+                                            if (durationSec != null && durationSec > 0) {
+                                                Spacer(modifier = GlanceModifier.width(4.dp))
+                                                val durText = if (durationSec >= 60) "${(durationSec + 30) / 60}分" else "${durationSec}秒"
+                                                Box(
+                                                    modifier = GlanceModifier
+                                                        .cornerRadius(3.dp)
+                                                        .background(Color(0xFFEF4444).copy(alpha = 0.14f))
+                                                        .padding(horizontal = 3.5.dp, vertical = 0.5.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "⏱ $durText",
+                                                        style = TextStyle(
+                                                            fontSize = (8f * scale).sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = ColorProvider(Color(0xFFEF4444))
+                                                        )
+                                                    )
+                                                }
+                                            }
+
+                                            if (countVal != null && countVal > 0) {
+                                                Spacer(modifier = GlanceModifier.width(4.dp))
+                                                Box(
+                                                    modifier = GlanceModifier
+                                                        .cornerRadius(3.dp)
+                                                        .background(Color(0xFF0284C7).copy(alpha = 0.14f))
+                                                        .padding(horizontal = 3.5.dp, vertical = 0.5.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "${countVal}回",
+                                                        style = TextStyle(
+                                                            fontSize = (8f * scale).sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = ColorProvider(Color(0xFF0284C7))
+                                                        )
+                                                    )
+                                                }
+                                            }
                                         }
 
-                                        Spacer(modifier = GlanceModifier.width(5.dp))
-
-                                        // タイトル
+                                        // 2行目：タイトル (スペーサーを挟まず直下に配置し、タイトルを十分に読める2行目を確保)
                                         Text(
                                             text = cleanTitle,
                                             style = TextStyle(
-                                                fontSize = (12f * scale).sp,
+                                                fontSize = (11.5f * scale).sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = ColorProvider(colors.textPrimary)
                                             ),
-                                            maxLines = 1,
-                                            modifier = GlanceModifier.defaultWeight()
+                                            maxLines = 1
                                         )
-
-                                        // ⏱所要時間バッジ
-                                        if (durationSec != null && durationSec > 0) {
-                                            Spacer(modifier = GlanceModifier.width(4.dp))
-                                            val durText = if (durationSec >= 60) "${(durationSec + 30) / 60}分" else "${durationSec}秒"
-                                            Box(
-                                                modifier = GlanceModifier
-                                                    .cornerRadius(3.dp)
-                                                    .background(Color(0xFFEF4444).copy(alpha = 0.14f))
-                                                    .padding(horizontal = 3.dp, vertical = 0.5.dp)
-                                            ) {
-                                                Text(
-                                                    text = "⏱ $durText",
-                                                    style = TextStyle(
-                                                        fontSize = (8f * scale).sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = ColorProvider(Color(0xFFEF4444))
-                                                    )
-                                                )
-                                            }
-                                        }
-
-                                        // 回数バッジ
-                                        if (countVal != null && countVal > 0) {
-                                            Spacer(modifier = GlanceModifier.width(4.dp))
-                                            Box(
-                                                modifier = GlanceModifier
-                                                    .cornerRadius(3.dp)
-                                                    .background(Color(0xFF0284C7).copy(alpha = 0.14f))
-                                                    .padding(horizontal = 3.dp, vertical = 0.5.dp)
-                                            ) {
-                                                Text(
-                                                    text = "${countVal}回",
-                                                    style = TextStyle(
-                                                        fontSize = (8f * scale).sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = ColorProvider(Color(0xFF0284C7))
-                                                    )
-                                                )
-                                            }
-                                        }
                                     }
                                 }
                             }
