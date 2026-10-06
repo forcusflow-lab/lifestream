@@ -70,13 +70,11 @@
         android:layout_marginBottom="5dp"
         android:background="#8F7F6E" />
 
-    <ScrollView
+    <LinearLayout
         android:id="@+id/widget_scroll"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:fillViewport="true"
-        android:scrollbars="none">
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
 
         <LinearLayout
             android:id="@+id/widget_content"
@@ -159,5 +157,5 @@
                 android:textSize="12sp"
                 android:visibility="gone" />
         </LinearLayout>
-    </ScrollView>
+    </LinearLayout>
 </LinearLayout>
