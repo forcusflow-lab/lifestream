@@ -697,176 +697,136 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                     .fillMaxWidth()
                                     .padding(start = 12.dp, end = 10.dp, top = 8.dp, bottom = 8.dp)
                             ) {
-                                // A. 周期タスク（時間外または待機中のルーティン）
-                                if (trayPeriodicHabits.isNotEmpty()) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.padding(vertical = 3.dp, horizontal = 2.dp)
-                                    ) {
-                                        Text(
-                                            text = "🌿 今日のルーティン",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = colors.primary.copy(alpha = 0.85f),
-                                            letterSpacing = 0.3.sp
+                                // A. 周期タスク（時間外または待機中の周期）
+                                trayPeriodicHabits.forEachIndexed { index, (tmpl, _, _) ->
+                                    if (index > 0) {
+                                        HorizontalDivider(
+                                            color = colors.border.copy(alpha = 0.12f),
+                                            thickness = 0.5.dp,
+                                            modifier = Modifier.padding(vertical = 1.dp)
                                         )
                                     }
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // 完了チェック丸ボタン（繊細な18dp・線幅1.2dp）
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = Color.Transparent,
+                                            border = BorderStroke(1.2.dp, colors.border.copy(alpha = 0.6f)),
+                                            modifier = Modifier
+                                                .size(18.dp)
+                                                .clip(CircleShape)
+                                                .clickable {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    viewModel.recordCycleTask(tmpl, today)
+                                                    coroutineScope.launch {
+                                                        snackbarHostState.showSnackbar("「${tmpl.title}」を完了しました！ 🌿")
+                                                    }
+                                                }
+                                        ) {}
 
-                                    trayPeriodicHabits.forEachIndexed { index, (tmpl, _, _) ->
-                                        if (index > 0) {
-                                            HorizontalDivider(
-                                                color = colors.border.copy(alpha = 0.15f),
-                                                thickness = 0.5.dp,
-                                                modifier = Modifier.padding(vertical = 1.dp)
-                                            )
-                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        // タイトル（左端揃い）＋ 周期バッジ（タップで編集画面を開く）
                                         Row(
                                             modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 4.dp),
+                                                .weight(1f)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .clickable { editingTemplate = tmpl }
+                                                .padding(vertical = 2.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            // 完了チェック丸ボタン（繊細な18dp・線幅1.2dp）
-                                            Surface(
-                                                shape = CircleShape,
-                                                color = Color.Transparent,
-                                                border = BorderStroke(1.2.dp, colors.border.copy(alpha = 0.6f)),
-                                                modifier = Modifier
-                                                    .size(18.dp)
-                                                    .clip(CircleShape)
-                                                    .clickable {
-                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                        viewModel.recordCycleTask(tmpl, today)
-                                                        coroutineScope.launch {
-                                                            snackbarHostState.showSnackbar("「${tmpl.title}」を完了しました！ 🌿")
-                                                        }
-                                                    }
-                                            ) {}
-
-                                            Spacer(modifier = Modifier.width(8.dp))
-
-                                            // タイトル（左端揃い）＋ 周期バッジ（タップで編集画面を開く）
-                                            Row(
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .clip(RoundedCornerShape(6.dp))
-                                                    .clickable { editingTemplate = tmpl }
-                                                    .padding(vertical = 2.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    text = tmpl.title,
-                                                    fontSize = 13.sp,
-                                                    fontWeight = FontWeight.Normal,
-                                                    color = colors.textPrimary,
-                                                    modifier = Modifier.weight(1f, fill = false),
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-
-                                                Spacer(modifier = Modifier.width(6.dp))
-
-                                                Surface(
-                                                    shape = RoundedCornerShape(4.dp),
-                                                    color = colors.primary.copy(alpha = 0.10f)
-                                                ) {
-                                                    Text(
-                                                        text = "${tmpl.iconKey ?: "🔄"} 周期",
-                                                        fontSize = 9.5.sp,
-                                                        fontWeight = FontWeight.Medium,
-                                                        color = colors.primary,
-                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                                    )
-                                                }
-                                            }
+                                            Text(
+                                                text = tmpl.title,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Normal,
+                                                color = colors.textPrimary,
+                                                modifier = Modifier.weight(1f, fill = false),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
 
                                             Spacer(modifier = Modifier.width(6.dp))
 
-                                            // 「今回は見送る」
-                                            Text(
-                                                text = "今回は見送る",
-                                                fontSize = 10.5.sp,
-                                                color = colors.textSecondary.copy(alpha = 0.6f),
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(4.dp))
-                                                    .clickable {
-                                                        viewModel.postponeCycleTask(tmpl, 1)
-                                                        coroutineScope.launch {
-                                                            val nextDate = today.plusDays(1)
-                                                            snackbarHostState.showSnackbar("「${tmpl.title}」を次回まで見送りました（次回目安: ${nextDate.monthValue}/${nextDate.dayOfMonth}）")
-                                                        }
-                                                    }
-                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                                            )
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = colors.primary.copy(alpha = 0.10f)
+                                            ) {
+                                                Text(
+                                                    text = "${tmpl.iconKey ?: "🔄"} 周期",
+                                                    fontSize = 9.5.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = colors.primary,
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                )
+                                            }
                                         }
-                                    }
-                                }
 
-                                // 周期タスクとToDoの間の仕切り
-                                if (trayPeriodicHabits.isNotEmpty() && todayTrayPendingItems.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    HorizontalDivider(
-                                        color = colors.border.copy(alpha = 0.25f),
-                                        thickness = 0.5.dp,
-                                        modifier = Modifier.padding(vertical = 3.dp)
-                                    )
+                                        Spacer(modifier = Modifier.width(6.dp))
+
+                                        // 「今回は見送る」
+                                        Text(
+                                            text = "今回は見送る",
+                                            fontSize = 10.5.sp,
+                                            color = colors.textSecondary.copy(alpha = 0.6f),
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .clickable {
+                                                    viewModel.postponeCycleTask(tmpl, 1)
+                                                    coroutineScope.launch {
+                                                        val nextDate = today.plusDays(1)
+                                                        snackbarHostState.showSnackbar("「${tmpl.title}」を次回まで見送りました（次回目安: ${nextDate.monthValue}/${nextDate.dayOfMonth}）")
+                                                    }
+                                                }
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
                                 }
 
                                 // B. やること（待機中未完了ToDo）
                                 if (todayTrayPendingItems.isNotEmpty()) {
-                                    if (trayPeriodicHabits.isNotEmpty()) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier.padding(vertical = 3.dp, horizontal = 2.dp)
-                                        ) {
-                                            Text(
-                                                text = "📋 やること",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = colors.textSecondary.copy(alpha = 0.85f),
-                                                letterSpacing = 0.3.sp
-                                            )
-                                        }
-                                    }
-
                                     todayTrayPendingItems.forEachIndexed { index, item ->
-                                        val isTimerRunning = activeTimerItem?.id == item.id
-                                        val isCompleting = completingItemIds.contains(item.id)
-                                        if (index > 0) {
-                                            HorizontalDivider(
-                                                color = colors.border.copy(alpha = 0.15f),
-                                                thickness = 0.5.dp,
-                                                modifier = Modifier.padding(vertical = 1.dp)
-                                            )
-                                        }
-                                        Row(
+                                    val isTimerRunning = activeTimerItem?.id == item.id
+                                    val isCompleting = completingItemIds.contains(item.id)
+                                    if (trayPeriodicHabits.isNotEmpty() || index > 0) {
+                                        HorizontalDivider(
+                                            color = colors.border.copy(alpha = 0.12f),
+                                            thickness = 0.5.dp,
+                                            modifier = Modifier.padding(vertical = 1.dp)
+                                        )
+                                    }
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .clickable { itemToEdit = item }
+                                            .padding(vertical = 4.dp, horizontal = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // A. 瞬間チェック系：円形チェック枠（18dp・線幅1.2dp）
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = if (isCompleting || item.isDone) colors.statusDone else Color.Transparent,
+                                            border = BorderStroke(1.2.dp, if (isCompleting || item.isDone) colors.statusDone else colors.border.copy(alpha = 0.6f)),
                                             modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .clickable { itemToEdit = item }
-                                                .padding(vertical = 4.dp, horizontal = 2.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            // A. 瞬間チェック系：円形チェック枠 (○: 完了アニメーションで手書きチェック＆ディレイ)
-                                            Surface(
-                                                shape = CircleShape,
-                                                color = if (isCompleting || item.isDone) colors.statusDone else Color.Transparent,
-                                                border = BorderStroke(1.dp, if (isCompleting || item.isDone) colors.statusDone else colors.border.copy(alpha = 0.7f)),
-                                                modifier = Modifier
-                                                    .size(20.dp)
-                                                    .clip(CircleShape)
-                                                    .clickable {
-                                                        if (!isCompleting) {
-                                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                            completingItemIds = completingItemIds + item.id
-                                                            coroutineScope.launch {
-                                                                kotlinx.coroutines.delay(350)
-                                                                viewModel.toggleItemDone(item)
-                                                                completingItemIds = completingItemIds - item.id
-                                                            }
+                                                .size(18.dp)
+                                                .clip(CircleShape)
+                                                .clickable {
+                                                    if (!isCompleting) {
+                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                        completingItemIds = completingItemIds + item.id
+                                                        coroutineScope.launch {
+                                                            kotlinx.coroutines.delay(350)
+                                                            viewModel.toggleItemDone(item)
+                                                            completingItemIds = completingItemIds - item.id
                                                         }
                                                     }
-                                            ) {
+                                                }
+                                        ) {
                                                 if (isCompleting || item.isDone) {
                                                     Box(contentAlignment = Alignment.Center) {
                                                         Icon(
