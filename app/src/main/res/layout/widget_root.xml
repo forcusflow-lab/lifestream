@@ -63,9 +63,11 @@
         android:textStyle="italic"
         android:visibility="gone" />
 
-    <View
+    <TextView
+        android:id="@+id/widget_divider"
         android:layout_width="match_parent"
         android:layout_height="1dp"
+        android:text=""
         android:layout_marginTop="6dp"
         android:layout_marginBottom="5dp"
         android:background="#8F7F6E" />
@@ -130,10 +132,12 @@
                     android:textSize="12sp"
                     android:textStyle="bold" />
 
-                <View
+                <TextView
+                    android:id="@+id/future_divider"
                     android:layout_width="0dp"
                     android:layout_height="1dp"
                     android:layout_weight="1"
+                    android:text=""
                     android:layout_marginStart="6dp"
                     android:background="#8F7F6E" />
             </LinearLayout>
