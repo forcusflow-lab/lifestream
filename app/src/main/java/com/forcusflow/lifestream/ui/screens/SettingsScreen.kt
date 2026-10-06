@@ -28,11 +28,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.forcusflow.lifestream.domain.*
 import com.forcusflow.lifestream.ui.components.AppHeader
+import com.forcusflow.lifestream.ui.theme.AppFontFamily
+import com.forcusflow.lifestream.ui.theme.AppFontSize
 import com.forcusflow.lifestream.ui.theme.AppThemeMode
 import com.forcusflow.lifestream.ui.theme.LifeStreamTheme
 import com.forcusflow.lifestream.viewmodel.MainViewModel
 import com.forcusflow.lifestream.widget.TodayTimelineWidgetReceiver
-import com.forcusflow.lifestream.widget.WidgetFontSize
 import com.forcusflow.lifestream.widget.WidgetSettingsManager
 import kotlinx.coroutines.launch
 
@@ -45,12 +46,13 @@ fun SettingsScreen(viewModel: MainViewModel) {
     val snackbarHostState = remember { SnackbarHostState() }
 
     val currentTheme by viewModel.themeMode.collectAsState()
+    val currentFontFamily by viewModel.fontFamily.collectAsState()
+    val currentFontSize by viewModel.fontSize.collectAsState()
     val cutoffHour by viewModel.dayCutoffHour.collectAsState()
     val templates by viewModel.templates.collectAsState()
     val showStreaksAndGoals by viewModel.showStreaksAndGoals.collectAsState()
 
     var widgetOpacity by remember { mutableStateOf(WidgetSettingsManager.getOpacity(context)) }
-    var widgetFontSize by remember { mutableStateOf(WidgetSettingsManager.getFontSize(context)) }
 
     var showCutoffDialog by remember { mutableStateOf(false) }
     var showTemplatesDialog by remember { mutableStateOf(false) }
@@ -167,6 +169,134 @@ fun SettingsScreen(viewModel: MainViewModel) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            // Section: タイポグラフィ・フォント設定 (本体 & ウィジェット連動)
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
+                Text(
+                    text = "タイポグラフィ・フォント設定 (本体 & ウィジェット連動)",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textSecondary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = colors.card,
+                    border = BorderStroke(1.dp, colors.border)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "フォント種類 (書体スタイル)",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.textPrimary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            AppFontFamily.values().forEach { family ->
+                                val isSelected = currentFontFamily == family
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable { viewModel.setFontFamily(family) },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isSelected) colors.primary.copy(alpha = 0.08f) else Color.Transparent,
+                                    border = BorderStroke(1.dp, if (isSelected) colors.primary else colors.border.copy(alpha = 0.6f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = family.displayName,
+                                                fontSize = 13.5.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                fontFamily = family.composeFontFamily,
+                                                color = colors.textPrimary
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = family.subtitle,
+                                                fontSize = 11.sp,
+                                                color = colors.textSecondary
+                                            )
+                                        }
+                                        Text(
+                                            text = "今日 09:30 タスク",
+                                            fontSize = 12.sp,
+                                            fontFamily = family.composeFontFamily,
+                                            color = if (isSelected) colors.primary else colors.textSecondary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                        HorizontalDivider(color = colors.border.copy(alpha = 0.5f), thickness = 0.5.dp)
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Text(
+                            text = "文字サイズ / 情報密度",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.textPrimary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            AppFontSize.values().forEach { size ->
+                                val isSelected = currentFontSize == size
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(8.dp))
+                                        .background(if (isSelected) colors.primary.copy(alpha = 0.15f) else Color.Transparent)
+                                        .clickable {
+                                            viewModel.setFontSize(size)
+                                        }
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(
+                                            text = size.displayName,
+                                            fontSize = 12.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) colors.primary else colors.textPrimary
+                                        )
+                                        Text(
+                                            text = size.subtitle,
+                                            fontSize = 10.sp,
+                                            color = colors.textSecondary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "※ 選択したフォントとサイズは、アプリ本体とホーム画面ウィジェットの両方にリアルタイムで反映されます。",
+                            fontSize = 11.sp,
+                            color = colors.textSecondary,
+                            lineHeight = 15.sp
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             // Section: ホーム画面ウィジェット設定 (手帳ウィジェット)
             Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
                 Text(
@@ -256,63 +386,6 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         }
 
                         Spacer(modifier = Modifier.height(16.dp))
-                        HorizontalDivider(color = colors.border.copy(alpha = 0.5f), thickness = 0.5.dp)
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Text(
-                            text = "文字サイズ / 情報密度",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = colors.textPrimary
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            WidgetFontSize.values().forEach { size ->
-                                val isSelected = widgetFontSize == size
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(8.dp))
-                                        .background(if (isSelected) colors.primary.copy(alpha = 0.15f) else Color.Transparent)
-                                        .clickable {
-                                            widgetFontSize = size
-                                            WidgetSettingsManager.setFontSize(context, size)
-                                            TodayTimelineWidgetReceiver.updateAll(context)
-                                        }
-                                        .padding(vertical = 8.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text(
-                                            text = when(size) {
-                                                WidgetFontSize.COMPACT -> "コンパクト"
-                                                WidgetFontSize.STANDARD -> "標準"
-                                                WidgetFontSize.LARGE -> "大きめ"
-                                            },
-                                            fontSize = 12.sp,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (isSelected) colors.primary else colors.textPrimary
-                                        )
-                                        Text(
-                                            text = when(size) {
-                                                WidgetFontSize.COMPACT -> "手帳密度"
-                                                WidgetFontSize.STANDARD -> "おすすめ"
-                                                WidgetFontSize.LARGE -> "視認性重視"
-                                            },
-                                            fontSize = 10.sp,
-                                            color = colors.textSecondary
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
 
                         // Mini Live Preview
                         Text(
@@ -323,8 +396,8 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = (if (colors.isDark) Color(0xFF1E293B) else Color.White).copy(alpha = widgetOpacity),
+                            shape = RoundedCornerShape(18.dp),
+                            color = colors.background.copy(alpha = widgetOpacity),
                             border = BorderStroke(0.5.dp, colors.border.copy(alpha = 0.7f)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -336,40 +409,60 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                 ) {
                                     Text(
                                         text = "9月29日 (火)",
-                                        fontSize = (15 * widgetFontSize.scale).sp,
+                                        fontSize = (15 * currentFontSize.scale).sp,
                                         fontWeight = FontWeight.Bold,
+                                        fontFamily = currentFontFamily.composeFontFamily,
                                         color = colors.textPrimary
                                     )
                                     Text(
                                         text = "byLife ↗",
-                                        fontSize = (10 * widgetFontSize.scale).sp,
+                                        fontSize = (10 * currentFontSize.scale).sp,
+                                        fontFamily = currentFontFamily.composeFontFamily,
                                         color = colors.textSecondary.copy(alpha = 0.7f)
                                     )
                                 }
                                 Spacer(modifier = Modifier.height(3.dp))
                                 Text(
                                     text = "🎯 “最重要タスクに没頭する”",
-                                    fontSize = (11.5f * widgetFontSize.scale).sp,
+                                    fontSize = (11.5f * currentFontSize.scale).sp,
+                                    fontFamily = currentFontFamily.composeFontFamily,
                                     color = colors.primary
                                 )
                                 Spacer(modifier = Modifier.height(6.dp))
                                 HorizontalDivider(color = colors.border.copy(alpha = 0.35f), thickness = 0.5.dp)
                                 Spacer(modifier = Modifier.height(6.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = "07:30",
-                                        fontSize = (10 * widgetFontSize.scale).sp,
-                                        color = colors.textSecondary,
-                                        modifier = Modifier.width(36.dp)
-                                    )
-                                    Text("✓ ", fontSize = (10 * widgetFontSize.scale).sp, color = colors.statusDone, fontWeight = FontWeight.Bold)
-                                    Text(
-                                        text = "モーニングコーヒーで一息",
-                                        fontSize = (11 * widgetFontSize.scale).sp,
-                                        color = colors.textSecondary
-                                    )
+
+                                // Done row
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (colors.isDark) Color.White.copy(alpha = 0.1f) else Color.White.copy(alpha = 0.9f),
+                                    border = BorderStroke(0.5.dp, if (colors.isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.08f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "07:30",
+                                            fontSize = (9 * currentFontSize.scale).sp,
+                                            fontFamily = currentFontFamily.composeFontFamily,
+                                            color = colors.textSecondary,
+                                            modifier = Modifier.width(36.dp)
+                                        )
+                                        Text("✓ ", fontSize = (10 * currentFontSize.scale).sp, color = colors.statusDone, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            text = "モーニングコーヒーで一息",
+                                            fontSize = (11 * currentFontSize.scale).sp,
+                                            fontFamily = currentFontFamily.composeFontFamily,
+                                            color = colors.textSecondary
+                                        )
+                                    }
                                 }
+
                                 Spacer(modifier = Modifier.height(4.dp))
+
+                                // Now row
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Surface(
                                         shape = RoundedCornerShape(4.dp),
@@ -378,8 +471,9 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                     ) {
                                         Text(
                                             text = "現在 07:45",
-                                            fontSize = (9 * widgetFontSize.scale).sp,
+                                            fontSize = (9 * currentFontSize.scale).sp,
                                             fontWeight = FontWeight.Bold,
+                                            fontFamily = currentFontFamily.composeFontFamily,
                                             color = Color.White,
                                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                                         )
@@ -390,15 +484,36 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                         color = colors.nowLine.copy(alpha = 0.7f)
                                     )
                                 }
+
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("○ ", fontSize = (13 * widgetFontSize.scale).sp, color = colors.textSecondary, fontWeight = FontWeight.Bold)
-                                    Text(
-                                        text = "手帳ウィジェットを実装・検証",
-                                        fontSize = (11.5f * widgetFontSize.scale).sp,
-                                        color = colors.textPrimary,
-                                        fontWeight = FontWeight.Medium
-                                    )
+
+                                // Pending row
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (colors.isDark) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.95f),
+                                    border = BorderStroke(0.5.dp, if (colors.isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.1f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("○ ", fontSize = (12 * currentFontSize.scale).sp, color = colors.textSecondary, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            text = "手帳ウィジェットを実装・検証",
+                                            fontSize = (11.5f * currentFontSize.scale).sp,
+                                            fontFamily = currentFontFamily.composeFontFamily,
+                                            color = colors.textPrimary,
+                                            fontWeight = FontWeight.Medium,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Text(
+                                            text = "↻",
+                                            fontSize = (11 * currentFontSize.scale).sp,
+                                            fontFamily = currentFontFamily.composeFontFamily,
+                                            color = colors.textSecondary
+                                        )
+                                    }
                                 }
                             }
                         }

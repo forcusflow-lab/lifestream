@@ -5,7 +5,11 @@ import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.TypefaceSpan
 import android.util.Log
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import androidx.compose.ui.graphics.toArgb
@@ -16,6 +20,8 @@ import com.forcusflow.lifestream.data.TemplateEntity
 import com.forcusflow.lifestream.data.TimelineItemEntity
 import com.forcusflow.lifestream.domain.LifeDateProvider
 import com.forcusflow.lifestream.domain.TodayTimelineCalculator
+import com.forcusflow.lifestream.ui.theme.AppFontFamily
+import com.forcusflow.lifestream.ui.theme.LifeStreamColors
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -56,6 +62,14 @@ object TodayTimelineRemoteViews {
         } catch (error: Throwable) {
             Log.e("byLifeWidget", "RemoteViews build failed; showing fallback", error)
             val fallback = RemoteViews(context.packageName, R.layout.widget_fallback)
+            val colors = WidgetSettingsManager.getThemeColors(context)
+            val opacity = WidgetSettingsManager.getOpacity(context)
+            val alphaInt = (opacity.coerceIn(0f, 1f) * 255).toInt()
+            fallback.setInt(R.id.widget_bg, "setColorFilter", colors.background.toArgb())
+            fallback.setInt(R.id.widget_bg, "setImageAlpha", alphaInt)
+            fallback.setTextColor(R.id.fallback_title, colors.textPrimary.toArgb())
+            fallback.setTextColor(R.id.fallback_text, colors.textSecondary.toArgb())
+
             val openIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
@@ -102,9 +116,17 @@ object TodayTimelineRemoteViews {
         }
         val data = TodayTimelineCalculator.calculate(allItems, templates, dateProvider, cutoffHour)
         val colors = WidgetSettingsManager.getThemeColors(context)
+        val fontFamily = WidgetSettingsManager.getFontFamily(context)
         val scale = WidgetSettingsManager.getFontSize(context).scale
+        val opacity = WidgetSettingsManager.getOpacity(context)
         val zone = dateProvider.zoneId
+
         val views = RemoteViews(context.packageName, R.layout.widget_root)
+
+        // 1. Dynamic background tint & alpha opacity (preserves 18dp rounded corners)
+        val alphaInt = (opacity.coerceIn(0f, 1f) * 255).toInt()
+        views.setInt(R.id.widget_bg, "setColorFilter", colors.background.toArgb())
+        views.setInt(R.id.widget_bg, "setImageAlpha", alphaInt)
 
         val openIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -113,17 +135,24 @@ object TodayTimelineRemoteViews {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(MainActivity.EXTRA_OPEN_ADD_SHEET, true)
         }
-        views.setTextViewText(R.id.widget_date, data.dateFormatted)
-        views.setOnClickPendingIntent(R.id.widget_date, activityPending(context, openIntent, REQUEST_OPEN))
-        views.setOnClickPendingIntent(R.id.widget_refresh, broadcastPending(context, TodayTimelineWidgetReceiver.ACTION_REFRESH, REQUEST_REFRESH))
-        views.setOnClickPendingIntent(R.id.widget_add, activityPending(context, addIntent, REQUEST_ADD))
-        views.setTextColor(R.id.widget_date, colors.textPrimary.toArgb())
-        views.setTextColor(R.id.widget_add, colors.primary.toArgb())
 
+        // Header
+        views.setTextWithFont(R.id.widget_date, data.dateFormatted, fontFamily, 12f * scale)
+        views.setTextColor(R.id.widget_date, colors.textPrimary.toArgb())
+        views.setOnClickPendingIntent(R.id.widget_date, activityPending(context, openIntent, REQUEST_OPEN))
+
+        views.setInt(R.id.widget_refresh, "setColorFilter", colors.textSecondary.toArgb())
+        views.setOnClickPendingIntent(R.id.widget_refresh, broadcastPending(context, TodayTimelineWidgetReceiver.ACTION_REFRESH, REQUEST_REFRESH))
+
+        views.setTextWithFont(R.id.widget_add, "＋ 追加", fontFamily, 11f * scale)
+        views.setTextColor(R.id.widget_add, colors.primary.toArgb())
+        views.setOnClickPendingIntent(R.id.widget_add, activityPending(context, addIntent, REQUEST_ADD))
+
+        // Daily focus
         val focusText = data.focusText(context)
         if (focusText != null) {
             views.setViewVisibility(R.id.widget_focus, View.VISIBLE)
-            views.setTextViewText(R.id.widget_focus, "🎯 “$focusText”")
+            views.setTextWithFont(R.id.widget_focus, "🎯 “$focusText”", fontFamily, 11f * scale)
             views.setTextColor(R.id.widget_focus, colors.primary.toArgb())
             views.setOnClickPendingIntent(R.id.widget_focus, activityPending(context, openIntent, REQUEST_OPEN + 1))
         } else {
@@ -145,27 +174,36 @@ object TodayTimelineRemoteViews {
         val doneItems = data.doneItems.takeLast(4)
         if (data.doneItems.size > doneItems.size) {
             val summary = RemoteViews(context.packageName, R.layout.widget_summary_row)
-            summary.setTextViewText(R.id.summary_text, "▲ 以前の実績 ${data.doneItems.size - doneItems.size}件（タップしてアプリで確認）")
+            summary.setTextWithFont(
+                R.id.summary_text,
+                "▲ 以前の実績 ${data.doneItems.size - doneItems.size}件（タップしてアプリで確認）",
+                fontFamily,
+                10f * scale
+            )
             summary.setTextColor(R.id.summary_text, colors.textSecondary.toArgb())
             summary.setOnClickPendingIntent(R.id.summary_text, activityPending(context, openIntent, REQUEST_OPEN + 2))
             views.addView(R.id.widget_done_area, summary)
         }
         doneItems.forEach { item ->
-            views.addView(R.id.widget_done_area, itemRow(context, item, zone, colors, scale, openIntent, done = true))
+            views.addView(R.id.widget_done_area, itemRow(context, item, zone, colors, fontFamily, scale, openIntent, done = true))
         }
 
         if (!hasDone && !hasPending) {
             views.setViewVisibility(R.id.widget_empty, View.VISIBLE)
+            views.setTextWithFont(R.id.widget_empty, "🌿 清々しい1日のはじまり", fontFamily, 12f * scale)
             views.setTextColor(R.id.widget_empty, colors.textSecondary.toArgb())
         }
 
         val nowRow = RemoteViews(context.packageName, R.layout.widget_now_row)
         val nowText = dateProvider.formatTime(dateProvider.nowLocalDateTime().toLocalTime())
-        nowRow.setTextViewText(R.id.now_label, "現在 $nowText")
+        nowRow.setTextWithFont(R.id.now_label, "現在 $nowText", fontFamily, 9.5f * scale)
+        nowRow.setInt(R.id.now_stem, "setColorFilter", colors.nowLine.toArgb())
+        nowRow.setInt(R.id.now_line, "setBackgroundColor", colors.nowLine.toArgb())
         views.addView(R.id.widget_now_area, nowRow)
 
         if (hasDone && !hasPending) {
             views.setViewVisibility(R.id.widget_all_done, View.VISIBLE)
+            views.setTextWithFont(R.id.widget_all_done, "✨ 今日のタスクはすべて完了しました", fontFamily, 11f * scale)
             views.setTextColor(R.id.widget_all_done, colors.textSecondary.toArgb())
             views.setOnClickPendingIntent(R.id.widget_all_done, activityPending(context, openIntent, REQUEST_OPEN + 4))
         }
@@ -173,14 +211,14 @@ object TodayTimelineRemoteViews {
         data.activePeriodicTemplates.filter { it.isDueToday }.forEach { status ->
             views.addView(
                 R.id.widget_surfaced_area,
-                templateRow(context, status.template, colors, scale, openIntent, isTray = false)
+                templateRow(context, status.template, colors, fontFamily, scale, openIntent, isTray = false)
             )
         }
         data.timelinePendingItems.forEach { item ->
             val badge = item.scheduledAt?.let { formatTime(it, zone) } ?: if (item.showOnTimeline) "📌 今日" else ""
             views.addView(
                 R.id.widget_surfaced_area,
-                itemRow(context, item, zone, colors, scale, openIntent, done = false, badgeOverride = badge, isTray = false)
+                itemRow(context, item, zone, colors, fontFamily, scale, openIntent, done = false, badgeOverride = badge, isTray = false)
             )
         }
 
@@ -188,12 +226,14 @@ object TodayTimelineRemoteViews {
         val trayCount = trayHabits.size + data.trayPendingItems.size
         if (trayCount > 0) {
             views.setViewVisibility(R.id.widget_future_header, View.VISIBLE)
-            views.setTextViewText(R.id.future_title, "これからの歩み (${trayCount}件)")
+            views.setTextWithFont(R.id.future_title, "これからの歩み (${trayCount}件)", fontFamily, 11.5f * scale)
             views.setTextColor(R.id.future_title, colors.textSecondary.toArgb())
             views.setOnClickPendingIntent(R.id.widget_future_header, broadcastPending(context, TodayTimelineWidgetReceiver.ACTION_TOGGLE, REQUEST_TOGGLE))
             views.setOnClickPendingIntent(R.id.future_toggle, broadcastPending(context, TodayTimelineWidgetReceiver.ACTION_TOGGLE, REQUEST_TOGGLE + 1))
             val expanded = WidgetSettingsManager.isFutureTrayExpanded(context)
             views.setTextViewText(R.id.future_toggle, if (expanded) "▲" else "▼")
+            views.setTextColor(R.id.future_toggle, colors.primary.toArgb())
+            views.setTextViewTextSize(R.id.future_toggle, TypedValue.COMPLEX_UNIT_SP, 9f * scale)
             views.setViewVisibility(R.id.future_tray, if (expanded) View.VISIBLE else View.GONE)
 
             val trayRows = buildList {
@@ -204,17 +244,22 @@ object TodayTimelineRemoteViews {
                 when (row) {
                     is TrayRow.Habit -> views.addView(
                         R.id.future_tray,
-                        templateRow(context, row.template, colors, scale, openIntent, isTray = true)
+                        templateRow(context, row.template, colors, fontFamily, scale, openIntent, isTray = true)
                     )
                     is TrayRow.Item -> views.addView(
                         R.id.future_tray,
-                        itemRow(context, row.item, zone, colors, scale, openIntent, done = false, isTray = true)
+                        itemRow(context, row.item, zone, colors, fontFamily, scale, openIntent, done = false, isTray = true)
                     )
                 }
             }
             if (trayRows.size > MAX_TRAY_ROWS) {
                 val summary = RemoteViews(context.packageName, R.layout.widget_summary_row)
-                summary.setTextViewText(R.id.summary_text, "＋ ${trayRows.size - MAX_TRAY_ROWS}件はアプリで確認")
+                summary.setTextWithFont(
+                    R.id.summary_text,
+                    "＋ ${trayRows.size - MAX_TRAY_ROWS}件はアプリで確認",
+                    fontFamily,
+                    10f * scale
+                )
                 summary.setTextColor(R.id.summary_text, colors.textSecondary.toArgb())
                 summary.setOnClickPendingIntent(R.id.summary_text, activityPending(context, openIntent, REQUEST_OPEN + 3))
                 views.addView(R.id.future_tray, summary)
@@ -227,7 +272,8 @@ object TodayTimelineRemoteViews {
         context: Context,
         item: TimelineItemEntity,
         zone: ZoneId,
-        colors: com.forcusflow.lifestream.ui.theme.LifeStreamColors,
+        colors: LifeStreamColors,
+        fontFamily: AppFontFamily,
         scale: Float,
         openIntent: Intent,
         done: Boolean,
@@ -238,6 +284,15 @@ object TodayTimelineRemoteViews {
             context.packageName,
             if (isTray) R.layout.widget_item_tray_row else R.layout.widget_item_row
         )
+
+        // Adapt card background to dark/light theme
+        val cardBg = if (colors.isDark) {
+            if (isTray) R.drawable.widget_tray_card_background_dark else R.drawable.widget_card_background_dark
+        } else {
+            if (isTray) R.drawable.widget_tray_card_background_light else R.drawable.widget_card_background_light
+        }
+        row.setInt(R.id.row_card, "setBackgroundResource", cardBg)
+
         row.setImageViewResource(
             R.id.row_node,
             if (done) R.drawable.widget_done_node else R.drawable.ic_widget_circle_dark
@@ -246,17 +301,19 @@ object TodayTimelineRemoteViews {
         val timeStr = timestamp?.let { formatTime(it, zone) } ?: ""
         if (timeStr.isNotBlank()) {
             row.setViewVisibility(R.id.row_time, View.VISIBLE)
-            row.setTextViewText(R.id.row_time, timeStr)
+            row.setTextWithFont(R.id.row_time, timeStr, fontFamily, 9f * scale)
         } else {
             row.setViewVisibility(R.id.row_time, View.GONE)
         }
-        row.setTextViewText(R.id.row_title, cleanTitle(item.title))
+        val titleTextSize = if (isTray) 11f else 12.5f
+        row.setTextWithFont(R.id.row_title, cleanTitle(item.title), fontFamily, titleTextSize * scale)
+
         val badge = badgeOverride ?: if (item.durationSeconds != null) "⏱ ${(item.durationSeconds + 30) / 60}分" else if (item.countValue != null) "${item.countValue}回" else ""
         if (badge.isBlank()) {
             row.setViewVisibility(R.id.row_badge, View.GONE)
         } else {
             row.setViewVisibility(R.id.row_badge, View.VISIBLE)
-            row.setTextViewText(R.id.row_badge, badge)
+            row.setTextWithFont(R.id.row_badge, badge, fontFamily, 8f * scale)
         }
         if (timeStr.isBlank() && badge.isBlank()) {
             row.setViewVisibility(R.id.row_sub_container, View.GONE)
@@ -276,7 +333,8 @@ object TodayTimelineRemoteViews {
     private fun templateRow(
         context: Context,
         template: TemplateEntity,
-        colors: com.forcusflow.lifestream.ui.theme.LifeStreamColors,
+        colors: LifeStreamColors,
+        fontFamily: AppFontFamily,
         scale: Float,
         openIntent: Intent,
         isTray: Boolean = false
@@ -285,19 +343,50 @@ object TodayTimelineRemoteViews {
             context.packageName,
             if (isTray) R.layout.widget_item_tray_row else R.layout.widget_item_row
         )
+
+        // Adapt card background to dark/light theme
+        val cardBg = if (colors.isDark) {
+            if (isTray) R.drawable.widget_tray_card_background_dark else R.drawable.widget_card_background_dark
+        } else {
+            if (isTray) R.drawable.widget_tray_card_background_light else R.drawable.widget_card_background_light
+        }
+        row.setInt(R.id.row_card, "setBackgroundResource", cardBg)
+
         row.setImageViewResource(R.id.row_node, R.drawable.ic_widget_circle_dark)
         row.setViewVisibility(R.id.row_time, View.GONE)
         row.setViewVisibility(R.id.row_badge, View.GONE)
         row.setViewVisibility(R.id.row_sub_container, View.GONE)
-        row.setTextViewText(R.id.row_title, template.title)
+
+        val titleTextSize = if (isTray) 11f else 12.5f
+        row.setTextWithFont(R.id.row_title, template.title, fontFamily, titleTextSize * scale)
+
         row.setViewVisibility(R.id.row_repeat, View.VISIBLE)
-        row.setTextViewText(R.id.row_repeat, "↻")
+        row.setTextWithFont(R.id.row_repeat, "↻", fontFamily, 12f * scale)
         row.setTextColor(R.id.row_repeat, colors.textSecondary.toArgb())
+
         val titleColor = if (isTray) colors.textSecondary.toArgb() else colors.textPrimary.toArgb()
         row.setTextColor(R.id.row_title, titleColor)
         row.setOnClickPendingIntent(R.id.row_card, activityPending(context, openIntent, REQUEST_OPEN + template.id.toInt().coerceAtLeast(1)))
         row.setOnClickPendingIntent(R.id.row_node, broadcastPending(context, TodayTimelineWidgetReceiver.ACTION_COMPLETE_TEMPLATE, REQUEST_TEMPLATE + template.id.toInt().coerceAtLeast(1), "template_id", template.id))
         return row
+    }
+
+    private fun CharSequence.withFont(fontFamily: AppFontFamily): CharSequence {
+        val span = SpannableString(this)
+        span.setSpan(TypefaceSpan(fontFamily.androidTypefaceFamily), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        return span
+    }
+
+    private fun RemoteViews.setTextWithFont(
+        viewId: Int,
+        text: CharSequence,
+        fontFamily: AppFontFamily,
+        sizeSp: Float? = null
+    ) {
+        setTextViewText(viewId, text.withFont(fontFamily))
+        if (sizeSp != null) {
+            setTextViewTextSize(viewId, TypedValue.COMPLEX_UNIT_SP, sizeSp)
+        }
     }
 
     private fun formatTime(timestamp: Long, zone: ZoneId): String =

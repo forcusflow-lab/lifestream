@@ -11,6 +11,8 @@ import com.forcusflow.lifestream.data.TemplateEntity
 import com.forcusflow.lifestream.data.TimelineItemEntity
 import com.forcusflow.lifestream.data.TimerStateManager
 import com.forcusflow.lifestream.domain.*
+import com.forcusflow.lifestream.ui.theme.AppFontFamily
+import com.forcusflow.lifestream.ui.theme.AppFontSize
 import com.forcusflow.lifestream.ui.theme.AppThemeMode
 import com.forcusflow.lifestream.widget.TodayTimelineWidgetReceiver
 import com.forcusflow.lifestream.widget.WidgetSettingsManager
@@ -51,6 +53,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // Preferences state
     val themeMode = MutableStateFlow(WidgetSettingsManager.getThemeMode(application))
+    val fontFamily = MutableStateFlow(WidgetSettingsManager.getFontFamily(application))
+    val fontSize = MutableStateFlow(WidgetSettingsManager.getFontSize(application))
     val dayCutoffHour = MutableStateFlow(WidgetSettingsManager.getCutoffHour(application))
     val showStreaksAndGoals = MutableStateFlow(WidgetSettingsManager.getShowStreaksAndGoals(application))
 
@@ -674,6 +678,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setTheme(mode: AppThemeMode) {
         themeMode.value = mode
         WidgetSettingsManager.setThemeMode(getApplication(), mode)
+        notifyWidgetUpdate()
+    }
+
+    fun setFontFamily(family: AppFontFamily) {
+        fontFamily.value = family
+        WidgetSettingsManager.setFontFamily(getApplication(), family)
+        notifyWidgetUpdate()
+    }
+
+    fun setFontSize(size: AppFontSize) {
+        fontSize.value = size
+        WidgetSettingsManager.setFontSize(getApplication(), size)
         notifyWidgetUpdate()
     }
 

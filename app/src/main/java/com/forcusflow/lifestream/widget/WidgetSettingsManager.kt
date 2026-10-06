@@ -2,19 +2,15 @@ package com.forcusflow.lifestream.widget
 
 import android.content.Context
 import android.content.SharedPreferences
-
 import com.forcusflow.lifestream.ui.theme.*
 
-enum class WidgetFontSize(val label: String, val scale: Float) {
-    COMPACT("コンパクト (手帳密度)", 0.85f),
-    STANDARD("標準 (見やすさ重視)", 1.0f),
-    LARGE("大きめ (視認性重視)", 1.15f)
-}
+typealias WidgetFontSize = AppFontSize
 
 object WidgetSettingsManager {
     private const val PREFS_NAME = "lifestream_widget_prefs"
     private const val KEY_OPACITY = "widget_opacity"
     private const val KEY_FONT_SIZE = "widget_font_size"
+    private const val KEY_FONT_FAMILY = "widget_font_family"
     private const val KEY_THEME_MODE = "widget_theme_mode"
     private const val KEY_CUTOFF_HOUR = "widget_cutoff_hour"
     private const val KEY_SHOW_STREAKS_AND_GOALS = "show_streaks_and_goals"
@@ -25,7 +21,7 @@ object WidgetSettingsManager {
     }
 
     fun isFutureTrayExpanded(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_FUTURE_TRAY_EXPANDED, true) // Default is expanded (true)
+        return getPrefs(context).getBoolean(KEY_FUTURE_TRAY_EXPANDED, true)
     }
 
     fun setFutureTrayExpanded(context: Context, expanded: Boolean) {
@@ -44,7 +40,7 @@ object WidgetSettingsManager {
     fun toggleWidgetTrayExpanded(context: Context): Boolean = toggleFutureTrayExpanded(context)
 
     fun getShowStreaksAndGoals(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_SHOW_STREAKS_AND_GOALS, false) // Default is FALSE as required
+        return getPrefs(context).getBoolean(KEY_SHOW_STREAKS_AND_GOALS, false)
     }
 
     fun setShowStreaksAndGoals(context: Context, enabled: Boolean) {
@@ -63,24 +59,37 @@ object WidgetSettingsManager {
         getPrefs(context).edit().putFloat(KEY_OPACITY, opacity.coerceIn(0.0f, 1.0f)).apply()
     }
 
-    fun getFontSize(context: Context): WidgetFontSize {
-        val name = getPrefs(context).getString(KEY_FONT_SIZE, WidgetFontSize.STANDARD.name)
+    fun getFontSize(context: Context): AppFontSize {
+        val name = getPrefs(context).getString(KEY_FONT_SIZE, AppFontSize.STANDARD.name)
         return try {
-            WidgetFontSize.valueOf(name ?: WidgetFontSize.STANDARD.name)
-        } catch (e: Exception) {
-            WidgetFontSize.STANDARD
+            AppFontSize.valueOf(name ?: AppFontSize.STANDARD.name)
+        } catch (_: Exception) {
+            AppFontSize.STANDARD
         }
     }
 
-    fun setFontSize(context: Context, size: WidgetFontSize) {
+    fun setFontSize(context: Context, size: AppFontSize) {
         getPrefs(context).edit().putString(KEY_FONT_SIZE, size.name).apply()
+    }
+
+    fun getFontFamily(context: Context): AppFontFamily {
+        val name = getPrefs(context).getString(KEY_FONT_FAMILY, AppFontFamily.SANS_SERIF.name)
+        return try {
+            AppFontFamily.valueOf(name ?: AppFontFamily.SANS_SERIF.name)
+        } catch (_: Exception) {
+            AppFontFamily.SANS_SERIF
+        }
+    }
+
+    fun setFontFamily(context: Context, family: AppFontFamily) {
+        getPrefs(context).edit().putString(KEY_FONT_FAMILY, family.name).apply()
     }
 
     fun getThemeMode(context: Context): AppThemeMode {
         val name = getPrefs(context).getString(KEY_THEME_MODE, AppThemeMode.CLASSIC_WARM.name)
         return try {
             AppThemeMode.valueOf(name ?: AppThemeMode.CLASSIC_WARM.name)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             AppThemeMode.CLASSIC_WARM
         }
     }

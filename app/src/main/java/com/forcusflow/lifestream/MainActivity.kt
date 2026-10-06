@@ -35,10 +35,16 @@ class MainActivity : ComponentActivity() {
         com.forcusflow.lifestream.widget.TodayTimelineWidgetReceiver.updateAll(this)
         setContent {
             val themeMode by viewModel.themeMode.collectAsState()
+            val fontFamily by viewModel.fontFamily.collectAsState()
+            val fontSize by viewModel.fontSize.collectAsState()
             val currentTab by viewModel.currentTab.collectAsState()
             val todayBadgeCount by viewModel.todayBadgeCount.collectAsState()
 
-            LifeStreamTheme(themeMode = themeMode) {
+            LifeStreamTheme(
+                themeMode = themeMode,
+                fontFamily = fontFamily,
+                fontSize = fontSize
+            ) {
                 val colors = LifeStreamTheme.colors
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),

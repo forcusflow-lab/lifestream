@@ -1,10 +1,15 @@
 package com.forcusflow.lifestream.ui.theme
 
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.Density
 
 enum class AppThemeMode(val displayName: String, val description: String) {
     CLASSIC_WARM("クラシック・ウォーム", "旧Wunderlist調の紙の温もりと木目調アクセント"),
@@ -14,6 +19,35 @@ enum class AppThemeMode(val displayName: String, val description: String) {
     SAGE_LINEN("セージ＆リネン (Organic)", "くすみグリーンと生成りリネンが心地よい癒やし系"),
     DEEP_SLATE("ディープ・スレート (Dark)", "Taskito風の洗練されたダークスレート & スカイブルー"),
     PURE_MINIMAL_OLED("ピュア・ミニマル (OLED Black)", "Niagara風の完全純黒・エメラルドグリーン (省電力)")
+}
+
+enum class AppFontFamily(
+    val key: String,
+    val displayName: String,
+    val subtitle: String,
+    val androidTypefaceFamily: String
+) {
+    SANS_SERIF("SANS_SERIF", "モダン・サンセリフ", "Notion / Linear調 (幾何学・軽快)", "sans-serif"),
+    SERIF("SERIF", "手帳・明朝 (Serif)", "ほぼ日・文芸手帳調 (上質・落ち着き)", "serif"),
+    MONOSPACE("MONOSPACE", "クラフト・等幅 (Mono)", "技術手帳調 (整然・道具感)", "monospace");
+
+    val composeFontFamily: FontFamily
+        get() = when (this) {
+            SANS_SERIF -> FontFamily.Default
+            SERIF -> FontFamily.Serif
+            MONOSPACE -> FontFamily.Monospace
+        }
+}
+
+enum class AppFontSize(
+    val key: String,
+    val displayName: String,
+    val subtitle: String,
+    val scale: Float
+) {
+    COMPACT("COMPACT", "コンパクト", "手帳密度 (情報量重視)", 0.88f),
+    STANDARD("STANDARD", "標準", "最適バランス (おすすめ)", 1.0f),
+    LARGE("LARGE", "大きめ", "ゆったり (視認性重視)", 1.15f)
 }
 
 data class LifeStreamColors(
@@ -169,10 +203,14 @@ val PureMinimalOledColors = LifeStreamColors(
 )
 
 val LocalLifeStreamColors = staticCompositionLocalOf { ClassicWarmColors }
+val LocalAppFontFamily = staticCompositionLocalOf { AppFontFamily.SANS_SERIF }
+val LocalAppFontSize = staticCompositionLocalOf { AppFontSize.STANDARD }
 
 @Composable
 fun LifeStreamTheme(
     themeMode: AppThemeMode = AppThemeMode.CLASSIC_WARM,
+    fontFamily: AppFontFamily = AppFontFamily.SANS_SERIF,
+    fontSize: AppFontSize = AppFontSize.STANDARD,
     content: @Composable () -> Unit
 ) {
     val colors = when (themeMode) {
@@ -185,8 +223,21 @@ fun LifeStreamTheme(
         AppThemeMode.PURE_MINIMAL_OLED -> PureMinimalOledColors
     }
 
+    val currentDensity = LocalDensity.current
+    val customDensity = Density(
+        density = currentDensity.density,
+        fontScale = currentDensity.fontScale * fontSize.scale
+    )
+
     CompositionLocalProvider(
         LocalLifeStreamColors provides colors,
+        LocalAppFontFamily provides fontFamily,
+        LocalAppFontSize provides fontSize,
+        LocalDensity provides customDensity,
+        LocalTextStyle provides TextStyle(
+            fontFamily = fontFamily.composeFontFamily,
+            color = colors.textPrimary
+        ),
         content = content
     )
 }
@@ -196,4 +247,14 @@ object LifeStreamTheme {
         @Composable
         @ReadOnlyComposable
         get() = LocalLifeStreamColors.current
+
+    val fontFamily: AppFontFamily
+        @Composable
+        @ReadOnlyComposable
+        get() = LocalAppFontFamily.current
+
+    val fontSize: AppFontSize
+        @Composable
+        @ReadOnlyComposable
+        get() = LocalAppFontSize.current
 }
