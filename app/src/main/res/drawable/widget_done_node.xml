@@ -4,18 +4,21 @@
     android:height="28dp"
     android:viewportWidth="28"
     android:viewportHeight="28">
-    <!-- Continuous stem line -->
+    <!-- Continuous stem line (matching 1.2dp) -->
     <path
-        android:strokeColor="#458F7F6E"
-        android:strokeWidth="2"
+        android:strokeColor="#408F7F6E"
+        android:strokeWidth="1.2"
         android:strokeLineCap="square"
-        android:pathData="M14,0 L14,5 M14,23 L14,28" />
-    <!-- Done green circle -->
+        android:pathData="M14,0 L14,7 M14,21 L14,28" />
+    <!-- Done green circle (14dp diameter) -->
     <path
         android:fillColor="#20A957"
-        android:pathData="M14,5 A9,9 0 1,0 14,23 A9,9 0 1,0 14,5 Z" />
-    <!-- White checkmark -->
+        android:pathData="M14,7 A7,7 0 1,0 14,21 A7,7 0 1,0 14,7 Z" />
+    <!-- White checkmark (crisp stroke centered in 14dp circle) -->
     <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M12,19 l-5,-5 1.41,-1.41 L12,16.17 l7.59,-7.59 L21,10 l-9,9 z" />
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M10.5,14 L12.8,16.5 L17.5,11.5" />
 </vector>

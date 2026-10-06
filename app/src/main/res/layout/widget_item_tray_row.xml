@@ -66,8 +66,8 @@
             android:layout_marginTop="1dp"
             android:ellipsize="end"
             android:maxLines="1"
-            android:textColor="#595248"
-            android:textSize="11.5sp"
-            android:textStyle="bold" />
+            android:textColor="#746F64"
+            android:textSize="11sp"
+            android:textStyle="normal" />
     </LinearLayout>
 </LinearLayout>

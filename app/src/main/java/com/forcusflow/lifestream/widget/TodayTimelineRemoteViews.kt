@@ -173,7 +173,7 @@ object TodayTimelineRemoteViews {
         data.activePeriodicTemplates.filter { it.isDueToday }.forEach { status ->
             views.addView(
                 R.id.widget_surfaced_area,
-                templateRow(context, status.template, colors, scale, openIntent, "習慣", isTray = false)
+                templateRow(context, status.template, colors, scale, openIntent, "周期", isTray = false)
             )
         }
         data.timelinePendingItems.forEach { item ->
@@ -204,7 +204,7 @@ object TodayTimelineRemoteViews {
                 when (row) {
                     is TrayRow.Habit -> views.addView(
                         R.id.future_tray,
-                        templateRow(context, row.template, colors, scale, openIntent, "習慣", isTray = true)
+                        templateRow(context, row.template, colors, scale, openIntent, "周期", isTray = true)
                     )
                     is TrayRow.Item -> views.addView(
                         R.id.future_tray,
@@ -287,8 +287,9 @@ object TodayTimelineRemoteViews {
         )
         row.setImageViewResource(R.id.row_node, R.drawable.ic_widget_circle_dark)
         row.setViewVisibility(R.id.row_time, View.GONE)
-        row.setTextViewText(R.id.row_title, "${template.iconKey ?: "🌿"} ${template.title}")
-        row.setTextViewText(R.id.row_badge, badge)
+        row.setTextViewText(R.id.row_title, template.title)
+        val badgeText = "${template.iconKey ?: "🔄"} $badge"
+        row.setTextViewText(R.id.row_badge, badgeText)
         row.setViewVisibility(R.id.row_badge, View.VISIBLE)
         row.setViewVisibility(R.id.row_sub_container, View.VISIBLE)
         val titleColor = if (isTray) colors.textSecondary.toArgb() else colors.textPrimary.toArgb()

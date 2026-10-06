@@ -4,17 +4,17 @@
     android:height="28dp"
     android:viewportWidth="28"
     android:viewportHeight="28">
-    <!-- Continuous stem line -->
+    <!-- Continuous stem line (delicate 1.2dp, soft 25% opacity) -->
     <path
-        android:strokeColor="#458F7F6E"
-        android:strokeWidth="2"
+        android:strokeColor="#408F7F6E"
+        android:strokeWidth="1.2"
         android:strokeLineCap="square"
-        android:pathData="M14,0 L14,5 M14,23 L14,28" />
-    <!-- Uncompleted node circle -->
+        android:pathData="M14,0 L14,7 M14,21 L14,28" />
+    <!-- Uncompleted node circle (refined 14dp diameter, 1.2dp stroke, elegant semi-transparent) -->
     <path
-        android:strokeColor="#FF8F7F6E"
-        android:strokeWidth="2"
+        android:strokeColor="#908F7F6E"
+        android:strokeWidth="1.2"
         android:strokeLineCap="round"
         android:fillColor="#00000000"
-        android:pathData="M14,5 A9,9 0 1,0 14,23 A9,9 0 1,0 14,5 Z" />
+        android:pathData="M14,7 A7,7 0 1,0 14,21 A7,7 0 1,0 14,7 Z" />
 </vector>

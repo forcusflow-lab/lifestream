@@ -86,6 +86,7 @@ fun TimelineScreen(viewModel: MainViewModel) {
 
     var showAddSheet by remember { mutableStateOf(false) }
     var itemToEdit by remember { mutableStateOf<TimelineItemEntity?>(null) }
+    var editingTemplate by remember { mutableStateOf<TemplateEntity?>(null) }
     var showTemplateManagerDialog by remember { mutableStateOf(false) }
     var showSearchSheet by remember { mutableStateOf(false) }
     var showFocusSheet by remember { mutableStateOf(false) }
@@ -576,7 +577,8 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                     val nextDate = today.plusDays(1)
                                     snackbarHostState.showSnackbar("「${tmpl.title}」を次回まで見送りました（次回目安: ${nextDate.monthValue}/${nextDate.dayOfMonth}）")
                                 }
-                            }
+                            },
+                            onClick = { editingTemplate = tmpl }
                         )
                     }
                 }
@@ -724,13 +726,13 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                                 .padding(vertical = 4.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            // 完了チェック丸ボタン
+                                            // 完了チェック丸ボタン（繊細な18dp・線幅1.2dp）
                                             Surface(
                                                 shape = CircleShape,
                                                 color = Color.Transparent,
-                                                border = BorderStroke(1.dp, colors.border.copy(alpha = 0.7f)),
+                                                border = BorderStroke(1.2.dp, colors.border.copy(alpha = 0.6f)),
                                                 modifier = Modifier
-                                                    .size(20.dp)
+                                                    .size(18.dp)
                                                     .clip(CircleShape)
                                                     .clickable {
                                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -743,18 +745,44 @@ fun TimelineScreen(viewModel: MainViewModel) {
 
                                             Spacer(modifier = Modifier.width(8.dp))
 
-                                            // アイコン＋タスク名
-                                            Text(
-                                                text = "${tmpl.iconKey ?: "🔄"} ${tmpl.title}",
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.Medium,
-                                                color = colors.textPrimary,
-                                                modifier = Modifier.weight(1f),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
+                                            // タイトル（左端揃い）＋ 周期バッジ（タップで編集画面を開く）
+                                            Row(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .clickable { editingTemplate = tmpl }
+                                                    .padding(vertical = 2.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = tmpl.title,
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.Normal,
+                                                    color = colors.textPrimary,
+                                                    modifier = Modifier.weight(1f, fill = false),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
 
-                                            // 「今回は見送る」（完了とは別扱い・穏やかな表現）
+                                                Spacer(modifier = Modifier.width(6.dp))
+
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = colors.primary.copy(alpha = 0.10f)
+                                                ) {
+                                                    Text(
+                                                        text = "${tmpl.iconKey ?: "🔄"} 周期",
+                                                        fontSize = 9.5.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = colors.primary,
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                            }
+
+                                            Spacer(modifier = Modifier.width(6.dp))
+
+                                            // 「今回は見送る」
                                             Text(
                                                 text = "今回は見送る",
                                                 fontSize = 10.5.sp,
@@ -1086,6 +1114,32 @@ fun TimelineScreen(viewModel: MainViewModel) {
             }
         )
     }
+
+    // Edit Periodic Task Sheet (今日タブから直接周期設定・削除・カレンダー確認が可能)
+    if (editingTemplate != null) {
+        EditPeriodicTaskBottomSheet(
+            template = editingTemplate!!,
+            allItems = allItems,
+            onDismiss = { editingTemplate = null },
+            onSave = { updated ->
+                viewModel.updateTemplate(updated)
+                editingTemplate = null
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("「${updated.title}」を更新しました")
+                }
+            },
+            onDelete = { toDelete ->
+                viewModel.deleteTemplate(toDelete)
+                editingTemplate = null
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("「${toDelete.title}」を削除しました")
+                }
+            },
+            onToggleDate = { date ->
+                viewModel.toggleCycleTask(editingTemplate!!, date)
+            }
+        )
+    }
 }
 
 @Composable
@@ -1113,15 +1167,15 @@ fun TaskitoNowLineRow(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .width(2.dp)
-                        .background(if (isFirst) Color.Transparent else colors.border)
+                        .width(1.5.dp)
+                        .background(if (isFirst) Color.Transparent else colors.border.copy(alpha = 0.4f))
                         .align(Alignment.CenterHorizontally)
                 )
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .width(2.dp)
-                        .background(if (isLast) Color.Transparent else colors.border)
+                        .width(1.5.dp)
+                        .background(if (isLast) Color.Transparent else colors.border.copy(alpha = 0.4f))
                         .align(Alignment.CenterHorizontally)
                 )
             }
@@ -1330,15 +1384,15 @@ fun TaskitoTimelineItemRow(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .width(2.dp)
-                                .background(if (isFirst) Color.Transparent else colors.border)
+                                .width(1.5.dp)
+                                .background(if (isFirst) Color.Transparent else colors.border.copy(alpha = 0.4f))
                                 .align(Alignment.CenterHorizontally)
                         )
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .width(2.dp)
-                                .background(if (isLast) Color.Transparent else colors.border)
+                                .width(1.5.dp)
+                                .background(if (isLast) Color.Transparent else colors.border.copy(alpha = 0.4f))
                                 .align(Alignment.CenterHorizontally)
                         )
                     }
@@ -1356,9 +1410,9 @@ fun TaskitoTimelineItemRow(
                         Box(
                             modifier = Modifier
                                 .scale(checkScale)
-                                .size(18.dp)
+                                .size(16.dp)
                                 .clip(CircleShape)
-                                .border(2.dp, nodeBorderColor, CircleShape)
+                                .border(1.5.dp, nodeBorderColor, CircleShape)
                                 .background(nodeColor),
                             contentAlignment = Alignment.Center
                         ) {
@@ -1520,7 +1574,8 @@ fun TaskitoPeriodicSurfacedRow(
     isFirst: Boolean,
     isLast: Boolean,
     onComplete: () -> Unit,
-    onPostpone: () -> Unit
+    onPostpone: () -> Unit,
+    onClick: () -> Unit
 ) {
     val colors = LifeStreamTheme.colors
     val haptic = LocalHapticFeedback.current
@@ -1532,7 +1587,7 @@ fun TaskitoPeriodicSurfacedRow(
             .padding(vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Continuous stem line
+        // Continuous stem line (繊細な1.5dp・半透明)
         Box(
             modifier = Modifier
                 .width(36.dp)
@@ -1543,20 +1598,20 @@ fun TaskitoPeriodicSurfacedRow(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .width(2.dp)
-                        .background(if (isFirst) Color.Transparent else colors.border)
+                        .width(1.5.dp)
+                        .background(if (isFirst) Color.Transparent else colors.border.copy(alpha = 0.4f))
                         .align(Alignment.CenterHorizontally)
                 )
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .width(2.dp)
-                        .background(if (isLast) Color.Transparent else colors.border)
+                        .width(1.5.dp)
+                        .background(if (isLast) Color.Transparent else colors.border.copy(alpha = 0.4f))
                         .align(Alignment.CenterHorizontally)
                 )
             }
 
-            // Node Circle
+            // Node Circle (繊細な16dpジュエリーサークル)
             Box(
                 modifier = Modifier
                     .size(48.dp)
@@ -1568,9 +1623,9 @@ fun TaskitoPeriodicSurfacedRow(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(18.dp)
+                        .size(16.dp)
                         .clip(CircleShape)
-                        .border(2.dp, colors.primary.copy(alpha = 0.8f), CircleShape)
+                        .border(1.5.dp, colors.primary.copy(alpha = 0.75f), CircleShape)
                         .background(Color.Transparent)
                 )
             }
@@ -1578,32 +1633,21 @@ fun TaskitoPeriodicSurfacedRow(
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        // Surface Card
+        // Surface Card（タップで周期編集ボトムシートを開く）
         Surface(
             shape = RoundedCornerShape(12.dp),
             color = colors.card,
             modifier = Modifier
                 .weight(1f)
                 .clip(RoundedCornerShape(12.dp))
+                .clickable { onClick() }
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
-                // 1行目: アイコン ＋ タイトル
-                Text(
-                    text = "${template.iconKey ?: "🔄"} ${template.title}",
-                    fontSize = 14.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.textPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                // 2行目: 「習慣」バッジ ＋ 「今回は見送る」アクション
+                // 1行目: メタデータ（周期バッジ ＋ 見送りアクション）
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -1614,7 +1658,7 @@ fun TaskitoPeriodicSurfacedRow(
                         color = colors.primary.copy(alpha = 0.12f)
                     ) {
                         Text(
-                            text = "習慣",
+                            text = "${template.iconKey ?: "🔄"} 周期",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = colors.primary,
@@ -1632,6 +1676,18 @@ fun TaskitoPeriodicSurfacedRow(
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
+
+                Spacer(modifier = Modifier.height(3.dp))
+
+                // 2行目: タイトル（先頭絵文字なし！全タスクと左端開始位置が100%揃う）
+                Text(
+                    text = template.title,
+                    fontSize = 14.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }
@@ -1679,15 +1735,15 @@ fun TaskitoTimelinePendingRow(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .width(2.dp)
-                        .background(if (isFirst) Color.Transparent else colors.border)
+                        .width(1.5.dp)
+                        .background(if (isFirst) Color.Transparent else colors.border.copy(alpha = 0.4f))
                         .align(Alignment.CenterHorizontally)
                 )
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .width(2.dp)
-                        .background(if (isLast) Color.Transparent else colors.border)
+                        .width(1.5.dp)
+                        .background(if (isLast) Color.Transparent else colors.border.copy(alpha = 0.4f))
                         .align(Alignment.CenterHorizontally)
                 )
             }
@@ -1704,11 +1760,11 @@ fun TaskitoTimelinePendingRow(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(18.dp)
+                        .size(16.dp)
                         .clip(CircleShape)
                         .border(
-                            2.dp,
-                            if (isCompleting || item.isDone) colors.statusDone else colors.border.copy(alpha = 0.8f),
+                            1.5.dp,
+                            if (isCompleting || item.isDone) colors.statusDone else colors.border.copy(alpha = 0.6f),
                             CircleShape
                         )
                         .background(if (isCompleting || item.isDone) colors.statusDone else Color.Transparent),
