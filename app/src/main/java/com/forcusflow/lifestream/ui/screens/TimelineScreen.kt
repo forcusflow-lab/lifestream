@@ -1383,7 +1383,6 @@ fun TaskitoTimelineItemRow(
                         .weight(1f)
                         .clip(RoundedCornerShape(10.dp))
                         .background(colors.card)
-                        .border(0.5.dp, colors.border, RoundedCornerShape(10.dp))
                         .clickable { onClick() }
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -1584,51 +1583,56 @@ fun TaskitoPeriodicSurfacedRow(
         Surface(
             shape = RoundedCornerShape(12.dp),
             color = colors.card,
-            border = BorderStroke(1.dp, colors.primary.copy(alpha = 0.25f)),
             modifier = Modifier
                 .weight(1f)
                 .clip(RoundedCornerShape(12.dp))
         ) {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 9.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                // 1行目: アイコン ＋ タイトル
+                Text(
+                    text = "${template.iconKey ?: "🔄"} ${template.title}",
+                    fontSize = 14.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // 2行目: 「習慣」バッジ ＋ 「今回は見送る」アクション
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
                     Surface(
                         shape = RoundedCornerShape(4.dp),
-                        color = colors.primary.copy(alpha = 0.12f),
-                        modifier = Modifier.padding(end = 6.dp)
+                        color = colors.primary.copy(alpha = 0.12f)
                     ) {
                         Text(
                             text = "習慣",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = colors.primary,
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
+
                     Text(
-                        text = "${template.iconKey ?: "🔄"} ${template.title}",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = colors.textPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        text = "今回は見送る",
+                        fontSize = 11.5.sp,
+                        color = colors.textSecondary.copy(alpha = 0.7f),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable { onPostpone() }
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
-
-                Text(
-                    text = "今回は見送る",
-                    fontSize = 11.sp,
-                    color = colors.textSecondary.copy(alpha = 0.65f),
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .clickable { onPostpone() }
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                )
             }
         }
     }
@@ -1729,10 +1733,6 @@ fun TaskitoTimelinePendingRow(
         Surface(
             shape = RoundedCornerShape(12.dp),
             color = if (item.showOnTimeline && item.scheduledAt == null) colors.primary.copy(alpha = 0.05f) else colors.card,
-            border = BorderStroke(
-                1.dp,
-                if (item.showOnTimeline && item.scheduledAt == null) colors.primary.copy(alpha = 0.35f) else colors.border.copy(alpha = 0.6f)
-            ),
             modifier = Modifier
                 .weight(1f)
                 .clip(RoundedCornerShape(12.dp))

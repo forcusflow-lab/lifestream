@@ -1,13 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
-    android:viewportWidth="24"
-    android:viewportHeight="24">
+    android:width="28dp"
+    android:height="28dp"
+    android:viewportWidth="28"
+    android:viewportHeight="28">
+    <!-- Continuous stem line -->
+    <path
+        android:strokeColor="#458F7F6E"
+        android:strokeWidth="2"
+        android:strokeLineCap="square"
+        android:pathData="M14,0 L14,5 M14,23 L14,28" />
+    <!-- Done green circle -->
     <path
         android:fillColor="#20A957"
-        android:pathData="M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2z" />
+        android:pathData="M14,5 A9,9 0 1,0 14,23 A9,9 0 1,0 14,5 Z" />
+    <!-- White checkmark -->
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M10,17l-5,-5 1.41,-1.41L10,14.17l7.59,-7.59L19,8l-9,9z" />
+        android:pathData="M12,19 l-5,-5 1.41,-1.41 L12,16.17 l7.59,-7.59 L21,10 l-9,9 z" />
 </vector>
