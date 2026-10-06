@@ -118,7 +118,6 @@ object TodayTimelineRemoteViews {
         views.setOnClickPendingIntent(R.id.widget_refresh, broadcastPending(context, TodayTimelineWidgetReceiver.ACTION_REFRESH, REQUEST_REFRESH))
         views.setOnClickPendingIntent(R.id.widget_add, activityPending(context, addIntent, REQUEST_ADD))
         views.setTextColor(R.id.widget_date, colors.textPrimary.toArgb())
-        views.setTextColor(R.id.widget_refresh, colors.textSecondary.toArgb())
         views.setTextColor(R.id.widget_add, colors.primary.toArgb())
 
         val focusText = data.focusText(context)
@@ -134,13 +133,14 @@ object TodayTimelineRemoteViews {
         listOf(R.id.widget_done_area, R.id.widget_now_area, R.id.widget_surfaced_area, R.id.future_tray)
             .forEach { views.removeAllViews(it) }
         views.setViewVisibility(R.id.widget_empty, View.GONE)
+        views.setViewVisibility(R.id.widget_all_done, View.GONE)
         views.setViewVisibility(R.id.widget_future_header, View.GONE)
 
-        val hasTasks = data.doneItems.isNotEmpty() ||
-            data.activePeriodicTemplates.any { it.isDueToday } ||
+        val hasPending = data.activePeriodicTemplates.any { it.isDueToday } ||
             data.timelinePendingItems.isNotEmpty() ||
             data.trayPeriodicTemplates.any { it.isDueToday } ||
             data.trayPendingItems.isNotEmpty()
+        val hasDone = data.doneItems.isNotEmpty()
 
         val doneItems = data.doneItems.takeLast(4)
         if (data.doneItems.size > doneItems.size) {
@@ -154,7 +154,7 @@ object TodayTimelineRemoteViews {
             views.addView(R.id.widget_done_area, itemRow(context, item, zone, colors, scale, openIntent, done = true))
         }
 
-        if (!hasTasks) {
+        if (!hasDone && !hasPending) {
             views.setViewVisibility(R.id.widget_empty, View.VISIBLE)
             views.setTextColor(R.id.widget_empty, colors.textSecondary.toArgb())
         }
@@ -164,17 +164,23 @@ object TodayTimelineRemoteViews {
         nowRow.setTextViewText(R.id.now_label, "現在 $nowText")
         views.addView(R.id.widget_now_area, nowRow)
 
+        if (hasDone && !hasPending) {
+            views.setViewVisibility(R.id.widget_all_done, View.VISIBLE)
+            views.setTextColor(R.id.widget_all_done, colors.textSecondary.toArgb())
+            views.setOnClickPendingIntent(R.id.widget_all_done, activityPending(context, openIntent, REQUEST_OPEN + 4))
+        }
+
         data.activePeriodicTemplates.filter { it.isDueToday }.forEach { status ->
             views.addView(
                 R.id.widget_surfaced_area,
-                templateRow(context, status.template, colors, scale, openIntent, "習慣")
+                templateRow(context, status.template, colors, scale, openIntent, "習慣", isTray = false)
             )
         }
         data.timelinePendingItems.forEach { item ->
             val badge = item.scheduledAt?.let { formatTime(it, zone) } ?: if (item.showOnTimeline) "📌 今日" else ""
             views.addView(
                 R.id.widget_surfaced_area,
-                itemRow(context, item, zone, colors, scale, openIntent, done = false, badgeOverride = badge)
+                itemRow(context, item, zone, colors, scale, openIntent, done = false, badgeOverride = badge, isTray = false)
             )
         }
 
@@ -183,7 +189,7 @@ object TodayTimelineRemoteViews {
         if (trayCount > 0) {
             views.setViewVisibility(R.id.widget_future_header, View.VISIBLE)
             views.setTextViewText(R.id.future_title, "これからの歩み (${trayCount}件)")
-            views.setTextColor(R.id.future_title, colors.textPrimary.toArgb())
+            views.setTextColor(R.id.future_title, colors.textSecondary.toArgb())
             views.setOnClickPendingIntent(R.id.widget_future_header, broadcastPending(context, TodayTimelineWidgetReceiver.ACTION_TOGGLE, REQUEST_TOGGLE))
             views.setOnClickPendingIntent(R.id.future_toggle, broadcastPending(context, TodayTimelineWidgetReceiver.ACTION_TOGGLE, REQUEST_TOGGLE + 1))
             val expanded = WidgetSettingsManager.isFutureTrayExpanded(context)
@@ -198,11 +204,11 @@ object TodayTimelineRemoteViews {
                 when (row) {
                     is TrayRow.Habit -> views.addView(
                         R.id.future_tray,
-                        templateRow(context, row.template, colors, scale, openIntent, "習慣")
+                        templateRow(context, row.template, colors, scale, openIntent, "習慣", isTray = true)
                     )
                     is TrayRow.Item -> views.addView(
                         R.id.future_tray,
-                        itemRow(context, row.item, zone, colors, scale, openIntent, done = false)
+                        itemRow(context, row.item, zone, colors, scale, openIntent, done = false, isTray = true)
                     )
                 }
             }
@@ -225,9 +231,13 @@ object TodayTimelineRemoteViews {
         scale: Float,
         openIntent: Intent,
         done: Boolean,
-        badgeOverride: String? = null
+        badgeOverride: String? = null,
+        isTray: Boolean = false
     ): RemoteViews {
-        val row = RemoteViews(context.packageName, R.layout.widget_item_row)
+        val row = RemoteViews(
+            context.packageName,
+            if (isTray) R.layout.widget_item_tray_row else R.layout.widget_item_row
+        )
         row.setImageViewResource(
             R.id.row_node,
             if (done) R.drawable.widget_done_node else R.drawable.ic_widget_circle_dark
@@ -254,7 +264,8 @@ object TodayTimelineRemoteViews {
             row.setViewVisibility(R.id.row_sub_container, View.VISIBLE)
         }
         row.setTextColor(R.id.row_time, colors.textSecondary.toArgb())
-        row.setTextColor(R.id.row_title, colors.textPrimary.toArgb())
+        val titleColor = if (done || isTray) colors.textSecondary.toArgb() else colors.textPrimary.toArgb()
+        row.setTextColor(R.id.row_title, titleColor)
         row.setTextColor(R.id.row_badge, colors.primary.toArgb())
         row.setOnClickPendingIntent(R.id.row_card, activityPending(context, openIntent, REQUEST_OPEN + item.id.toInt().coerceAtLeast(1)))
         row.setOnClickPendingIntent(R.id.row_node, broadcastPending(context, TodayTimelineWidgetReceiver.ACTION_COMPLETE_ITEM, REQUEST_ITEM + item.id.toInt().coerceAtLeast(1), "item_id", item.id))
@@ -267,16 +278,21 @@ object TodayTimelineRemoteViews {
         colors: com.forcusflow.lifestream.ui.theme.LifeStreamColors,
         scale: Float,
         openIntent: Intent,
-        badge: String
+        badge: String,
+        isTray: Boolean = false
     ): RemoteViews {
-        val row = RemoteViews(context.packageName, R.layout.widget_item_row)
+        val row = RemoteViews(
+            context.packageName,
+            if (isTray) R.layout.widget_item_tray_row else R.layout.widget_item_row
+        )
         row.setImageViewResource(R.id.row_node, R.drawable.ic_widget_circle_dark)
         row.setViewVisibility(R.id.row_time, View.GONE)
         row.setTextViewText(R.id.row_title, "${template.iconKey ?: "🌿"} ${template.title}")
         row.setTextViewText(R.id.row_badge, badge)
         row.setViewVisibility(R.id.row_badge, View.VISIBLE)
         row.setViewVisibility(R.id.row_sub_container, View.VISIBLE)
-        row.setTextColor(R.id.row_title, colors.textPrimary.toArgb())
+        val titleColor = if (isTray) colors.textSecondary.toArgb() else colors.textPrimary.toArgb()
+        row.setTextColor(R.id.row_title, titleColor)
         row.setTextColor(R.id.row_badge, colors.primary.toArgb())
         row.setOnClickPendingIntent(R.id.row_card, activityPending(context, openIntent, REQUEST_OPEN + template.id.toInt().coerceAtLeast(1)))
         row.setOnClickPendingIntent(R.id.row_node, broadcastPending(context, TodayTimelineWidgetReceiver.ACTION_COMPLETE_TEMPLATE, REQUEST_TEMPLATE + template.id.toInt().coerceAtLeast(1), "template_id", template.id))

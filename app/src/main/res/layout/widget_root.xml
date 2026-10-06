@@ -21,30 +21,31 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:includeFontPadding="false"
             android:maxLines="1"
             android:text="今日"
             android:textColor="#262626"
-            android:textSize="16sp"
+            android:textSize="12sp"
             android:textStyle="bold" />
 
-        <TextView
+        <ImageView
             android:id="@+id/widget_refresh"
-            android:layout_width="36dp"
-            android:layout_height="32dp"
-            android:gravity="center"
-            android:text="↻"
-            android:textColor="#746F64"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:padding="5dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_widget_refresh"
+            android:background="@drawable/widget_refresh_background" />
 
         <TextView
             android:id="@+id/widget_add"
             android:layout_width="wrap_content"
-            android:layout_height="32dp"
+            android:layout_height="28dp"
             android:layout_marginStart="6dp"
             android:gravity="center"
-            android:paddingStart="9dp"
-            android:paddingEnd="9dp"
+            android:includeFontPadding="false"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
             android:text="＋ 追加"
             android:textColor="#A84B3C"
             android:textSize="11sp"
@@ -57,25 +58,18 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="3dp"
+        android:includeFontPadding="false"
         android:maxLines="1"
         android:textColor="#A84B3C"
-        android:textSize="12sp"
+        android:textSize="11sp"
         android:textStyle="italic"
         android:visibility="gone" />
-
-    <TextView
-        android:id="@+id/widget_divider"
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:text=""
-        android:layout_marginTop="6dp"
-        android:layout_marginBottom="5dp"
-        android:background="#8F7F6E" />
 
     <LinearLayout
         android:id="@+id/widget_scroll"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
         android:orientation="vertical">
 
         <LinearLayout
@@ -114,12 +108,13 @@
 
                 <TextView
                     android:id="@+id/future_toggle"
-                    android:layout_width="28dp"
-                    android:layout_height="28dp"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
                     android:gravity="center"
+                    android:includeFontPadding="false"
                     android:text="▼"
                     android:textColor="#A84B3C"
-                    android:textSize="10sp"
+                    android:textSize="9sp"
                     android:background="@drawable/widget_toggle_background" />
 
                 <TextView
@@ -127,19 +122,11 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="6dp"
+                    android:includeFontPadding="false"
                     android:text="これからの歩み"
-                    android:textColor="#262626"
-                    android:textSize="12sp"
+                    android:textColor="#595248"
+                    android:textSize="11.5sp"
                     android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/future_divider"
-                    android:layout_width="0dp"
-                    android:layout_height="1dp"
-                    android:layout_weight="1"
-                    android:text=""
-                    android:layout_marginStart="6dp"
-                    android:background="#8F7F6E" />
             </LinearLayout>
 
             <LinearLayout
@@ -147,6 +134,18 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/widget_all_done"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:paddingTop="8dp"
+                android:paddingBottom="6dp"
+                android:text="✨ 今日のタスクはすべて完了しました"
+                android:textColor="#746F64"
+                android:textSize="11sp"
                 android:visibility="gone" />
 
             <TextView

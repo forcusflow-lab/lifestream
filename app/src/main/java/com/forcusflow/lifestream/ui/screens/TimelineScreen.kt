@@ -1310,7 +1310,6 @@ fun TaskitoTimelineItemRow(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(colors.background)
         ) {
             Row(
                 modifier = Modifier
