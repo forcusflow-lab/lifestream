@@ -39,15 +39,28 @@ object TodayTimelineRemoteViews {
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
     suspend fun updateAll(context: Context) {
+        updateWidgets(context, null)
+    }
+
+    suspend fun updateWidgets(context: Context, appWidgetIds: IntArray? = null) {
         val manager = AppWidgetManager.getInstance(context)
-        val component = ComponentName(context, TodayTimelineWidgetReceiver::class.java)
-        val ids = manager.getAppWidgetIds(component)
+        val ids = if (appWidgetIds != null && appWidgetIds.isNotEmpty()) {
+            appWidgetIds
+        } else {
+            val component = ComponentName(context, TodayTimelineWidgetReceiver::class.java)
+            manager.getAppWidgetIds(component)
+        }
         if (ids.isEmpty()) return
         val views = try {
             build(context)
         } catch (error: Throwable) {
             Log.e("byLifeWidget", "RemoteViews build failed; showing fallback", error)
-            RemoteViews(context.packageName, R.layout.widget_fallback)
+            val fallback = RemoteViews(context.packageName, R.layout.widget_fallback)
+            val openIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            fallback.setOnClickPendingIntent(R.id.fallback_text, activityPending(context, openIntent, REQUEST_OPEN))
+            fallback
         }
         manager.updateAppWidget(ids, views)
     }
@@ -129,7 +142,7 @@ object TodayTimelineRemoteViews {
             data.trayPeriodicTemplates.any { it.isDueToday } ||
             data.trayPendingItems.isNotEmpty()
 
-        val doneItems = data.doneItems.takeLast(3)
+        val doneItems = data.doneItems.takeLast(4)
         if (data.doneItems.size > doneItems.size) {
             val summary = RemoteViews(context.packageName, R.layout.widget_summary_row)
             summary.setTextViewText(R.id.summary_text, "▲ 以前の実績 ${data.doneItems.size - doneItems.size}件（タップしてアプリで確認）")
@@ -220,12 +233,25 @@ object TodayTimelineRemoteViews {
             if (done) R.drawable.widget_done_node else R.drawable.ic_widget_circle_dark
         )
         val timestamp = if (done) item.completedAt ?: item.scheduledAt else item.scheduledAt
-        row.setTextViewText(R.id.row_time, timestamp?.let { formatTime(it, zone) } ?: "")
+        val timeStr = timestamp?.let { formatTime(it, zone) } ?: ""
+        if (timeStr.isNotBlank()) {
+            row.setViewVisibility(R.id.row_time, View.VISIBLE)
+            row.setTextViewText(R.id.row_time, timeStr)
+        } else {
+            row.setViewVisibility(R.id.row_time, View.GONE)
+        }
         row.setTextViewText(R.id.row_title, cleanTitle(item.title))
         val badge = badgeOverride ?: if (item.durationSeconds != null) "⏱ ${(item.durationSeconds + 30) / 60}分" else if (item.countValue != null) "${item.countValue}回" else ""
-        if (badge.isBlank()) row.setViewVisibility(R.id.row_badge, View.GONE) else {
+        if (badge.isBlank()) {
+            row.setViewVisibility(R.id.row_badge, View.GONE)
+        } else {
             row.setViewVisibility(R.id.row_badge, View.VISIBLE)
             row.setTextViewText(R.id.row_badge, badge)
+        }
+        if (timeStr.isBlank() && badge.isBlank()) {
+            row.setViewVisibility(R.id.row_sub_container, View.GONE)
+        } else {
+            row.setViewVisibility(R.id.row_sub_container, View.VISIBLE)
         }
         row.setTextColor(R.id.row_time, colors.textSecondary.toArgb())
         row.setTextColor(R.id.row_title, colors.textPrimary.toArgb())
@@ -245,10 +271,11 @@ object TodayTimelineRemoteViews {
     ): RemoteViews {
         val row = RemoteViews(context.packageName, R.layout.widget_item_row)
         row.setImageViewResource(R.id.row_node, R.drawable.ic_widget_circle_dark)
-        row.setTextViewText(R.id.row_time, "")
+        row.setViewVisibility(R.id.row_time, View.GONE)
         row.setTextViewText(R.id.row_title, "${template.iconKey ?: "🌿"} ${template.title}")
         row.setTextViewText(R.id.row_badge, badge)
         row.setViewVisibility(R.id.row_badge, View.VISIBLE)
+        row.setViewVisibility(R.id.row_sub_container, View.VISIBLE)
         row.setTextColor(R.id.row_title, colors.textPrimary.toArgb())
         row.setTextColor(R.id.row_badge, colors.primary.toArgb())
         row.setOnClickPendingIntent(R.id.row_card, activityPending(context, openIntent, REQUEST_OPEN + template.id.toInt().coerceAtLeast(1)))
