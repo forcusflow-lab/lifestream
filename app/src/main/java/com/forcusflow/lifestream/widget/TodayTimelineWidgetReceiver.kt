@@ -4,7 +4,6 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
-import android.os.Bundle
 import com.forcusflow.lifestream.data.AppDatabase
 import com.forcusflow.lifestream.domain.LifeDateProvider
 import com.forcusflow.lifestream.domain.PeriodicTaskUseCase

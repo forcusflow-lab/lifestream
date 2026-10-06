@@ -5,6 +5,7 @@ import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import androidx.compose.ui.graphics.toArgb
@@ -44,10 +45,6 @@ object TodayTimelineRemoteViews {
         if (ids.isEmpty()) return
         val views = build(context)
         manager.updateAppWidget(ids, views)
-    }
-
-    suspend fun updateOne(context: Context, appWidgetId: Int) {
-        AppWidgetManager.getInstance(context).updateAppWidget(appWidgetId, build(context))
     }
 
     fun updateTrayVisibility(context: Context, appWidgetId: Int) {
@@ -179,15 +176,15 @@ object TodayTimelineRemoteViews {
                 trayHabits.forEach { add(TrayRow.Habit(it)) }
                 data.trayPendingItems.forEach { add(TrayRow.Item(it)) }
             }
-            trayRows.take(MAX_TRAY_ROWS).forEachIndexed { index, row ->
+            trayRows.take(MAX_TRAY_ROWS).forEach { row ->
                 when (row) {
                     is TrayRow.Habit -> views.addView(
                         R.id.future_tray,
-                        templateRow(context, row.template, colors, scale, openIntent, "習慣", tray = true)
+                        templateRow(context, row.template, colors, scale, openIntent, "習慣")
                     )
                     is TrayRow.Item -> views.addView(
                         R.id.future_tray,
-                        itemRow(context, row.item, zone, colors, scale, openIntent, done = false, tray = true)
+                        itemRow(context, row.item, zone, colors, scale, openIntent, done = false)
                     )
                 }
             }
@@ -210,7 +207,6 @@ object TodayTimelineRemoteViews {
         scale: Float,
         openIntent: Intent,
         done: Boolean,
-        tray: Boolean = false,
         badgeOverride: String? = null
     ): RemoteViews {
         val row = RemoteViews(context.packageName, R.layout.widget_item_row)
@@ -231,6 +227,7 @@ object TodayTimelineRemoteViews {
         row.setTextColor(R.id.row_time, colors.textSecondary.toArgb())
         row.setTextColor(R.id.row_title, colors.textPrimary.toArgb())
         row.setTextColor(R.id.row_badge, colors.primary.toArgb())
+        applyScale(row, scale)
         row.setOnClickPendingIntent(R.id.row_card, activityPending(context, openIntent, REQUEST_OPEN + item.id.toInt().coerceAtLeast(1)))
         row.setOnClickPendingIntent(R.id.row_node, broadcastPending(context, TodayTimelineWidgetReceiver.ACTION_COMPLETE_ITEM, REQUEST_ITEM + item.id.toInt().coerceAtLeast(1), "item_id", item.id))
         return row
@@ -242,8 +239,7 @@ object TodayTimelineRemoteViews {
         colors: com.forcusflow.lifestream.ui.theme.LifeStreamColors,
         scale: Float,
         openIntent: Intent,
-        badge: String,
-        tray: Boolean = false
+        badge: String
     ): RemoteViews {
         val row = RemoteViews(context.packageName, R.layout.widget_item_row)
         row.setImageViewResource(R.id.row_node, R.drawable.ic_widget_circle)
@@ -253,9 +249,16 @@ object TodayTimelineRemoteViews {
         row.setViewVisibility(R.id.row_badge, View.VISIBLE)
         row.setTextColor(R.id.row_title, colors.textPrimary.toArgb())
         row.setTextColor(R.id.row_badge, colors.primary.toArgb())
+        applyScale(row, scale)
         row.setOnClickPendingIntent(R.id.row_card, activityPending(context, openIntent, REQUEST_OPEN + template.id.toInt().coerceAtLeast(1)))
         row.setOnClickPendingIntent(R.id.row_node, broadcastPending(context, TodayTimelineWidgetReceiver.ACTION_COMPLETE_TEMPLATE, REQUEST_TEMPLATE + template.id.toInt().coerceAtLeast(1), "template_id", template.id))
         return row
+    }
+
+    private fun applyScale(views: RemoteViews, scale: Float) {
+        views.setTextViewTextSize(R.id.row_time, TypedValue.COMPLEX_UNIT_SP, 9f * scale)
+        views.setTextViewTextSize(R.id.row_title, TypedValue.COMPLEX_UNIT_SP, 12f * scale)
+        views.setTextViewTextSize(R.id.row_badge, TypedValue.COMPLEX_UNIT_SP, 8f * scale)
     }
 
     private fun formatTime(timestamp: Long, zone: ZoneId): String =
