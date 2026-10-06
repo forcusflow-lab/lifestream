@@ -731,40 +731,20 @@ fun TimelineScreen(viewModel: MainViewModel) {
 
                                         Spacer(modifier = Modifier.width(8.dp))
 
-                                        // タイトル（左端揃い）＋ 周期バッジ（タップで編集画面を開く）
-                                        Row(
+                                        // タイトル（左端揃い、タップで編集画面を開く）
+                                        Text(
+                                            text = tmpl.title,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Normal,
+                                            color = colors.textPrimary,
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .clip(RoundedCornerShape(6.dp))
                                                 .clickable { editingTemplate = tmpl }
                                                 .padding(vertical = 2.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = tmpl.title,
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.Normal,
-                                                color = colors.textPrimary,
-                                                modifier = Modifier.weight(1f, fill = false),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-
-                                            Spacer(modifier = Modifier.width(6.dp))
-
-                                            Surface(
-                                                shape = RoundedCornerShape(4.dp),
-                                                color = colors.primary.copy(alpha = 0.10f)
-                                            ) {
-                                                Text(
-                                                    text = "${tmpl.iconKey ?: "🔄"} 周期",
-                                                    fontSize = 9.5.sp,
-                                                    fontWeight = FontWeight.Medium,
-                                                    color = colors.primary,
-                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                                )
-                                            }
-                                        }
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
 
                                         Spacer(modifier = Modifier.width(6.dp))
 
@@ -782,7 +762,16 @@ fun TimelineScreen(viewModel: MainViewModel) {
                                                         snackbarHostState.showSnackbar("「${tmpl.title}」を次回まで見送りました（次回目安: ${nextDate.monthValue}/${nextDate.dayOfMonth}）")
                                                     }
                                                 }
-                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                                        )
+
+                                        Spacer(modifier = Modifier.width(6.dp))
+
+                                        // 右端: 繊細なリピート記号「↻」
+                                        Text(
+                                            text = "↻",
+                                            fontSize = 12.sp,
+                                            color = colors.textSecondary.copy(alpha = 0.5f)
                                         )
                                     }
                                 }
@@ -1602,51 +1591,45 @@ fun TaskitoPeriodicSurfacedRow(
                 .clip(RoundedCornerShape(12.dp))
                 .clickable { onClick() }
         ) {
-            Column(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // 1行目: メタデータ（周期バッジ ＋ 見送りアクション）
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = colors.primary.copy(alpha = 0.12f)
-                    ) {
-                        Text(
-                            text = "${template.iconKey ?: "🔄"} 周期",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.primary,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
+                // 左側: タイトル ＋ 「今回は見送る」
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = template.title,
+                        fontSize = 14.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    Spacer(modifier = Modifier.height(2.dp))
 
                     Text(
                         text = "今回は見送る",
-                        fontSize = 11.5.sp,
-                        color = colors.textSecondary.copy(alpha = 0.7f),
+                        fontSize = 11.sp,
+                        color = colors.textSecondary.copy(alpha = 0.65f),
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
                             .clickable { onPostpone() }
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                            .padding(vertical = 1.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(3.dp))
+                Spacer(modifier = Modifier.width(8.dp))
 
-                // 2行目: タイトル（先頭絵文字なし！全タスクと左端開始位置が100%揃う）
+                // 右端: 繊細なリピート記号「↻」
                 Text(
-                    text = template.title,
-                    fontSize = 14.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.textPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    text = "↻",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = colors.textSecondary.copy(alpha = 0.55f)
                 )
             }
         }

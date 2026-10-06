@@ -21,7 +21,8 @@
         android:layout_height="wrap_content"
         android:layout_weight="1"
         android:layout_marginStart="4dp"
-        android:orientation="vertical"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
         android:paddingStart="8dp"
         android:paddingTop="2dp"
         android:paddingEnd="8dp"
@@ -29,45 +30,63 @@
         android:background="@drawable/widget_tray_card_background">
 
         <LinearLayout
-            android:id="@+id/row_sub_container"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:id="@+id/row_sub_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/row_time"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:textColor="#746F64"
+                    android:textSize="8.5sp" />
+
+                <TextView
+                    android:id="@+id/row_badge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="5dp"
+                    android:includeFontPadding="false"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="#A84B3C"
+                    android:textSize="7.5sp"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
+            </LinearLayout>
 
             <TextView
-                android:id="@+id/row_time"
-                android:layout_width="wrap_content"
+                android:id="@+id/row_title"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:includeFontPadding="false"
-                android:maxLines="1"
-                android:textColor="#746F64"
-                android:textSize="8.5sp" />
-
-            <TextView
-                android:id="@+id/row_badge"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="5dp"
-                android:includeFontPadding="false"
+                android:layout_marginTop="1dp"
                 android:ellipsize="end"
                 android:maxLines="1"
-                android:textColor="#A84B3C"
-                android:textSize="7.5sp"
-                android:textStyle="bold"
-                android:visibility="gone" />
+                android:textColor="#746F64"
+                android:textSize="11sp"
+                android:textStyle="normal" />
         </LinearLayout>
 
         <TextView
-            android:id="@+id/row_title"
-            android:layout_width="match_parent"
+            android:id="@+id/row_repeat"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
             android:includeFontPadding="false"
-            android:layout_marginTop="1dp"
-            android:ellipsize="end"
-            android:maxLines="1"
+            android:text="↻"
             android:textColor="#746F64"
             android:textSize="11sp"
-            android:textStyle="normal" />
+            android:visibility="gone" />
     </LinearLayout>
 </LinearLayout>

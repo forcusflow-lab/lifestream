@@ -173,7 +173,7 @@ object TodayTimelineRemoteViews {
         data.activePeriodicTemplates.filter { it.isDueToday }.forEach { status ->
             views.addView(
                 R.id.widget_surfaced_area,
-                templateRow(context, status.template, colors, scale, openIntent, "周期", isTray = false)
+                templateRow(context, status.template, colors, scale, openIntent, isTray = false)
             )
         }
         data.timelinePendingItems.forEach { item ->
@@ -204,7 +204,7 @@ object TodayTimelineRemoteViews {
                 when (row) {
                     is TrayRow.Habit -> views.addView(
                         R.id.future_tray,
-                        templateRow(context, row.template, colors, scale, openIntent, "周期", isTray = true)
+                        templateRow(context, row.template, colors, scale, openIntent, isTray = true)
                     )
                     is TrayRow.Item -> views.addView(
                         R.id.future_tray,
@@ -263,6 +263,7 @@ object TodayTimelineRemoteViews {
         } else {
             row.setViewVisibility(R.id.row_sub_container, View.VISIBLE)
         }
+        row.setViewVisibility(R.id.row_repeat, View.GONE)
         row.setTextColor(R.id.row_time, colors.textSecondary.toArgb())
         val titleColor = if (done || isTray) colors.textSecondary.toArgb() else colors.textPrimary.toArgb()
         row.setTextColor(R.id.row_title, titleColor)
@@ -278,7 +279,6 @@ object TodayTimelineRemoteViews {
         colors: com.forcusflow.lifestream.ui.theme.LifeStreamColors,
         scale: Float,
         openIntent: Intent,
-        badge: String,
         isTray: Boolean = false
     ): RemoteViews {
         val row = RemoteViews(
@@ -287,14 +287,14 @@ object TodayTimelineRemoteViews {
         )
         row.setImageViewResource(R.id.row_node, R.drawable.ic_widget_circle_dark)
         row.setViewVisibility(R.id.row_time, View.GONE)
+        row.setViewVisibility(R.id.row_badge, View.GONE)
+        row.setViewVisibility(R.id.row_sub_container, View.GONE)
         row.setTextViewText(R.id.row_title, template.title)
-        val badgeText = "${template.iconKey ?: "🔄"} $badge"
-        row.setTextViewText(R.id.row_badge, badgeText)
-        row.setViewVisibility(R.id.row_badge, View.VISIBLE)
-        row.setViewVisibility(R.id.row_sub_container, View.VISIBLE)
+        row.setViewVisibility(R.id.row_repeat, View.VISIBLE)
+        row.setTextViewText(R.id.row_repeat, "↻")
+        row.setTextColor(R.id.row_repeat, colors.textSecondary.toArgb())
         val titleColor = if (isTray) colors.textSecondary.toArgb() else colors.textPrimary.toArgb()
         row.setTextColor(R.id.row_title, titleColor)
-        row.setTextColor(R.id.row_badge, colors.primary.toArgb())
         row.setOnClickPendingIntent(R.id.row_card, activityPending(context, openIntent, REQUEST_OPEN + template.id.toInt().coerceAtLeast(1)))
         row.setOnClickPendingIntent(R.id.row_node, broadcastPending(context, TodayTimelineWidgetReceiver.ACTION_COMPLETE_TEMPLATE, REQUEST_TEMPLATE + template.id.toInt().coerceAtLeast(1), "template_id", template.id))
         return row
