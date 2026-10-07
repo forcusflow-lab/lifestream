@@ -285,14 +285,6 @@ object TodayTimelineRemoteViews {
             if (isTray) R.layout.widget_item_tray_row else R.layout.widget_item_row
         )
 
-        // Adapt card background to dark/light theme
-        val cardBg = if (colors.isDark) {
-            if (isTray) R.drawable.widget_tray_card_background_dark else R.drawable.widget_card_background_dark
-        } else {
-            if (isTray) R.drawable.widget_tray_card_background_light else R.drawable.widget_card_background_light
-        }
-        row.setInt(R.id.row_card, "setBackgroundResource", cardBg)
-
         row.setImageViewResource(
             R.id.row_node,
             if (done) R.drawable.widget_done_node else R.drawable.ic_widget_circle_dark
@@ -343,14 +335,6 @@ object TodayTimelineRemoteViews {
             context.packageName,
             if (isTray) R.layout.widget_item_tray_row else R.layout.widget_item_row
         )
-
-        // Adapt card background to dark/light theme
-        val cardBg = if (colors.isDark) {
-            if (isTray) R.drawable.widget_tray_card_background_dark else R.drawable.widget_card_background_dark
-        } else {
-            if (isTray) R.drawable.widget_tray_card_background_light else R.drawable.widget_card_background_light
-        }
-        row.setInt(R.id.row_card, "setBackgroundResource", cardBg)
 
         row.setImageViewResource(R.id.row_node, R.drawable.ic_widget_circle_dark)
         row.setViewVisibility(R.id.row_time, View.GONE)
