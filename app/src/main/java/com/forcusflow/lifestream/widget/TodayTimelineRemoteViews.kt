@@ -152,7 +152,7 @@ object TodayTimelineRemoteViews {
         val focusText = data.focusText(context)
         if (focusText != null) {
             views.setViewVisibility(R.id.widget_focus, View.VISIBLE)
-            views.setTextWithFont(R.id.widget_focus, "🎯 “$focusText”", fontFamily, 11f * scale)
+            views.setTextWithFont(R.id.widget_focus, "✦ $focusText", fontFamily, 11f * scale)
             views.setTextColor(R.id.widget_focus, colors.primary.toArgb())
             views.setOnClickPendingIntent(R.id.widget_focus, activityPending(context, openIntent, REQUEST_OPEN + 1))
         } else {
@@ -197,6 +197,7 @@ object TodayTimelineRemoteViews {
         val nowRow = RemoteViews(context.packageName, R.layout.widget_now_row)
         val nowText = dateProvider.formatTime(dateProvider.nowLocalDateTime().toLocalTime())
         nowRow.setTextWithFont(R.id.now_label, "現在 $nowText", fontFamily, 9.5f * scale)
+        nowRow.setTextColor(R.id.now_label, colors.nowLine.toArgb())
         nowRow.setInt(R.id.now_stem, "setColorFilter", colors.nowLine.toArgb())
         nowRow.setInt(R.id.now_line, "setBackgroundColor", colors.nowLine.toArgb())
         views.addView(R.id.widget_now_area, nowRow)

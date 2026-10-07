@@ -423,7 +423,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                 }
                                 Spacer(modifier = Modifier.height(3.dp))
                                 Text(
-                                    text = "🎯 “最重要タスクに没頭する”",
+                                    text = "✦ 最重要タスクに没頭する",
                                     fontSize = (11.5f * currentFontSize.scale).sp,
                                     fontFamily = currentFontFamily.composeFontFamily,
                                     color = colors.primary

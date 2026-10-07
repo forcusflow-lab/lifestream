@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.sp
 import com.forcusflow.lifestream.ui.theme.LifeStreamTheme
 
 private val FOCUS_SUGGESTIONS = listOf(
-    "🎯 企画書・資料の完成",
+    "✦ 企画書・資料の完成",
     "⚡ 溜まったタスクの一掃",
     "💻 開発・集中作業",
     "📚 読書・スキルアップ",

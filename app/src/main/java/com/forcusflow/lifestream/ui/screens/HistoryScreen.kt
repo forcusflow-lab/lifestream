@@ -554,15 +554,15 @@ fun HistoryScreen(viewModel: MainViewModel) {
                                     .padding(bottom = 10.dp)
                             ) {
                                 Text(
-                                    text = "🎯",
-                                    fontSize = 12.sp
+                                    text = "✦",
+                                    fontSize = 13.sp,
+                                    color = colors.primary
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "“${selectedDateFocus!!.content}”",
+                                    text = selectedDateFocus!!.content,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Medium,
-                                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
                                     color = colors.textPrimary.copy(alpha = 0.9f),
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis

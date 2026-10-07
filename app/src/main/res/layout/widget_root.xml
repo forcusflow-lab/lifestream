@@ -71,9 +71,9 @@
             android:layout_marginTop="3dp"
             android:includeFontPadding="false"
             android:maxLines="1"
-            android:textColor="#A84B3C"
+            android:textColor="#595248"
             android:textSize="11sp"
-            android:textStyle="italic"
+            android:textStyle="normal"
             android:visibility="gone" />
 
         <LinearLayout

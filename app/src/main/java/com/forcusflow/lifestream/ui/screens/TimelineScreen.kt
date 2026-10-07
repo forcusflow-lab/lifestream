@@ -274,8 +274,9 @@ fun TimelineScreen(viewModel: MainViewModel) {
                         )
                     } else {
                         Text(
-                            text = "🎯",
-                            fontSize = 13.sp
+                            text = "✦",
+                            fontSize = 14.sp,
+                            color = colors.primary
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(

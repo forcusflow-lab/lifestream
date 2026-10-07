@@ -36,5 +36,5 @@
         android:layout_weight="1"
         android:text=""
         android:layout_marginStart="6dp"
-        android:background="#D82D2D" />
+        android:background="#80746F64" />
 </LinearLayout>
